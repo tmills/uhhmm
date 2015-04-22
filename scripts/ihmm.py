@@ -5,6 +5,8 @@ import logging
 import numpy as np
 import ihmm_sampler as sampler
 
+# The set of random variable values at one word
+# There will be one of these for every word in the training set
 class State:
     def __init__(self):
         self.f = 0
@@ -24,10 +26,15 @@ class State:
         
         return string
 
+# Has a state for every word in the corpus
+# What's the state of the system at one Gibbs sampling iteration?
 class Sample:
     def __init__(self):
         self.hid_seq = []
         
+
+# Historgam of how many instances of each state you have random sampled
+# May be a field in Sample
 class Stats:
     def __init__(self):
         ## number of each type of variable:
@@ -38,6 +45,7 @@ class Stats:
         self.alpha0 = 0
         self.gamma = 0
         self.vi = 0
+
 
 class Model:
     def __init__(self, shape):
