@@ -18,10 +18,11 @@ def main(argv):
         
     ## Read in input file to get sequence for X
     (pos_seq, word_seq) = read_input_file(input_file)
+    num_types = max(map(max,word_seq)) + 1
     
     params = read_params(config)
     
-    params['h'] = init_emission_base()
+    params['h'] = init_emission_base(num_types)
     
     (state_seq, stats) = ihmm.sample_beam(word_seq, params)
     
@@ -37,7 +38,8 @@ def read_params(config):
 
 def init_emission_base(size):
     ## Uniform distribution:
-    H = np.zeros((size,1)) + 0.01
+    H = np.zeros((1,size)) + 0.01
+    return H
 
 def read_input_file(filename):
     pos_seqs = list()
