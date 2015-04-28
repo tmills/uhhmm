@@ -5,7 +5,7 @@ import logging
 
 ## TODO -- instead of being passed H have the Model class implement
 ## a get_base_distribution() method that can be called
-def sampleDirichlet(counts, H):
+def sampleDirichlet(counts, H, nullState = False):
     L = max(H.shape)
     K = counts.pairCounts.shape[0]
     P = np.zeros(counts.pairCounts.shape)
@@ -24,9 +24,11 @@ def sampleDirichlet(counts, H):
 #        logging.debug("Shape of P[i,:] is %s", P[i,:].shape)
 #        logging.debug(base)
         ## base[0][0] will be 0 but needs to be positive for gamma
-        base[0][0] = 1
+        if nullState:
+            base[0][0] = 1
         P[i,:] = np.random.gamma(base,1)
-        P[i,0] = 0
+        if nullState:
+            P[i,0] = 0
         P[i,:] /= sum(P[i,:])
 
     return P

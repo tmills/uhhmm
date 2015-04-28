@@ -15,7 +15,7 @@ while(<STDIN>){
   for my $word (@words){
     if(!exists($words{$word})){
       my $hashSize = keys %words;
-      $words{$word} = $hashSize;
+      $words{$word} = $hashSize+1;
 #      print STDERR "Size of words is: ".$hashSize."\n";
     }
     $buf .= "$words{$word} ";

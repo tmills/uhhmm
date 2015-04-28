@@ -31,7 +31,7 @@ def main(argv):
 def read_params(config):
     params = {}
     for (key, val) in config.items('params'):
-        logging.debug("assigning params key val pair (%s, %s)", key, val)
+        #logging.debug("assigning params key val pair (%s, %s)", key, val)
         params[key] = val
     
     return params
