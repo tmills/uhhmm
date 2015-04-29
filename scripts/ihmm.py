@@ -6,6 +6,8 @@ import time
 import numpy as np
 import ihmm_sampler as sampler
 import pdb
+from threading import Thread
+from multiprocessing import Process
 
 # The set of random variable values at one word
 # There will be one of these for every word in the training set
@@ -129,7 +131,6 @@ def sample_beam(ev_seqs, params):
     
     iter = 0
     while iter < num_iters:
-        logging.debug("Performing forward pass for iter %d", iter)
         iter += 1
         
         ## Sample distributions for all the model params and emissions params
@@ -154,137 +155,172 @@ def sample_beam(ev_seqs, params):
         ## How many total states are there?
         ## 2*2*|Act|*|Awa|*|G|
         totalK = 2 * 2 * a_max * b_max * g_max
-        dyn_prog = np.zeros((totalK, maxLen+1))
+        inf_procs = dict()
         t0 = time.time()
+        num_procs = 4
+        cur_proc = 0
+        dyn_prog = np.zeros((num_procs,totalK, maxLen+1))
+
         
         for sent_index,sent in enumerate(ev_seqs):
-            if sent_index > 0 and sent_index % 1 == 0:
+            if sent_index > 0 and sent_index % 100 == 0:
                 t1 = time.time()
-                logging.info("Iteration %d, sentence %d: Spent %d s on last 1 sentences", iter, sent_index, t1-t0)
+                logging.info("Iteration %d, sentence %d: Spent %d s on last 100 sentences", iter, sent_index, t1-t0)
                 t0 = time.time()
-                
-            ## Forward pass:        
-            dyn_prog[:,:] = 0
-            dyn_prog = forward_pass(dyn_prog,sent,models,totalK)
-                                        
-            ## Now sample and work our way backwards:
-            logging.debug("Backward sample:")
-            sent_sample = reverse_sample(dyn_prog,sent,models,totalK)
-            increment_counts(sent_sample, sent, models)
-            sample.S.append(sent_sample)
+
+            if len(inf_procs) == num_procs:
+                #logging.debug("Waiting for thread %d to join", cur_thread)
+                inf_procs[cur_proc].join()
+                sent_sample = inf_procs[cur_proc].get_sample()
+                sample.S.append(sent_sample)
+
+
+            #logging.debug("Spawning thread number %d for sent index %d", cur_thread, sent_index)
+
+            sampler_proc = Sampler(dyn_prog[cur_proc,:,:], models, totalK, maxLen+1, cur_proc)
+            inf_procs[cur_proc] = sampler_proc
+            sampler_proc.set_data(sent)
+            sampler_proc.start()
+            cur_proc = (cur_proc+1) % num_procs
             
     return (hid_seqs, stats)
 
-@profile
-def forward_pass(dyn_prog,sent,models,totalK):
-    ## keep track of forward probs for this sentence:
-    for index,token in enumerate(sent):
-        if index == 0:
-#                    logging.debug("Shape of dynprog is %s", dyn_prog.shape)
-#                    logging.debug("Shape of lex model is %s", models.lex.dist.shape)
-#                    logging.debug("Prob column for token %d : %s", token, models.lex.dist[:,token])
-            g0_ind = getStateIndex(0,0,0,0,0)
-            dyn_prog[g0_ind:g0_ind+g_max,0] = models.lex.dist[:,token] / sum(models.lex.dist[:,token])
-#                    if sent_index == 0:
-#                        logging.debug("At time 0 dyn_prog is: %s", dyn_prog[:,0])
-        else:
-            for prevInd in np.nonzero(dyn_prog[:,index-1])[0]:
-                (prevF, prevJ, prevA, prevB, prevG) = extractStates(prevInd, totalK)
-
-                assert index == 1 or (prevA != 0 and prevB != 0 and prevG != 0), 'Unexpected values in sentence {0} with non-zero probabilities: {1}, {2}, {3} at index {4}, and f={5} and j={6}'.format(0,prevA, prevB, prevG, index, prevF, prevJ)
-                
-                cumProbs = np.zeros((5,1))
-                prevBG = bg_state(prevB,prevG)
-                
-                ## Sample f & j:
-                for f in (0,1):
-                    cumProbs[0] = models.fork.dist[prevBG,f]
-                    if index == 1:
-                        j = 0
-                    else:
-                        j = f
-                    
-                    cumProbs[1] = cumProbs[0]
-                    
-                    for a in range(1,a_max):
-#                                pdb.set_trace()
-                        if f == 0 and j == 0:
-                            ## active transition:
-                            cumProbs[2] = cumProbs[1] * models.act.dist[prevA,a]
-                        elif f == 1 and j == 0:
-                            ## root -- technically depends on prevA and prevG
-                            ## but in depth 1 this case only comes up at start
-                            ## of sentence and prevA will always be 0
-                            cumProbs[2] = cumProbs[1] * models.root.dist[prevG,a]
-                        elif f == 1 and j == 1 and prevA == a:
-                            cumProbs[2] = cumProbs[1]
-                        else:
-                            ## zero probability here
-                            continue
-                        
-                        prevAa = aa_state(prevA, a)
-                        
-                        for b in range(1,b_max):
-                            if j == 0:
-                                cumProbs[3] = cumProbs[2] * models.cont.dist[prevBG,b]
-                            else:
-                                cumProbs[3] = cumProbs[2] * models.start.dist[prevAa,b]
-                            
-                            # Multiply all the g's in one pass:
-                            state_range = getStateRange(f,j,a,b)
-                            dyn_prog[state_range,index] = cumProbs[3] * models.pos.dist[b,:] * models.lex.dist[:,token]
-
-                            ## For the last token, we can multiply in the
-                            ## probability of ending the sentence right away:
-                            if index == len(sent)-1:
-                                for g in range(1,g_max):
-                                    curBG = bg_state(b,g)
-                                    dyn_prog[state_range[0]+g,index] *= (models.fork.dist[curBG,0] * models.reduce.dist[a,1])
+class Sampler(Process):
+    def __init__(self, dyn_prog, models, totalK, maxLen, tid):
+        Process.__init__(self)
+        self.models = models
+        self.K = totalK
+        self.sent_sample = None
+        self.sent = None
+        self.dyn_prog = dyn_prog
+        self.tid = tid
     
-        ## Normalize at this time step:
-        dyn_prog[:, index] /= sum(dyn_prog[:,index])
-    return dyn_prog
+    def set_data(self, sent):
+        self.sent = sent
 
-def reverse_sample(dyn_prog,sent,models,totalK):            
-    sample_seq = []
-    sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,len(sent)-1]))
-    sample_seq.append(State(extractStates(sample_t, totalK)))
-  #            if sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0:
-  #                pdb.set_trace()
-  
-    for t in range(len(sent)-2,-1,-1):
-        for ind in np.nonzero(dyn_prog[:,t])[0]:
-            (pf,pj,pa,pb,pg) = extractStates(ind,totalK)
-            (nf,nj,na,nb,ng) = sample_seq[-1].to_list()
-            prevBG = bg_state(pb,pg)
-            trans_prob = models.fork.dist[prevBG,nf]
-            if nf == 0:
-                trans_prob *= models.reduce.dist[pa,nj]
-      
-            if nf == 0 and nj == 0:
-                trans_prob *= models.act.dist[pa,na]
-            elif nf == 1 and nj == 0:
-                trans_prob *= models.root.dist[pg,na]
-      
-      
-            if nj == 0:
-                prevAA = aa_state(pa,na)
-                trans_prob *= models.start.dist[prevAA,nb]
+    def run(self):
+        self.dyn_prog[:,:] = 0
+        t0 = time.time()
+        #logging.debug("Starting forward pass in thread %s", self.tid)
+        self.dyn_prog = self.forward_pass(self.dyn_prog, self.sent, self.models, self.K)
+        #logging.debug("Starting backwards pass in thread %s", self.tid)
+        self.sent_sample = self.reverse_sample(self.dyn_prog, self.sent, self.models, self.K)
+        increment_counts(self.sent_sample, self.sent, self.models)
+        t1 = time.time()
+        #logging.debug("Thread %d required %d s to process sentence.", self.tid, (t1-t0))
+
+    def get_sample(self):
+        return self.sent_sample
+    
+    def forward_pass(self,dyn_prog,sent,models,totalK):
+        ## keep track of forward probs for this sentence:
+        for index,token in enumerate(sent):
+            if index == 0:
+    #                    logging.debug("Shape of dynprog is %s", dyn_prog.shape)
+    #                    logging.debug("Shape of lex model is %s", models.lex.dist.shape)
+    #                    logging.debug("Prob column for token %d : %s", token, models.lex.dist[:,token])
+                g0_ind = getStateIndex(0,0,0,0,0)
+                dyn_prog[g0_ind:g0_ind+g_max,0] = models.lex.dist[:,token] / sum(models.lex.dist[:,token])
+    #                    if sent_index == 0:
+    #                        logging.debug("At time 0 dyn_prog is: %s", dyn_prog[:,0])
             else:
-                trans_prob *= models.cont.dist[prevBG,nb]
-      
-            trans_prob *= models.pos.dist[nb,ng]
-            dyn_prog[ind,t] *= trans_prob
+                for prevInd in np.nonzero(dyn_prog[:,index-1])[0]:
+                    (prevF, prevJ, prevA, prevB, prevG) = extractStates(prevInd, totalK)
 
-  #                if sum(dyn_prog[:,t]) == 0.0:
-  #                    pdb.set_trace()
-        dyn_prog[:,t] /= sum(dyn_prog[:,t])
-        sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,t]))
+                    assert index == 1 or (prevA != 0 and prevB != 0 and prevG != 0), 'Unexpected values in sentence {0} with non-zero probabilities: {1}, {2}, {3} at index {4}, and f={5} and j={6}'.format(sent_index,prevA, prevB, prevG, index, prevF, prevJ)
+                
+                    cumProbs = np.zeros((5,1))
+                    prevBG = bg_state(prevB,prevG)
+                
+                    ## Sample f & j:
+                    for f in (0,1):
+                        cumProbs[0] = models.fork.dist[prevBG,f]
+                        if index == 1:
+                            j = 0
+                        else:
+                            j = f
+                    
+                        cumProbs[1] = cumProbs[0]
+                    
+                        for a in range(1,a_max):
+    #                                pdb.set_trace()
+                            if f == 0 and j == 0:
+                                ## active transition:
+                                cumProbs[2] = cumProbs[1] * models.act.dist[prevA,a]
+                            elif f == 1 and j == 0:
+                                ## root -- technically depends on prevA and prevG
+                                ## but in depth 1 this case only comes up at start
+                                ## of sentence and prevA will always be 0
+                                cumProbs[2] = cumProbs[1] * models.root.dist[prevG,a]
+                            elif f == 1 and j == 1 and prevA == a:
+                                cumProbs[2] = cumProbs[1]
+                            else:
+                                ## zero probability here
+                                continue
+                        
+                            prevAa = aa_state(prevA, a)
+                        
+                            for b in range(1,b_max):
+                                if j == 0:
+                                    cumProbs[3] = cumProbs[2] * models.cont.dist[prevBG,b]
+                                else:
+                                    cumProbs[3] = cumProbs[2] * models.start.dist[prevAa,b]
+                            
+                                # Multiply all the g's in one pass:
+                                state_range = getStateRange(f,j,a,b)
+                                dyn_prog[state_range,index] = cumProbs[3] * models.pos.dist[b,:] * models.lex.dist[:,token]
+
+                                ## For the last token, we can multiply in the
+                                ## probability of ending the sentence right away:
+                                if index == len(sent)-1:
+                                    for g in range(1,g_max):
+                                        curBG = bg_state(b,g)
+                                        dyn_prog[state_range[0]+g,index] *= (models.fork.dist[curBG,0] * models.reduce.dist[a,1])
+    
+            ## Normalize at this time step:
+            dyn_prog[:, index] /= sum(dyn_prog[:,index])
+        return dyn_prog
+
+    def reverse_sample(self,dyn_prog,sent,models,totalK):            
+        sample_seq = []
+        sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,len(sent)-1]))
         sample_seq.append(State(extractStates(sample_t, totalK)))
+      #            if sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0:
+      #                pdb.set_trace()
+  
+        for t in range(len(sent)-2,-1,-1):
+            for ind in np.nonzero(dyn_prog[:,t])[0]:
+                (pf,pj,pa,pb,pg) = extractStates(ind,totalK)
+                (nf,nj,na,nb,ng) = sample_seq[-1].to_list()
+                prevBG = bg_state(pb,pg)
+                trans_prob = models.fork.dist[prevBG,nf]
+                if nf == 0:
+                    trans_prob *= models.reduce.dist[pa,nj]
+      
+                if nf == 0 and nj == 0:
+                    trans_prob *= models.act.dist[pa,na]
+                elif nf == 1 and nj == 0:
+                    trans_prob *= models.root.dist[pg,na]
+      
+      
+                if nj == 0:
+                    prevAA = aa_state(pa,na)
+                    trans_prob *= models.start.dist[prevAA,nb]
+                else:
+                    trans_prob *= models.cont.dist[prevBG,nb]
+      
+                trans_prob *= models.pos.dist[nb,ng]
+                dyn_prog[ind,t] *= trans_prob
 
-    sample_seq.reverse()
-  #            logging.debug("Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
-    return sample_seq
+      #                if sum(dyn_prog[:,t]) == 0.0:
+      #                    pdb.set_trace()
+            dyn_prog[:,t] /= sum(dyn_prog[:,t])
+            sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,t]))
+            sample_seq.append(State(extractStates(sample_t, totalK)))
+
+        sample_seq.reverse()
+      #            logging.debug("Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
+        return sample_seq
 
 
 def initialize_state(ev_seqs, models):
