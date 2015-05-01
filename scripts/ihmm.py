@@ -175,6 +175,7 @@ def sample_beam(ev_seqs, params):
             
     return (hid_seqs, stats)
 
+@profile
 def forward_pass(dyn_prog,sent,models,totalK):
     ## keep track of forward probs for this sentence:
     for index,token in enumerate(sent):
@@ -190,7 +191,7 @@ def forward_pass(dyn_prog,sent,models,totalK):
             for prevInd in np.nonzero(dyn_prog[:,index-1])[0]:
                 (prevF, prevJ, prevA, prevB, prevG) = extractStates(prevInd, totalK)
 
-                assert index == 1 or (prevA != 0 and prevB != 0 and prevG != 0), 'Unexpected values in sentence {0} with non-zero probabilities: {1}, {2}, {3} at index {4}, and f={5} and j={6}'.format(sent_index,prevA, prevB, prevG, index, prevF, prevJ)
+                assert index == 1 or (prevA != 0 and prevB != 0 and prevG != 0), 'Unexpected values in sentence {0} with non-zero probabilities: {1}, {2}, {3} at index {4}, and f={5} and j={6}'.format(0,prevA, prevB, prevG, index, prevF, prevJ)
                 
                 cumProbs = np.zeros((5,1))
                 prevBG = bg_state(prevB,prevG)
@@ -229,21 +230,16 @@ def forward_pass(dyn_prog,sent,models,totalK):
                             else:
                                 cumProbs[3] = cumProbs[2] * models.start.dist[prevAa,b]
                             
-                            for g in range(1,g_max):
-                                cumProbs[4] = cumProbs[3] * models.pos.dist[b,g]
-                                state_index = getStateIndex(f,j,a,b,g)
-                                assert a != 0 and b != 0 and g != 0, "Problem with set of states in inner loop"
-                                
-                                (tf,tj,ta,tb,tg) = extractStates(state_index, totalK)
-                                assert ta != 0 and tb != 0 and tg != 0, ("Problem composing and extracting state indicies.", a,b,g,ta,tb,tg)
-                                
-#                                        pdb.set_trace()
-                                dyn_prog[state_index,index] = cumProbs[4] * models.lex.dist[g,token]
-                                ## For the last token, we can multiply in the
-                                ## probability of ending the sentence right away:
-                                if index == len(sent)-1:
+                            # Multiply all the g's in one pass:
+                            state_range = getStateRange(f,j,a,b)
+                            dyn_prog[state_range,index] = cumProbs[3] * models.pos.dist[b,:] * models.lex.dist[:,token]
+
+                            ## For the last token, we can multiply in the
+                            ## probability of ending the sentence right away:
+                            if index == len(sent)-1:
+                                for g in range(1,g_max):
                                     curBG = bg_state(b,g)
-                                    dyn_prog[state_index,index] *= (models.fork.dist[curBG,0] * models.reduce.dist[a,1])
+                                    dyn_prog[state_range[0]+g,index] *= (models.fork.dist[curBG,0] * models.reduce.dist[a,1])
     
         ## Normalize at this time step:
         dyn_prog[:, index] /= sum(dyn_prog[:,index])
@@ -470,6 +466,11 @@ def extractStates(index, totalK):
 def getStateIndex(f,j,a,b,g):
     global a_max, b_max, g_max
     return (((f*2 + j)*a_max + a) * b_max + b)*g_max + g
+
+def getStateRange(f,j,a,b):
+    global g_max
+    start = getStateIndex(f,j,a,b,0)
+    return range(start,start+g_max)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
