@@ -6,8 +6,7 @@ import time
 import numpy as np
 import ihmm_sampler as sampler
 import pdb
-from threading import Thread
-from multiprocessing import Process
+from multiprocessing import Process,Queue,JoinableQueue
 
 # The set of random variable values at one word
 # There will be one of these for every word in the training set
@@ -41,7 +40,7 @@ class State:
 class Sample:
     def __init__(self):
         self.hid_seq = []
-        
+        self.models = None
 
 # Historgam of how many instances of each state you have random sampled
 # May be a field in Sample
@@ -56,7 +55,9 @@ class Stats:
         self.gamma = 0
         self.vi = 0
 
-
+# A mapping from input space to output space. The Model class can be
+# used to store counts during inference, and then know how to resample themselves
+# if given a base distribution.
 class Model:
     def __init__(self, shape):
         self.condCounts = np.zeros((shape[0],1), dtype=np.uint)
@@ -82,11 +83,17 @@ class Model:
         self.condCounts[:] = 0
         self.pairCounts[:] = 0
 
+# This class is not currently used. Could someday be used to resample
+# all models if we give Model s more information about themselves.
 class Models(list):
     def resample_all():
         for model in self:
             model.dist = sampleDirichlet(model)
 
+# This is the main entry point for this module.
+# Arg 1: ev_seqs : a list of lists of integers, representing
+# the EVidence SEQuenceS seen by the user (e.g., words in a sentence
+# mapped to ints).
 def sample_beam(ev_seqs, params):    
     
     global start_a, start_b, start_g 
@@ -131,7 +138,6 @@ def sample_beam(ev_seqs, params):
     
     iter = 0
     while iter < num_iters:
-        iter += 1
         
         ## Sample distributions for all the model params and emissions params
         ## TODO -- make the Models class do this in a resample_all() method
@@ -143,56 +149,78 @@ def sample_beam(ev_seqs, params):
         models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
         models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
         models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+        sample.models = models
+        
+        if iter > 0:
+            write_pos_file(models.lex, params)
+
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
         a_max = models.act.dist.shape[1]
         b_max = models.cont.dist.shape[1]
         g_max = models.pos.dist.shape[1]
-        
-        sample = Sample()
-        sample.S = []
-        
+                
         ## How many total states are there?
         ## 2*2*|Act|*|Awa|*|G|
         totalK = 2 * 2 * a_max * b_max * g_max
         inf_procs = dict()
-        t0 = time.time()
-        num_procs = 4
+        num_procs = 3
         cur_proc = 0
-        dyn_prog = np.zeros((num_procs,totalK, maxLen+1))
 
+        sent_q = JoinableQueue() ## Input queue
+        state_q = Queue() ## Output queue
         
+            
+        ## Place all sentences into the input queue
         for sent_index,sent in enumerate(ev_seqs):
-            if sent_index > 0 and sent_index % 100 == 0:
-                t1 = time.time()
-                logging.info("Iteration %d, sentence %d: Spent %d s on last 100 sentences", iter, sent_index, t1-t0)
-                t0 = time.time()
+            sent_q.put((sent_index,sent))
+            
+        ## Initialize all the sub-processes with their input-output queues,
+        ## read-only models, and dimensions of matrix they'll need
+        t0 = time.time()
+        for cur_proc in range(0,num_procs):
+            ## For each sub-process add a "None" element to the queue that tells it that
+            ## we are out of sentences (we've added them all above)
+            sent_q.put(None)
+            
+            ## Initialize and start the sub-process
+            inf_procs[cur_proc] = Sampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc)
+            inf_procs[cur_proc].start()
 
-            if len(inf_procs) == num_procs:
-                #logging.debug("Waiting for thread %d to join", cur_thread)
-                inf_procs[cur_proc].join()
-                sent_sample = inf_procs[cur_proc].get_sample()
-                sample.S.append(sent_sample)
+        ## Close the queue
+        sent_q.join()
+        t1 = time.time()
+        logging.debug("Sampling time for this batch is %d s" % (t1-t0))
+        
+        t0 = time.time()
+        num_processed = 0
+        while not state_q.empty():
+            num_processed += 1
+            (sent_index, sent_sample) = state_q.get()
+            #logging.debug("Incrementing count for sent index %d and %d sentences left in queue" % (sent_index, len(ev_seqs)-num_processed))
+            #pdb.set_trace()
+            increment_counts(sent_sample, ev_seqs[sent_index], models)
 
-
-            #logging.debug("Spawning thread number %d for sent index %d", cur_thread, sent_index)
-
-            sampler_proc = Sampler(dyn_prog[cur_proc,:,:], models, totalK, maxLen+1, cur_proc)
-            inf_procs[cur_proc] = sampler_proc
-            sampler_proc.set_data(sent)
-            sampler_proc.start()
-            cur_proc = (cur_proc+1) % num_procs
+        t1 = time.time()
+        logging.debug("Building counts tables took %d s" % (t1-t0))
+        
+        iter += 1
             
     return (hid_seqs, stats)
 
+# This class does the actual sampling. It is a Python process rather than a Thread
+# because python threads do not work well due to the global interpreter lock (GIL), 
+# which only allows one thread at a time to access the interpreter. Making it a process
+# is trivial and the biggest side effect seems to be that you will have multiple processes
+# running in top/ps rather than one. 
 class Sampler(Process):
-    def __init__(self, dyn_prog, models, totalK, maxLen, tid):
+    def __init__(self, in_q, out_q, models, totalK, maxLen, tid):
         Process.__init__(self)
+        self.in_q = in_q
+        self.out_q = out_q
         self.models = models
         self.K = totalK
-        self.sent_sample = None
-        self.sent = None
-        self.dyn_prog = dyn_prog
+        self.dyn_prog = np.zeros((totalK,maxLen))
         self.tid = tid
     
     def set_data(self, sent):
@@ -200,14 +228,22 @@ class Sampler(Process):
 
     def run(self):
         self.dyn_prog[:,:] = 0
-        t0 = time.time()
         #logging.debug("Starting forward pass in thread %s", self.tid)
-        self.dyn_prog = self.forward_pass(self.dyn_prog, self.sent, self.models, self.K)
-        #logging.debug("Starting backwards pass in thread %s", self.tid)
-        self.sent_sample = self.reverse_sample(self.dyn_prog, self.sent, self.models, self.K)
-        increment_counts(self.sent_sample, self.sent, self.models)
-        t1 = time.time()
-        #logging.debug("Thread %d required %d s to process sentence.", self.tid, (t1-t0))
+
+        while True:
+            task = self.in_q.get()
+            if task == None:
+                self.in_q.task_done()
+                break
+            
+            (sent_index, sent) = task
+            t0 = time.time()
+            self.dyn_prog = self.forward_pass(self.dyn_prog, sent, self.models, self.K)
+            sent_sample = self.reverse_sample(self.dyn_prog, sent, self.models, self.K)
+            t1 = time.time()
+            self.in_q.task_done()
+            self.out_q.put((sent_index, sent_sample))
+            #logging.debug("Thread %d required %d s to process sentence.", self.tid, (t1-t0))
 
     def get_sample(self):
         return self.sent_sample
@@ -314,10 +350,12 @@ class Sampler(Process):
             sample_seq.append(State(extractStates(sample_t, totalK)))
 
         sample_seq.reverse()
-      #            logging.debug("Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
+        #logging.debug("Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
         return sample_seq
 
-
+# Randomly initialize all the values for the hidden variables in the 
+# sequence. Obeys constraints (e.g., when f=1,j=1 a=a_{t-1}) but otherwise
+# samples randomly.
 def initialize_state(ev_seqs, models):
     global a_max, b_max, g_max
     a_max = start_a+1
@@ -378,14 +416,6 @@ def initialize_state(ev_seqs, models):
                             
             hid_seq.append(state)
             
-        ## special case for end of sentence
-#        state = State()
-#        state.f = 0
-#        state.j = 1
-#        state.a = 0
-#        state.b = 0
-#        state.g = 0
-#        hid_seq.append(state)
         increment_counts(hid_seq, sent, models)
         state_seqs.append(hid_seq)
 
@@ -502,6 +532,18 @@ def getStateRange(f,j,a,b):
     global g_max
     start = getStateIndex(f,j,a,b,0)
     return range(start,start+g_max)
+
+def write_pos_file(lex_model, params):
+    #pdb.set_trace()
+    #out_dir = params.get('output_dir')
+    out_file = "pos.txt"
+    f = open(out_file, 'w')
+    
+    for lhs in range(0,lex_model.dist.shape[0]):
+        for rhs in range(0,lex_model.dist.shape[1]):
+            f.write("P( %d | %d ) = %f \n" % (rhs, lhs, lex_model.dist[lhs][rhs]))
+    
+    f.close()
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
