@@ -216,13 +216,8 @@ class Sampler(Process):
         ## keep track of forward probs for this sentence:
         for index,token in enumerate(sent):
             if index == 0:
-    #                    logging.debug("Shape of dynprog is %s", dyn_prog.shape)
-    #                    logging.debug("Shape of lex model is %s", models.lex.dist.shape)
-    #                    logging.debug("Prob column for token %d : %s", token, models.lex.dist[:,token])
                 g0_ind = getStateIndex(0,0,0,0,0)
                 dyn_prog[g0_ind:g0_ind+g_max,0] = models.lex.dist[:,token] / sum(models.lex.dist[:,token])
-    #                    if sent_index == 0:
-    #                        logging.debug("At time 0 dyn_prog is: %s", dyn_prog[:,0])
             else:
                 for prevInd in np.nonzero(dyn_prog[:,index-1])[0]:
                     (prevF, prevJ, prevA, prevB, prevG) = extractStates(prevInd, totalK)
