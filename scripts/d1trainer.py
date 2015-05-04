@@ -5,6 +5,7 @@ import ConfigParser
 import ihmm
 import logging
 import numpy as np
+import pdb
 
 def main(argv):
     if len(argv) < 1:
@@ -24,9 +25,9 @@ def main(argv):
     
     params['h'] = init_emission_base(num_types)
     
-    (state_seq, stats) = ihmm.sample_beam(word_seq, params)
+    (samples, stats) = ihmm.sample_beam(word_seq, params, lambda x: write_output(x, None, config))
     
-    write_output(state_seq, stats, config)        
+    write_output(samples[-1], stats, config)        
 
 def read_params(config):
     params = {}
@@ -62,8 +63,38 @@ def read_input_file(filename):
     
     return (pos_seqs, token_seqs)
 
-def write_output(state_seq, stats, config):
+def write_output(sample, stats, config):
+#    last_sample = samples[-1]
+    models = sample.models
+    
     output_dir = config.get('io', 'output_dir')
+    with open(output_dir + "/config.ini", 'w') as configfile:
+        config.write(configfile)
+
+    dict_file = config.get('io', 'dict_file')
+    word_dict = dict()
+    if dict_file != None:
+        f = open(dict_file, 'r')
+        for line in f:
+            #pdb.set_trace()
+            (word, index) = line.rstrip().split(" ")
+            word_dict[int(index)] = word
+    
+    write_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
+
+def write_model(dist, out_file, word_dict=None):
+    f = open(out_file, 'w')
+    
+    for lhs in range(0,dist.shape[0]):
+        for rhs in range(1,dist.shape[1]):
+            #pdb.set_trace()
+            if word_dict == None:
+                f.write("P( %d | %d ) = %f \n" % (rhs, lhs, dist[lhs][rhs]))
+            else:
+                f.write("P( %s | %d ) = %f \n" % (word_dict[rhs], lhs, dist[lhs][rhs]))
+                
+    f.close()
+
     
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

@@ -94,7 +94,7 @@ class Models(list):
 # Arg 1: ev_seqs : a list of lists of integers, representing
 # the EVidence SEQuenceS seen by the user (e.g., words in a sentence
 # mapped to ints).
-def sample_beam(ev_seqs, params):    
+def sample_beam(ev_seqs, params, report_function):    
     
     global start_a, start_b, start_g 
     start_a = int(params.get('starta'))
@@ -103,8 +103,11 @@ def sample_beam(ev_seqs, params):
 
     burnin = int(params.get('burnin'))
     iters = int(params.get('sample_iters'))
-    samples = int(params.get('num_samples'))
-    num_iters = burnin + (samples-1)*iters
+    num_samples = int(params.get('num_samples'))
+    num_procs = int(params.get('num_procs'))
+#    num_iters = burnin + (samples-1)*iters
+    samples = []
+    
     maxLen = max(map(len, ev_seqs))
     
     sample = Sample()
@@ -130,30 +133,26 @@ def sample_beam(ev_seqs, params):
     logging.info("Initializing state")    
     hid_seqs = initialize_state(ev_seqs, models)
     sample.S = hid_seqs
-    
+    ## Sample distributions for all the model params and emissions params
+    ## TODO -- make the Models class do this in a resample_all() method
+    models.lex.sampleDirichlet(params['h'])
+    models.pos.sampleDirichlet(sample.alpha_g * sample.beta_g)
+    models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
+    models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
+    models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
+    models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
+    models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
+    models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+   
     stats = Stats()
     
     logging.debug(ev_seqs[0])
     logging.debug(list(map(lambda x: x.str(), hid_seqs[0])))
     
     iter = 0
-    while iter < num_iters:
-        
-        ## Sample distributions for all the model params and emissions params
-        ## TODO -- make the Models class do this in a resample_all() method
-        models.lex.sampleDirichlet(params['h'])
-        models.pos.sampleDirichlet(sample.alpha_g * sample.beta_g)
-        models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
-        models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
-        models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
-        models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
-        models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
-        models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
-        sample.models = models
-        
-        if iter > 0:
-            write_pos_file(models.lex, params)
-
+    
+    while len(samples) < num_samples:
+             
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
         a_max = models.act.dist.shape[1]
@@ -164,7 +163,6 @@ def sample_beam(ev_seqs, params):
         ## 2*2*|Act|*|Awa|*|G|
         totalK = 2 * 2 * a_max * b_max * g_max
         inf_procs = dict()
-        num_procs = 3
         cur_proc = 0
 
         sent_q = JoinableQueue() ## Input queue
@@ -204,15 +202,52 @@ def sample_beam(ev_seqs, params):
         t1 = time.time()
         logging.debug("Building counts tables took %d s" % (t1-t0))
         
+        t0 = time.time()
+        
+        next_sample = Sample()
+        ## TODO Sample hyper-parameters
+        ## This is, e.g., where we might add categories to the a,b,g variables with
+        ## stick-breaking. Without that, the values will stay what they were 
+        next_sample.alpha_f = sample.alpha_f
+        next_sample.beta_f = sample.beta_f
+        next_sample.alpha_j = sample.alpha_j
+        next_sample.beta_j = sample.beta_j
+        next_sample.alpha_a = sample.alpha_a
+        next_sample.beta_a = sample.beta_a
+        next_sample.alpha_b = sample.alpha_b
+        next_sample.beta_b = sample.beta_b
+        next_sample.alpha_g = sample.alpha_g
+        next_sample.beta_g = sample.beta_g
+        sample = next_sample
+                
+        ## Sample distributions for all the model params and emissions params
+        ## TODO -- make the Models class do this in a resample_all() method
+        models.lex.sampleDirichlet(params['h'])
+        models.pos.sampleDirichlet(sample.alpha_g * sample.beta_g)
+        models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
+        models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
+        models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
+        models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
+        models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
+        models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+        t1 = time.time()
+        logging.debug("Resampling models took %d s" % (t1-t0))
+        sample.models = models
+        sample.iter = iter
+        
         iter += 1
-            
-    return (hid_seqs, stats)
+        
+        if iter >= burnin and (iter-burnin) % iters == 0:
+            samples.append(sample)
+            report_function(sample)
+
+    return (samples, stats)
 
 # This class does the actual sampling. It is a Python process rather than a Thread
 # because python threads do not work well due to the global interpreter lock (GIL), 
 # which only allows one thread at a time to access the interpreter. Making it a process
-# is trivial and the biggest side effect seems to be that you will have multiple processes
-# running in top/ps rather than one. 
+# is requires more indirect communicatino using shared input/output queues between 
+# different sampler instances
 class Sampler(Process):
     def __init__(self, in_q, out_q, models, totalK, maxLen, tid):
         Process.__init__(self)
@@ -532,18 +567,6 @@ def getStateRange(f,j,a,b):
     global g_max
     start = getStateIndex(f,j,a,b,0)
     return range(start,start+g_max)
-
-def write_pos_file(lex_model, params):
-    #pdb.set_trace()
-    #out_dir = params.get('output_dir')
-    out_file = "pos.txt"
-    f = open(out_file, 'w')
-    
-    for lhs in range(0,lex_model.dist.shape[0]):
-        for rhs in range(0,lex_model.dist.shape[1]):
-            f.write("P( %d | %d ) = %f \n" % (rhs, lhs, lex_model.dist[lhs][rhs]))
-    
-    f.close()
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
