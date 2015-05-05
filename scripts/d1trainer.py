@@ -81,7 +81,7 @@ def write_output(sample, stats, config):
             word_dict[int(index)] = word
     
     write_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
-    write_last_sample(sample, output_dir + "/last_sample.txt")
+    write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter)
 
 def write_model(dist, out_file, word_dict=None):
     f = open(out_file, 'w')
