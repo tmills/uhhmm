@@ -81,6 +81,7 @@ def write_output(sample, stats, config):
             word_dict[int(index)] = word
     
     write_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
+    write_last_sample(sample, output_dir + "/last_sample.txt")
 
 def write_model(dist, out_file, word_dict=None):
     f = open(out_file, 'w')
@@ -95,6 +96,13 @@ def write_model(dist, out_file, word_dict=None):
                 
     f.close()
 
+def write_last_sample(sample, out_file):
+    f = open(out_file, 'w')
+    #pdb.set_trace()
+    for sent_state in sample.hid_seqs:
+        state_str = str(list(map(lambda x: x.str(), sent_state)))
+        f.write(state_str)
+        f.write('\n')
     
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

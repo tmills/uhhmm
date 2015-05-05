@@ -39,7 +39,7 @@ class State:
 # What's the state of the system at one Gibbs sampling iteration?
 class Sample:
     def __init__(self):
-        self.hid_seq = []
+        self.hid_seqs = []
         self.models = None
 
 # Historgam of how many instances of each state you have random sampled
@@ -132,7 +132,7 @@ def sample_beam(ev_seqs, params, report_function):
     
     logging.info("Initializing state")    
     hid_seqs = initialize_state(ev_seqs, models)
-    sample.S = hid_seqs
+    sample.hid_seqs = hid_seqs
     ## Sample distributions for all the model params and emissions params
     ## TODO -- make the Models class do this in a resample_all() method
     models.lex.sampleDirichlet(params['h'])
@@ -198,12 +198,17 @@ def sample_beam(ev_seqs, params, report_function):
             #logging.debug("Incrementing count for sent index %d and %d sentences left in queue" % (sent_index, len(ev_seqs)-num_processed))
             #pdb.set_trace()
             increment_counts(sent_sample, ev_seqs[sent_index], models)
+            sample.hid_seqs.append(sent_sample)
 
         t1 = time.time()
         logging.debug("Building counts tables took %d s" % (t1-t0))
         
-        t0 = time.time()
+        if iter >= burnin and (iter-burnin) % iters == 0:
+            samples.append(sample)
+            report_function(sample)
         
+        t0 = time.time()
+
         next_sample = Sample()
         ## TODO Sample hyper-parameters
         ## This is, e.g., where we might add categories to the a,b,g variables with
@@ -231,15 +236,13 @@ def sample_beam(ev_seqs, params, report_function):
         models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
         models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
         t1 = time.time()
+        
         logging.debug("Resampling models took %d s" % (t1-t0))
         sample.models = models
         sample.iter = iter
         
         iter += 1
         
-        if iter >= burnin and (iter-burnin) % iters == 0:
-            samples.append(sample)
-            report_function(sample)
 
     return (samples, stats)
 
