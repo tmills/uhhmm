@@ -5,3 +5,4 @@ doc/latex/main.synctex.gz
 *.pyc
 *~
 *lprof
+config/myconfig.ini
