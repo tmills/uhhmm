@@ -13,6 +13,7 @@ while(<STDIN>){
   my @words = split /\s+/;
   my $buf;
   for my $word (@words){
+    $word = lc($word);
     if(!exists($words{$word})){
       my $hashSize = keys %words;
       $words{$word} = $hashSize+1;
