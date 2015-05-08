@@ -87,16 +87,17 @@ def write_output(sample, stats, config):
             word_dict[int(index)] = word
     
     write_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
+    write_model(models.pos.dist, output_dir + "/p_pos_given_g_%d.txt" % sample.iter, condPrefix="B", outcomePrefix="POS")
     write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter)
-
-def write_model(dist, out_file, word_dict=None):
+    
+def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix=""):
     f = open(out_file, 'w')
     
     for lhs in range(0,dist.shape[0]):
         for rhs in range(1,dist.shape[1]):
             #pdb.set_trace()
             if word_dict == None:
-                f.write("P( %d | %d ) = %f \n" % (rhs, lhs, dist[lhs][rhs]))
+                f.write("P( %s%d | %s%d ) = %f \n" % (outcomePrefix, rhs, condPrefix, lhs, dist[lhs][rhs]))
             else:
                 f.write("P( %s | %d ) = %f \n" % (word_dict[rhs], lhs, dist[lhs][rhs]))
                 
