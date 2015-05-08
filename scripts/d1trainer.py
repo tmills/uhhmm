@@ -87,7 +87,16 @@ def write_output(sample, stats, config):
             word_dict[int(index)] = word
     
     write_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
-    write_model(models.pos.dist, output_dir + "/p_pos_given_g_%d.txt" % sample.iter, condPrefix="B", outcomePrefix="POS")
+    write_model(models.pos.dist, output_dir + "/p_pos_given_b_%d.txt" % sample.iter, condPrefix="AWA", outcomePrefix="POS")
+    write_model(models.cont.dist, output_dir + "/p_awa_given_b+g%d.txt" % sample.iter,
+    condPrefix="BG", outcomePrefix="AWA")
+    write_model(models.start.dist, output_dir + "/p_awa_given_a%d.txt" % sample.iter,
+    condPrefix="AA", outcomePrefix="AWA")
+    write_model(models.act.dist, output_dir + "/p_act_given_a%d.txt" % sample.iter,
+    condPrefix="ACT", outcomePrefix="ACT")
+    write_model(models.root.dist, output_dir + "/p_act_given_g%d.txt" %sample.iter,
+    condPrefix="POS", outcomePrefix="ACT")
+    
     write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter)
     
 def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix=""):
