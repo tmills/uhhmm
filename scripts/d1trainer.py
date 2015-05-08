@@ -6,6 +6,7 @@ import ihmm
 import logging
 import numpy as np
 import pdb
+import os
 
 def main(argv):
     if len(argv) < 1:
@@ -16,7 +17,12 @@ def main(argv):
     config.read(argv[0])
     
     input_file = config.get('io', 'input_file')
-        
+    out_dir = config.get('io', 'output_dir')
+    
+    if not os.path.exists(out_dir):
+        sys.stderr.write("Creating non-existent output directory.")
+        os.makedirs(out_dir)
+
     ## Read in input file to get sequence for X
     (pos_seq, word_seq) = read_input_file(input_file)
     num_types = max(map(max,word_seq)) + 1
