@@ -192,13 +192,19 @@ def sample_beam(ev_seqs, params, report_function):
         
         t0 = time.time()
         num_processed = 0
+        sample_map = dict()
         while not state_q.empty():
             num_processed += 1
             (sent_index, sent_sample) = state_q.get()
             #logging.debug("Incrementing count for sent index %d and %d sentences left in queue" % (sent_index, len(ev_seqs)-num_processed))
             #pdb.set_trace()
             increment_counts(sent_sample, ev_seqs[sent_index], models)
-            sample.hid_seqs.append(sent_sample)
+            sample_map[sent_index] = sent_sample
+
+        ## samples got unsorted by queueing them so resort them just for the purpose 
+        ## of debugging.
+        for key in sorted(sample_map.keys()):
+            sample.hid_seqs.append(sample_map[key])
 
         t1 = time.time()
         logging.debug("Building counts tables took %d s" % (t1-t0))
@@ -285,7 +291,7 @@ class Sampler(Process):
 
     def get_sample(self):
         return self.sent_sample
-    
+
     def forward_pass(self,dyn_prog,sent,models,totalK):
         ## keep track of forward probs for this sentence:
         for index,token in enumerate(sent):
@@ -312,7 +318,6 @@ class Sampler(Process):
                         cumProbs[1] = cumProbs[0]
                     
                         for a in range(1,a_max):
-    #                                pdb.set_trace()
                             if f == 0 and j == 0:
                                 ## active transition:
                                 cumProbs[2] = cumProbs[1] * models.act.dist[prevA,a]
@@ -336,8 +341,10 @@ class Sampler(Process):
                                     cumProbs[3] = cumProbs[2] * models.start.dist[prevAa,b]
                             
                                 # Multiply all the g's in one pass:
+                                ## range gets the range of indices in the forward pass
+                                ## that are contiguous in the state space
                                 state_range = getStateRange(f,j,a,b)
-                                dyn_prog[state_range,index] = cumProbs[3] * models.pos.dist[b,:] * models.lex.dist[:,token]
+                                dyn_prog[state_range,index] += cumProbs[3] * models.pos.dist[b,:] * models.lex.dist[:,token]
 
                                 ## For the last token, we can multiply in the
                                 ## probability of ending the sentence right away:
