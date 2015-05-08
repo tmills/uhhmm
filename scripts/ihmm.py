@@ -309,6 +309,9 @@ class Sampler(Process):
                 
                     ## Sample f & j:
                     for f in (0,1):
+                        if index == 1 and f == 0:
+                            continue
+
                         cumProbs[0] = models.fork.dist[prevBG,f]
                         if index == 1:
                             j = 0
