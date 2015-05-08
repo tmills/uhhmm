@@ -338,7 +338,7 @@ class Sampler(Process):
                             prevAa = aa_state(prevA, a)
                         
                             for b in range(1,b_max):
-                                if j == 0:
+                                if j == 1:
                                     cumProbs[3] = cumProbs[2] * models.cont.dist[prevBG,b]
                                 else:
                                     cumProbs[3] = cumProbs[2] * models.start.dist[prevAa,b]
