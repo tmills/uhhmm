@@ -8,18 +8,36 @@ if($#ARGV < 0){
 
 open my $dictFP, '>', $ARGV[0] or die("One argument required");
 my %words;
+my %tags;
+my $word;
+my $pos="";
 
 while(<STDIN>){
   my @words = split /\s+/;
   my $buf;
-  for my $word (@words){
-    $word = lc($word);
+  for my $element (@words){
+    $element = lc($element);
+    if($element =~ m/(.+)\/(.+)/){
+      $pos = $1;
+      $word = $2;
+    }else{
+      $word = $element;
+    }
+      
     if(!exists($words{$word})){
       my $hashSize = keys %words;
       $words{$word} = $hashSize+1;
 #      print STDERR "Size of words is: ".$hashSize."\n";
     }
-    $buf .= "$words{$word} ";
+    if(length($pos) > 0 && !exists($tags{$pos})){
+        my $hashSize = keys %tags;
+        $tags{$pos} = $hashSize + 1;
+    }
+    if(length($pos) > 0){
+        $buf .= "$tags{$pos}/$words{$word} ";
+    }else{
+        $buf .= "$words{$word} ";
+    }
   }
   print substr($buf, 0, length($buf)-1)."\n";
 }

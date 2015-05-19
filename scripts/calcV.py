@@ -41,15 +41,16 @@ def main(args):
     gold_pos = io.read_input_file(args[0])[1]
     sys_pos = io.read_input_file(args[1])[1]
     
-    p_x = get_distribution(gold_pos)
-    p_y = get_distribution(sys_pos)
-    p_xy = get_joint_distribution(gold_pos, sys_pos)
-    
-    v = get_v(p_x, p_y, p_xy)
+    v = get_v(gold_pos, sys_pos)
     
     print("Value of V is %f\n" % v)
     
-def get_v(p_x, p_y, p_xy, beta=1):
+def get_v(gold_pos, sys_pos, beta=1):
+
+    p_x = get_distribution(gold_pos)
+    p_y = get_distribution(sys_pos)
+    p_xy = get_joint_distribution(gold_pos, sys_pos)
+
     p_x_int = p_x
     p_x_int[p_x==0] = 1
     p_y_int = p_y

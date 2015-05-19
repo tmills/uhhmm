@@ -1,8 +1,13 @@
 #!/usr/bin/env python3.4
 
-import io
 import sys
-import ConfigParser
+if sys.version_info[0] != 3:
+    print("This script requires Python 3")
+    exit()
+
+import calcV
+import ihmm_io as io
+import configparser
 import ihmm
 import numpy as np
 import pdb
@@ -13,7 +18,8 @@ def main(argv):
         sys.stderr.write("One required argument: <Config file>\n")
         sys.exit(-1)
 
-    config = ConfigParser.ConfigParser()
+
+    config = configparser.ConfigParser()
     config.read(argv[0])
     
     input_file = config.get('io', 'input_file')
@@ -31,9 +37,9 @@ def main(argv):
     
     params['h'] = init_emission_base(num_types)
     
-    (samples, stats) = ihmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config))
+    (samples, stats) = ihmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq))
     
-    io.write_output(samples[-1], stats, config)        
+    io.write_output(samples[-1], stats, config, pos_seq)
 
 def read_params(config):
     params = {}
