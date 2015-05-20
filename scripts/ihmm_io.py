@@ -28,9 +28,6 @@ def write_output(sample, stats, config, gold_pos=None):
     models = sample.models
     
     output_dir = config.get('io', 'output_dir')
-    with open(output_dir + "/config.ini", 'w') as configfile:
-        config.write(configfile)
-
     dict_file = config.get('io', 'dict_file')
     word_dict = dict()
     if dict_file != None:

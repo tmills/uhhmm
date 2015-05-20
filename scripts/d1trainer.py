@@ -25,6 +25,9 @@ def main(argv):
     input_file = config.get('io', 'input_file')
     out_dir = config.get('io', 'output_dir')
     
+    with open(out_dir + "/config.ini", 'w') as configfile:
+        config.write(configfile)
+
     if not os.path.exists(out_dir):
         sys.stderr.write("Creating non-existent output directory.")
         os.makedirs(out_dir)
