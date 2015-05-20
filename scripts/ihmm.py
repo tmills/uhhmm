@@ -570,7 +570,7 @@ def extractStates(index, totalK):
     
     a_ind = index % a_max
     
-    return (f_ind,j_ind,a_ind, b_ind, g_ind)
+    return map(int, (f_ind,j_ind,a_ind, b_ind, g_ind))
 
 def getStateIndex(f,j,a,b,g):
     global a_max, b_max, g_max
