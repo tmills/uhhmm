@@ -1,6 +1,6 @@
 
 all:  config/myconfig.ini
-	python scripts/d1trainer.py $<
+	python3 scripts/d1trainer.py $<
 
 config/myconfig.ini:  config/d1train.ini
 	cp $< $@
@@ -21,4 +21,4 @@ data/good_sents_tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-
 	cat $< | ./scripts/extract_d1_trees.sh | ./scripts/trees2poswords.sh > $@
 
 data/good_sents_tagwords_ints.txt:data/good_sents_tagwords.txt
-	cat $< | perl scripts/wordFile2IntFile.pl /dev/null > $@
+	cat $< | perl scripts/wordFile2IntFile.pl data/dict.txt > $@
