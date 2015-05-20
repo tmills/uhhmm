@@ -25,12 +25,12 @@ def main(argv):
     input_file = config.get('io', 'input_file')
     out_dir = config.get('io', 'output_dir')
     
-    with open(out_dir + "/config.ini", 'w') as configfile:
-        config.write(configfile)
-
     if not os.path.exists(out_dir):
         sys.stderr.write("Creating non-existent output directory.")
         os.makedirs(out_dir)
+
+    with open(out_dir + "/config.ini", 'w') as configfile:
+        config.write(configfile)
 
     ## Read in input file to get sequence for X
     (pos_seq, word_seq) = io.read_input_file(input_file)
