@@ -282,6 +282,7 @@ class Sampler(Process):
             
             (sent_index, sent) = task
             t0 = time.time()
+            self.dyn_prog[:,:] = 0
             self.dyn_prog = self.forward_pass(self.dyn_prog, sent, self.models, self.K)
             sent_sample = self.reverse_sample(self.dyn_prog, sent, self.models, self.K)
             t1 = time.time()
@@ -380,7 +381,9 @@ class Sampler(Process):
                     trans_prob *= models.act.dist[pa,na]
                 elif nf == 1 and nj == 0:
                     trans_prob *= models.root.dist[pg,na]
-      
+                elif nf == 1 and nj == 1:
+                    if na != pa:
+                        trans_prob = 0
       
                 if nj == 0:
                     prevAA = aa_state(pa,na)
