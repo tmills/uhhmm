@@ -6,6 +6,7 @@ import time
 import numpy as np
 import ihmm_sampler as sampler
 import pdb
+import sys
 from multiprocessing import Process,Queue,JoinableQueue
 
 # The set of random variable values at one word
@@ -41,6 +42,7 @@ class Sample:
     def __init__(self):
         self.hid_seqs = []
         self.models = None
+        self.log_prob = 0
 
 # Historgam of how many instances of each state you have random sampled
 # May be a field in Sample
@@ -73,13 +75,12 @@ class Model:
         self.pairCounts[cond,out] -= 1
 
     def sampleDirichlet(self, base):
-        nullState = True
-        self.dist = sampler.sampleDirichlet(self, base, nullState)
+        self.dist = sampler.sampleDirichlet(self, base, nullState=True)
         self.condCounts[:] = 0
         self.pairCounts[:] = 0
 
     def sampleBernoulli(self, base):
-        self.dist = sampler.sampleDirichlet(self, base)
+        self.dist = sampler.sampleDirichlet(self, base, nullState=False)
         self.condCounts[:] = 0
         self.pairCounts[:] = 0
 
@@ -101,6 +102,9 @@ def sample_beam(ev_seqs, params, report_function):
     start_b = int(params.get('startb'))
     start_g = int(params.get('startg'))
 
+    logging.basicConfig(level=logging.WARN)
+    logging.info("Starting beam sampling")
+    
     burnin = int(params.get('burnin'))
     iters = int(params.get('sample_iters'))
     num_samples = int(params.get('num_samples'))
@@ -143,7 +147,7 @@ def sample_beam(ev_seqs, params, report_function):
     models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
     models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
     models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
-   
+    
     stats = Stats()
     
     logging.debug(ev_seqs[0])
@@ -195,11 +199,14 @@ def sample_beam(ev_seqs, params, report_function):
         sample_map = dict()
         while not state_q.empty():
             num_processed += 1
-            (sent_index, sent_sample) = state_q.get()
+            (sent_index, sent_sample, log_prob) = state_q.get()
             #logging.debug("Incrementing count for sent index %d and %d sentences left in queue" % (sent_index, len(ev_seqs)-num_processed))
+            if sent_index % 10 == 0:
+                logging.info("Processed sentence {0}".format(sent_index))
             #pdb.set_trace()
             increment_counts(sent_sample, ev_seqs[sent_index], models)
             sample_map[sent_index] = sent_sample
+            sample.log_prob += log_prob
 
         ## samples got unsorted by queueing them so resort them just for the purpose 
         ## of debugging.
@@ -271,7 +278,7 @@ class Sampler(Process):
         self.sent = sent
 
     def run(self):
-        self.dyn_prog[:,:] = 0
+        self.dyn_prog[:,:] = -np.inf
         #logging.debug("Starting forward pass in thread %s", self.tid)
 
         while True:
@@ -282,28 +289,32 @@ class Sampler(Process):
             
             (sent_index, sent) = task
             t0 = time.time()
-            self.dyn_prog[:,:] = 0
-            self.dyn_prog = self.forward_pass(self.dyn_prog, sent, self.models, self.K)
-            sent_sample = self.reverse_sample(self.dyn_prog, sent, self.models, self.K)
+            self.dyn_prog[:,:] = -np.inf
+            self.dyn_prog = self.forward_pass(self.dyn_prog, sent, self.models, self.K, sent_index)
+            (sent_sample,log_prob) = self.reverse_sample(self.dyn_prog, sent, self.models, self.K, sent_index)
             t1 = time.time()
             self.in_q.task_done()
-            self.out_q.put((sent_index, sent_sample))
+            self.out_q.put((sent_index, sent_sample,log_prob))
             #logging.debug("Thread %d required %d s to process sentence.", self.tid, (t1-t0))
 
     def get_sample(self):
         return self.sent_sample
 
-    def forward_pass(self,dyn_prog,sent,models,totalK):
+    def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
         ## keep track of forward probs for this sentence:
         for index,token in enumerate(sent):
             if index == 0:
                 g0_ind = getStateIndex(0,0,0,0,0)
-                dyn_prog[g0_ind:g0_ind+g_max,0] = models.lex.dist[:,token] / sum(models.lex.dist[:,token])
+                dyn_prog[g0_ind:g0_ind+g_max,0] = models.lex.dist[:,token]
+                logging.debug(dyn_prog[g0_ind:g0_ind+g_max,0])
             else:
-                for prevInd in np.nonzero(dyn_prog[:,index-1])[0]:
+                for prevInd in range(0,dyn_prog.shape[0]):
+                    if dyn_prog[prevInd,index-1] == -np.inf:
+                        continue
+
                     (prevF, prevJ, prevA, prevB, prevG) = extractStates(prevInd, totalK)
 
-                    assert index == 1 or (prevA != 0 and prevB != 0 and prevG != 0), 'Unexpected values in sentence {0} with non-zero probabilities: {1}, {2}, {3} at index {4}, and f={5} and j={6}'.format(sent_index,prevA, prevB, prevG, index, prevF, prevJ)
+                    assert index == 1 or (prevA != 0 and prevB != 0 and prevG != 0), 'Unexpected values in sentence {0} with non-zero probabilities: {1}, {2}, {3} at index {4}, and f={5} and j={6}, ind={7}'.format(sent_index,prevA, prevB, prevG, index, prevF, prevJ, prevInd)
                 
                     cumProbs = np.zeros((5,1))
                     prevBG = bg_state(prevB,prevG)
@@ -318,18 +329,20 @@ class Sampler(Process):
                             j = 0
                         else:
                             j = f
-                    
+                        
+                        ## At depth 1 -- no probability model for j 
                         cumProbs[1] = cumProbs[0]
-                    
+                        
+                        
                         for a in range(1,a_max):
                             if f == 0 and j == 0:
                                 ## active transition:
-                                cumProbs[2] = cumProbs[1] * models.act.dist[prevA,a]
+                                cumProbs[2] = cumProbs[1] + models.act.dist[prevA,a]
                             elif f == 1 and j == 0:
                                 ## root -- technically depends on prevA and prevG
                                 ## but in depth 1 this case only comes up at start
                                 ## of sentence and prevA will always be 0
-                                cumProbs[2] = cumProbs[1] * models.root.dist[prevG,a]
+                                cumProbs[2] = cumProbs[1] + models.root.dist[prevG,a]
                             elif f == 1 and j == 1 and prevA == a:
                                 cumProbs[2] = cumProbs[1]
                             else:
@@ -340,69 +353,105 @@ class Sampler(Process):
                         
                             for b in range(1,b_max):
                                 if j == 1:
-                                    cumProbs[3] = cumProbs[2] * models.cont.dist[prevBG,b]
+                                    cumProbs[3] = cumProbs[2] + models.cont.dist[prevBG,b]
                                 else:
-                                    cumProbs[3] = cumProbs[2] * models.start.dist[prevAa,b]
+                                    cumProbs[3] = cumProbs[2] + models.start.dist[prevAa,b]
                             
+                                logging.debug(cumProbs)
                                 # Multiply all the g's in one pass:
                                 ## range gets the range of indices in the forward pass
                                 ## that are contiguous in the state space
                                 state_range = getStateRange(f,j,a,b)
-                                dyn_prog[state_range,index] += cumProbs[3] * models.pos.dist[b,:] * models.lex.dist[:,token]
+                                
+                                dyn_prog[state_range, index] = cumProbs[3]
+                                logging.debug(dyn_prog[state_range, index])
+                                
+                                range_probs = models.pos.dist[b,:] + models.lex.dist[:,token]
+                                logging.debug(range_probs)
+                                
+                                dyn_prog[state_range,index] = log_vector_add(dyn_prog[state_range,index], range_probs)
 
                                 ## For the last token, we can multiply in the
                                 ## probability of ending the sentence right away:
                                 if index == len(sent)-1:
                                     for g in range(1,g_max):
                                         curBG = bg_state(b,g)
-                                        dyn_prog[state_range[0]+g,index] *= (models.fork.dist[curBG,0] * models.reduce.dist[a,1])
-    
-            ## Normalize at this time step:
-            dyn_prog[:, index] /= sum(dyn_prog[:,index])
+                                        dyn_prog[state_range[0]+g,index] += ((models.fork.dist[curBG,0] + models.reduce.dist[a,1]))
+                                        logging.debug(dyn_prog[state_range[0]+g,index])
+                                        
+                                if dyn_prog[state_range[0],index] != -np.inf:
+                                    logging.error("Error: Non-zero probability at g=0 in forward pass!")
+                                    sys.exit(-1)
+                                    
         return dyn_prog
 
-    def reverse_sample(self,dyn_prog,sent,models,totalK):            
+    def reverse_sample(self,dyn_prog,sent,models,totalK, sent_index):            
         sample_seq = []
-        sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,len(sent)-1]))
+        sample_log_prob = 0
+        
+        ## Normalize and grab the sample from the forward probs at the end of the sentence
+        ## First save out the unnormalized forward probs so I can grab the sentence
+        ## probability at the end
+        last_index = len(sent)-1
+        saved_log_probs = dyn_prog[:,last_index]
+        
+        logging.debug("Last step log probs:")
+        logging.debug(saved_log_probs)
+        
+        normed_last_step = normalize_from_log(dyn_prog[:,last_index])
+        
+        logging.debug("Last step probs:")
+        logging.debug(normed_last_step)
+        
+        dyn_prog[:,last_index] = normed_last_step
+        sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,last_index]))
+        
+        sample_log_prob += saved_log_probs[sample_t]
+        
         sample_seq.append(State(extractStates(sample_t, totalK)))
-      #            if sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0:
-      #                pdb.set_trace()
+        if sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0:
+            logging.error("Error: First sample has a|b|g = 0")
+            sys.exit(-1)
   
         for t in range(len(sent)-2,-1,-1):
-            for ind in np.nonzero(dyn_prog[:,t])[0]:
+            for ind in range(0,dyn_prog.shape[0]):
+                if dyn_prog[ind,t] == -np.inf:
+                    continue
+
                 (pf,pj,pa,pb,pg) = extractStates(ind,totalK)
                 (nf,nj,na,nb,ng) = sample_seq[-1].to_list()
                 prevBG = bg_state(pb,pg)
                 trans_prob = models.fork.dist[prevBG,nf]
                 if nf == 0:
-                    trans_prob *= models.reduce.dist[pa,nj]
+                    trans_prob += models.reduce.dist[pa,nj]
       
                 if nf == 0 and nj == 0:
-                    trans_prob *= models.act.dist[pa,na]
+                    trans_prob += models.act.dist[pa,na]
                 elif nf == 1 and nj == 0:
-                    trans_prob *= models.root.dist[pg,na]
+                    trans_prob += models.root.dist[pg,na]
                 elif nf == 1 and nj == 1:
                     if na != pa:
-                        trans_prob = 0
+                        trans_prob = -np.inf
       
                 if nj == 0:
                     prevAA = aa_state(pa,na)
-                    trans_prob *= models.start.dist[prevAA,nb]
+                    trans_prob += models.start.dist[prevAA,nb]
                 else:
-                    trans_prob *= models.cont.dist[prevBG,nb]
+                    trans_prob += models.cont.dist[prevBG,nb]
       
-                trans_prob *= models.pos.dist[nb,ng]
-                dyn_prog[ind,t] *= trans_prob
+                trans_prob += models.pos.dist[nb,ng]
+                dyn_prog[ind,t] += trans_prob
 
-      #                if sum(dyn_prog[:,t]) == 0.0:
-      #                    pdb.set_trace()
-            dyn_prog[:,t] /= sum(dyn_prog[:,t])
+            dyn_prog[:,t] = normalize_from_log(dyn_prog[:,t])
             sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,t]))
-            sample_seq.append(State(extractStates(sample_t, totalK)))
+            sample_state = State(extractStates(sample_t, totalK))
+            if t > 0 and sample_state.g == 0:
+                logging.error("Error: Sampled a g=0 state in backwards pass! {0}".format(sample_state.str()))
+            sample_seq.append(sample_state)
 
         sample_seq.reverse()
-        #logging.debug("Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
-        return sample_seq
+        logging.info("Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
+        return sample_seq,sample_log_prob
 
 # Randomly initialize all the values for the hidden variables in the 
 # sequence. Obeys constraints (e.g., when f=1,j=1 a=a_{t-1}) but otherwise
@@ -429,7 +478,7 @@ def initialize_state(ev_seqs, models):
     ## one lex model:
     models.lex = Model((g_max, max(map(max,ev_seqs))+1))
     
-    logger.debug("Value of amax=%d, b_max=%d, g_max=%d", a_max, b_max, g_max)
+    logging.debug("Value of amax=%d, b_max=%d, g_max=%d", a_max, b_max, g_max)
     
     state_seqs = list()
     for sent in ev_seqs:
@@ -539,6 +588,54 @@ def decrement_counts(hid_seq, sent, models):
         
         prevState = state
 
+def log_vector_add(x, y):
+    p = np.zeros(x.shape)
+    for ind,val in enumerate(x):
+        p[ind] = log_add(x[ind],y[ind])
+    
+    return p
+    
+## From here: https://facwiki.cs.byu.edu/nlp/index.php/Log_Domain_Computations
+def log_add(x, y):
+    ## Step 0: An addition -- if one of the values is 0 that means it has not been initialized yet
+    if x == 0:
+        return y
+    
+    if y == 0:
+        return x
+    
+    if x == -np.inf or y == -np.inf:
+        return -np.inf
+    
+    ## Step 1: make x bigger
+    if y > x:
+        temp = y
+        y = x
+        x = temp
+    
+    ## Step 2:
+    if x == sys.float_info[3]:   ## min value
+        return x
+        
+    ## Step 3: How far down is y from x
+    ## If it's small, ignore:
+    neg_diff = y - x
+    if neg_diff < -20:
+        return x
+    
+    ## Step 4: Otherwise use algebra:
+    return x + np.log10(1.0 + 10**neg_diff)
+
+def normalize_from_log(log_dist):
+    ## scale back up to a safe range
+    log_dist -= log_dist.max()
+    
+    ## Back into prob space
+    dist = 10**log_dist
+    
+    dist /= dist.sum()
+    
+    return dist
 
 def bg_state(b, g):
     global g_max
@@ -583,6 +680,3 @@ def getStateRange(f,j,a,b):
     global g_max
     start = getStateIndex(f,j,a,b,0)
     return range(start,start+g_max)
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)

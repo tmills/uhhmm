@@ -44,6 +44,10 @@ def write_output(sample, stats, config, gold_pos=None):
         f.write('%f\n' % v)
         f.close()
 
+    f = open(output_dir + "/logprobs.txt", 'a')
+    f.write('%d\t%f\n' % (sample.iter,sample.log_prob) )
+    f.close()
+    
     write_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
     write_model(models.pos.dist, output_dir + "/p_pos_given_b_%d.txt" % sample.iter, condPrefix="AWA", outcomePrefix="POS")
     write_model(models.cont.dist, output_dir + "/p_awa_given_b+g%d.txt" % sample.iter,
@@ -63,9 +67,9 @@ def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix="")
     for lhs in range(0,dist.shape[0]):
         for rhs in range(1,dist.shape[1]):
             if word_dict == None:
-                f.write("P( %s%d | %s%d ) = %f \n" % (outcomePrefix, rhs, condPrefix, lhs, dist[lhs][rhs]))
+                f.write("P( %s%d | %s%d ) = %f \n" % (outcomePrefix, rhs, condPrefix, lhs, 10**dist[lhs][rhs]))
             else:
-                f.write("P( %s | %d ) = %f \n" % (word_dict[rhs], lhs, dist[lhs][rhs]))
+                f.write("P( %s | %d ) = %f \n" % (word_dict[rhs], lhs, 10**dist[lhs][rhs]))
                 
     f.close()
 

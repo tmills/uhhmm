@@ -30,5 +30,4 @@ def sampleDirichlet(counts, H, nullState = False):
         if nullState:
             P[i,0] = 0
         P[i,:] /= sum(P[i,:])
-
-    return P
+    return np.log10(P)
