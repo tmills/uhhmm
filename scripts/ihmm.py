@@ -109,6 +109,8 @@ def sample_beam(ev_seqs, params, report_function):
     iters = int(params.get('sample_iters'))
     num_samples = int(params.get('num_samples'))
     num_procs = int(params.get('num_procs'))
+    debug = params.get('debug')
+    
 #    num_iters = burnin + (samples-1)*iters
     samples = []
     
@@ -187,11 +189,19 @@ def sample_beam(ev_seqs, params, report_function):
             
             ## Initialize and start the sub-process
             inf_procs[cur_proc] = Sampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc)
-            inf_procs[cur_proc].start()
+            if debug:
+                ## calling run instead of start just treats it like a plain object --
+                ## doesn't actually do a fork. So we'll just block here for it to finish
+                ## rather than needing to join later.
+                ## Then we can use pdb() for debugging inside the thread.
+                inf_procs[cur_proc].run()
+            else:
+                inf_procs[cur_proc].start()
 
         ## Close the queue
         sent_q.join()
         t1 = time.time()
+        logging.info(".")
         logging.debug("Sampling time for this batch is %d s" % (t1-t0))
         
         t0 = time.time()
@@ -219,6 +229,7 @@ def sample_beam(ev_seqs, params, report_function):
         if iter >= burnin and (iter-burnin) % iters == 0:
             samples.append(sample)
             report_function(sample)
+            logging.info(".\n")
         
         t0 = time.time()
 
@@ -363,10 +374,9 @@ class Sampler(Process):
                                 ## that are contiguous in the state space
                                 state_range = getStateRange(f,j,a,b)
                                 
-                                dyn_prog[state_range, index] = cumProbs[3]
                                 logging.debug(dyn_prog[state_range, index])
                                 
-                                range_probs = models.pos.dist[b,:] + models.lex.dist[:,token]
+                                range_probs = cumProbs[3] + models.pos.dist[b,:] + models.lex.dist[:,token]
                                 logging.debug(range_probs)
                                 
                                 dyn_prog[state_range,index] = log_vector_add(dyn_prog[state_range,index], range_probs)
@@ -604,8 +614,11 @@ def log_add(x, y):
     if y == 0:
         return x
     
-    if x == -np.inf or y == -np.inf:
-        return -np.inf
+    if x == -np.inf:
+        return y
+        
+    if y == -np.inf:
+        return x
     
     ## Step 1: make x bigger
     if y > x:
@@ -670,6 +683,7 @@ def extractStates(index, totalK):
     
     a_ind = index % a_max
     
+    ## Make sure all returned values are ints:
     return map(int, (f_ind,j_ind,a_ind, b_ind, g_ind))
 
 def getStateIndex(f,j,a,b,g):
