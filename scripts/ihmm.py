@@ -301,11 +301,15 @@ class Sampler(Process):
             (sent_index, sent) = task
             t0 = time.time()
             self.dyn_prog[:,:] = -np.inf
-            self.dyn_prog = self.forward_pass(self.dyn_prog, sent, self.models, self.K, sent_index)
-            (sent_sample,log_prob) = self.reverse_sample(self.dyn_prog, sent, self.models, self.K, sent_index)
+            (self.dyn_prog, log_prob) = self.forward_pass(self.dyn_prog, sent, self.models, self.K, sent_index)
+            sent_sample = self.reverse_sample(self.dyn_prog, sent, self.models, self.K, sent_index)
             t1 = time.time()
             self.in_q.task_done()
             self.out_q.put((sent_index, sent_sample,log_prob))
+            
+            if log_prob > 0:
+                logging.error("Sentence %d had positive log probability %f" % (sent_index, log_prob))
+            
             #logging.debug("Thread %d required %d s to process sentence.", self.tid, (t1-t0))
 
     def get_sample(self):
@@ -335,7 +339,7 @@ class Sampler(Process):
                         if index == 1 and f == 0:
                             continue
 
-                        cumProbs[0] = models.fork.dist[prevBG,f]
+                        cumProbs[0] = dyn_prog[prevInd,index-1] + models.fork.dist[prevBG,f]
                         if index == 1:
                             j = 0
                         else:
@@ -381,43 +385,34 @@ class Sampler(Process):
                                 
                                 dyn_prog[state_range,index] = log_vector_add(dyn_prog[state_range,index], range_probs)
 
-                                ## For the last token, we can multiply in the
-                                ## probability of ending the sentence right away:
-                                if index == len(sent)-1:
-                                    for g in range(1,g_max):
-                                        curBG = bg_state(b,g)
-                                        dyn_prog[state_range[0]+g,index] += ((models.fork.dist[curBG,0] + models.reduce.dist[a,1]))
-                                        logging.debug(dyn_prog[state_range[0]+g,index])
-                                        
-                                if dyn_prog[state_range[0],index] != -np.inf:
-                                    logging.error("Error: Non-zero probability at g=0 in forward pass!")
-                                    sys.exit(-1)
-                                    
-        return dyn_prog
+        ## For the last token, multiply in the probability
+        ## of transitioning to the end state. also can add up
+        ## total probability of data given model here.
+        sentence_log_prob = -np.inf
+        last_index = len(sent)-1
+        for state in range(0,dyn_prog.shape[0]):
+            (f,j,a,b,g) = extractStates(state, totalK)
+            curBG = bg_state(b,g)
+            dyn_prog[state,last_index] += ((models.fork.dist[curBG,0] + models.reduce.dist[a,1]))
+            sentence_log_prob = log_add(sentence_log_prob, dyn_prog[state, last_index])
+            logging.debug(dyn_prog[state,last_index])
+                       
+            if (a == 0 or b == 0 or g == 0) and dyn_prog[state, last_index] != -np.inf:
+                logging.error("Error: Non-zero probability at g=0 in forward pass!")
+                sys.exit(-1)
 
-    def reverse_sample(self,dyn_prog,sent,models,totalK, sent_index):            
+        return dyn_prog, sentence_log_prob
+
+    def reverse_sample(self, dyn_prog, sent, models, totalK, sent_index):            
         sample_seq = []
         sample_log_prob = 0
         
         ## Normalize and grab the sample from the forward probs at the end of the sentence
-        ## First save out the unnormalized forward probs so I can grab the sentence
-        ## probability at the end
         last_index = len(sent)-1
-        saved_log_probs = dyn_prog[:,last_index]
         
-        logging.debug("Last step log probs:")
-        logging.debug(saved_log_probs)
-        
-        normed_last_step = normalize_from_log(dyn_prog[:,last_index])
-        
-        logging.debug("Last step probs:")
-        logging.debug(normed_last_step)
-        
-        dyn_prog[:,last_index] = normed_last_step
+        dyn_prog[:,last_index] = normalize_from_log(dyn_prog[:,last_index])
         sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,last_index]))
-        
-        sample_log_prob += saved_log_probs[sample_t]
-        
+                
         sample_seq.append(State(extractStates(sample_t, totalK)))
         if sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0:
             logging.error("Error: First sample has a|b|g = 0")
@@ -454,14 +449,16 @@ class Sampler(Process):
 
             dyn_prog[:,t] = normalize_from_log(dyn_prog[:,t])
             sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,t]))
-            sample_state = State(extractStates(sample_t, totalK))
+            state_list = extractStates(sample_t, totalK)
+            
+            sample_state = State(state_list)
             if t > 0 and sample_state.g == 0:
                 logging.error("Error: Sampled a g=0 state in backwards pass! {0}".format(sample_state.str()))
             sample_seq.append(sample_state)
 
         sample_seq.reverse()
         logging.info("Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
-        return sample_seq,sample_log_prob
+        return sample_seq
 
 # Randomly initialize all the values for the hidden variables in the 
 # sequence. Obeys constraints (e.g., when f=1,j=1 a=a_{t-1}) but otherwise
