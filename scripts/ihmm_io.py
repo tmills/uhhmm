@@ -58,6 +58,10 @@ def write_output(sample, stats, config, gold_pos=None):
     condPrefix="ACT", outcomePrefix="ACT")
     write_model(models.root.dist, output_dir + "/p_act_given_g%d.txt" %sample.iter,
     condPrefix="POS", outcomePrefix="ACT")
+    write_model(models.fork.dist, output_dir + "/p_fork_given_b+g%d.txt" % sample.iter,
+    condPrefix="BG", outcomePrefix="F")
+    write_model(models.reduce.dist, output_dir + "/p_join_given_a+f1_%d.txt" % sample.iter,
+    condPrefix="A+", outcomePrefix="J")
     
     write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter)
     
