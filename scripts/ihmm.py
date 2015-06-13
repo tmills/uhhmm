@@ -77,12 +77,12 @@ class Model:
     def sampleDirichlet(self, base):
         self.dist = sampler.sampleDirichlet(self, base, nullState=True)
         self.condCounts[:] = 0
-        self.pairCounts[:] = 0
+        self.pairCounts[:,:] = 0
 
     def sampleBernoulli(self, base):
         self.dist = sampler.sampleDirichlet(self, base, nullState=False)
         self.condCounts[:] = 0
-        self.pairCounts[:] = 0
+        self.pairCounts[:,:] = 0
 
 # This class is not currently used. Could someday be used to resample
 # all models if we give Model s more information about themselves.
@@ -132,7 +132,6 @@ def sample_beam(ev_seqs, params, report_function):
     sample.beta_j = np.ones((1,2)) / 2
     sample.gamma = float(params.get('gamma'))
     sample.discount = float(params.get('discount'))
-    
     
     models = Models()
     
@@ -503,7 +502,7 @@ def initialize_state(ev_seqs, models):
                     state.f = 1
                     state.j = 0
                 else:
-                    if random.random() > 0.5:
+                    if random.random() >= 0.5:
                         state.f = 1
                     else:
                         state.f = 0
@@ -563,8 +562,9 @@ def increment_counts(hid_seq, sent, models):
         prevState = state
     
     prevBG = bg_state(hid_seq[-1].b, hid_seq[-1].g)
-    models.fork.count(prevBG, 0)
-    models.reduce.count(hid_seq[-1].a, 1)
+## WS: REMOVED THESE: WAS DISTORTING OUTPUTS BC F MODEL NOT REALLY CONSULTED AT END (MODEL ACTUALLY KNOWS ITS AT END)
+#    models.fork.count(prevBG, 0)
+#    models.reduce.count(hid_seq[-1].a, 1)
 
 ## Don't think we actually need this since we are not using counts to integrate
 ## out models -- instead we sample models so we can just reset all counts to 0
