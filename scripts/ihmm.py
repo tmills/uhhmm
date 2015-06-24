@@ -60,28 +60,32 @@ class Stats:
 # A mapping from input space to output space. The Model class can be
 # used to store counts during inference, and then know how to resample themselves
 # if given a base distribution.
+# TODO: Sub-class for BooleanModel vs. InfiniteModel  with single sample()/resample() method
+# and automatically adjusting sizes for infinite version.
 class Model:
     def __init__(self, shape):
-        self.condCounts = np.zeros((shape[0],1), dtype=np.uint)
         self.pairCounts = np.zeros(shape, dtype=np.uint)
-        self.dist = None
+        self.dist = np.zeros(shape)
+        self.u = None
+        self.trans_prob = 0.0
+        self.alpha = 0.0
+        self.beta = None
 
     def count(self, cond, out):
-        self.condCounts[cond] += 1
         self.pairCounts[cond, out] += 1
 
     def dec(self, cond, out):
-        self.condCounts[cond] -= 1
         self.pairCounts[cond,out] -= 1
 
+    def selfSampleDirichlet(self):
+        self.sampleDirichlet(self.alpha * self.beta)
+        
     def sampleDirichlet(self, base):
-        self.dist = sampler.sampleDirichlet(self, base, nullState=True)
-        self.condCounts[:] = 0
+        self.dist = sampler.sampleDirichlet(self, base)
         self.pairCounts[:,:] = 0
 
     def sampleBernoulli(self, base):
-        self.dist = sampler.sampleDirichlet(self, base, nullState=False)
-        self.condCounts[:] = 0
+        self.dist = sampler.sampleBernoulli(self, base)
         self.pairCounts[:,:] = 0
 
 # This class is not currently used. Could someday be used to resample
@@ -97,12 +101,13 @@ class Models(list):
 # mapped to ints).
 def sample_beam(ev_seqs, params, report_function):    
     
-    global start_a, start_b, start_g 
+    global start_a, start_b, start_g
+    global a_max, b_max, g_max
     start_a = int(params.get('starta'))
     start_b = int(params.get('startb'))
     start_g = int(params.get('startg'))
 
-    logging.basicConfig(level=logging.WARN)
+    logging.basicConfig(level=logging.INFO)
     logging.info("Starting beam sampling")
     
     burnin = int(params.get('burnin'))
@@ -115,33 +120,38 @@ def sample_beam(ev_seqs, params, report_function):
     samples = []
     
     maxLen = max(map(len, ev_seqs))
+    max_output = max(map(max, ev_seqs))
+    
+    models = Models()
+    
+    logging.info("Initializing state")
+    models = initialize_models(models, max_output, params)
+    hid_seqs = initialize_state(ev_seqs, models)
     
     sample = Sample()
+    sample.hid_seqs = hid_seqs
     sample.alpha_a = float(params.get('alphaa'))
     sample.alpha_b = float(params.get('alphab'))
-    sample.alpha_g = float(params.get('alphag'))
+#    sample.alpha_g = float(params.get('alphag'))
     sample.alpha_f = float(params.get('alphaf'))
     sample.alpha_j = float(params.get('alphaj'))
-    sample.beta_a = np.ones((1,start_a+1)) / start_a
+    sample.beta_a = np.ones((1,start_a+2)) / start_a
     sample.beta_a[0][0] = 0
-    sample.beta_b = np.ones((1,start_b+1)) / start_b
+    sample.beta_b = np.ones((1,start_b+2)) / start_b
     sample.beta_b[0][0] = 0
-    sample.beta_g = np.ones((1,start_g+1)) / start_g
-    sample.beta_g[0][0] = 0
+    sample.beta_g = models.pos.beta
+#    sample.beta_g = np.ones((1,start_g+2)) / start_g
+#    sample.beta_g[0][0] = 0
     sample.beta_f = np.ones((1,2)) / 2
     sample.beta_j = np.ones((1,2)) / 2
     sample.gamma = float(params.get('gamma'))
     sample.discount = float(params.get('discount'))
     
-    models = Models()
     
-    logging.info("Initializing state")    
-    hid_seqs = initialize_state(ev_seqs, models)
-    sample.hid_seqs = hid_seqs
     ## Sample distributions for all the model params and emissions params
     ## TODO -- make the Models class do this in a resample_all() method
     models.lex.sampleDirichlet(params['h'])
-    models.pos.sampleDirichlet(sample.alpha_g * sample.beta_g)
+    models.pos.selfSampleDirichlet()    
     models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
     models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
     models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
@@ -157,13 +167,16 @@ def sample_beam(ev_seqs, params, report_function):
     iter = 0
     
     while len(samples) < num_samples:
-             
+        
+        
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
         a_max = models.act.dist.shape[1]
         b_max = models.cont.dist.shape[1]
         g_max = models.pos.dist.shape[1]
-                
+        
+        logging.info("Number of a states=%d, b states=%d, g states=%d" % (a_max, b_max, g_max))
+        
         ## How many total states are there?
         ## 2*2*|Act|*|Awa|*|G|
         totalK = 2 * 2 * a_max * b_max * g_max
@@ -233,7 +246,10 @@ def sample_beam(ev_seqs, params, report_function):
         t0 = time.time()
 
         next_sample = Sample()
-        ## TODO Sample hyper-parameters
+        
+        ## Sample hyper-parameters
+        models.pos.u = models.pos.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)))
+
         ## This is, e.g., where we might add categories to the a,b,g variables with
         ## stick-breaking. Without that, the values will stay what they were 
         next_sample.alpha_f = sample.alpha_f
@@ -244,14 +260,10 @@ def sample_beam(ev_seqs, params, report_function):
         next_sample.beta_a = sample.beta_a
         next_sample.alpha_b = sample.alpha_b
         next_sample.beta_b = sample.beta_b
-        next_sample.alpha_g = sample.alpha_g
-        next_sample.beta_g = sample.beta_g
         sample = next_sample
-                
         ## Sample distributions for all the model params and emissions params
         ## TODO -- make the Models class do this in a resample_all() method
         models.lex.sampleDirichlet(params['h'])
-        models.pos.sampleDirichlet(sample.alpha_g * sample.beta_g)
         models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
         models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
         models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
@@ -330,7 +342,6 @@ class Sampler(Process):
 
                     assert index == 1 or (prevA != 0 and prevB != 0 and prevG != 0), 'Unexpected values in sentence {0} with non-zero probabilities: {1}, {2}, {3} at index {4}, and f={5} and j={6}, ind={7}'.format(sent_index,prevA, prevB, prevG, index, prevF, prevJ, prevInd)
                 
-                    cumProbs = np.zeros((5,1))
                     prevBG = bg_state(prevB,prevG)
                 
                     ## Sample f & j:
@@ -348,7 +359,6 @@ class Sampler(Process):
                         cumProbs[1] = cumProbs[0]
                         
                         
-                        for a in range(1,a_max):
                             if f == 0 and j == 0:
                                 ## active transition:
                                 cumProbs[2] = cumProbs[1] + models.act.dist[prevA,a]
@@ -365,7 +375,6 @@ class Sampler(Process):
                         
                             prevAa = aa_state(prevA, a)
                         
-                            for b in range(1,b_max):
                                 if j == 1:
                                     cumProbs[3] = cumProbs[2] + models.cont.dist[prevBG,b]
                                 else:
@@ -456,18 +465,9 @@ class Sampler(Process):
             sample_seq.append(sample_state)
 
         sample_seq.reverse()
-        logging.info("Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
         return sample_seq
 
-# Randomly initialize all the values for the hidden variables in the 
-# sequence. Obeys constraints (e.g., when f=1,j=1 a=a_{t-1}) but otherwise
-# samples randomly.
-def initialize_state(ev_seqs, models):
     global a_max, b_max, g_max
-    a_max = start_a+1
-    b_max = start_b+1
-    g_max = start_g+1
-    
     ## One fork model:
     models.fork = Model(((g_max)*(b_max), 2))
     ## Two join models:
@@ -482,7 +482,6 @@ def initialize_state(ev_seqs, models):
     ## one pos model:
     models.pos = Model((b_max, g_max))
     ## one lex model:
-    models.lex = Model((g_max, max(map(max,ev_seqs))+1))
     
     logging.debug("Value of amax=%d, b_max=%d, g_max=%d", a_max, b_max, g_max)
     
@@ -512,11 +511,8 @@ def initialize_state(ev_seqs, models):
                 if state.f == 1 and state.j == 1:
                     state.a = prev_state.a
                 else:
-                    state.a = np.random.randint(1,a_max)
 
-                state.b = np.random.randint(1,b_max)
 
-            state.g = np.random.randint(1,g_max)
                     
             prev_state = state  
                             
@@ -548,7 +544,6 @@ def increment_counts(hid_seq, sent, models):
                 models.reduce.count(prevState.a, state.j)
                                 
             if state.j == 0:
-                models.start.count(aa_state(prevState.a, state.a), state.b)
             else:
                 models.cont.count(prevBG, state.b)
 
@@ -690,4 +685,3 @@ def getStateIndex(f,j,a,b,g):
 def getStateRange(f,j,a,b):
     global g_max
     start = getStateIndex(f,j,a,b,0)
-    return range(start,start+g_max)
