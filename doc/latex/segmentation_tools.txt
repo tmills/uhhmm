@@ -1,0 +1,20 @@
+Note: This is a very incomplete list
+
+
+Mandarin:
+http://nlp.stanford.edu/software/segmenter.shtml
+
+
+Turkish:
+https://github.com/coltekin/TRmorph
+http://wiki.apertium.org/wiki/Turkish
+
+
+Uzbek:
+http://wiki.apertium.org/wiki/Uzbek
+https://books.google.com/books?id=nLs2vEXwIhYC&pg=PA83&lpg=PA83
+http://nlp.fi.muni.cz/~xsuchom2/papers/BaisaSuchomel_TurkicResources.pdf
+
+
+Hausa: (basically nothing is available)
+http://symbolcodes.tlt.psu.edu/bylanguage/hausa.html
