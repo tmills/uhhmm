@@ -16,5 +16,9 @@ https://books.google.com/books?id=nLs2vEXwIhYC&pg=PA83&lpg=PA83
 http://nlp.fi.muni.cz/~xsuchom2/papers/BaisaSuchomel_TurkicResources.pdf
 
 
-Hausa: (basically nothing is available)
+Hausa: (basically no tools appear to be available)
+The entire Bible is available in Hausa
+https://en.wikipedia.org/wiki/Hausa_language
+https://www.ethnologue.com/language/hau
+http://www.language-archives.org/language/hau
 http://symbolcodes.tlt.psu.edu/bylanguage/hausa.html
