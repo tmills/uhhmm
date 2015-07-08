@@ -2,6 +2,7 @@
 
 import numpy as np
 import logging
+import sys
 
 ## TODO -- instead of being passed H have the Model class implement
 ## a get_base_distribution() method that can be called
@@ -14,30 +15,26 @@ def sampleDirichlet(counts, H):
     ## words for every pos tag:
     for i in range(0,K):
         ## Set last value (new table probability):
-        if H.ndim == 2:
-            hrow = H[0]
-        elif H.ndim == 1:
-            hrow = H
-
-        P[i,-1] = hrow[-1]
+        
+        H = H.flatten()
                 
         ## Get distribution for existing table by slicing out the null state
         ## and the new table state:
-        base = np.zeros((1,L-2)) + counts.pairCounts[i,1:-1]+hrow[1:-1]
+        base = np.zeros((1,L-1)) + counts.pairCounts[i,1:]+H[1:]
         
         if base.shape[1] == 1:
             P[i,1] = 1.0
         else:
-            ## Get the distribution normalized relative to the new table prob:
-            dist = np.random.gamma(base, 1)
-            dist /= dist.sum()
-            dist *= (1 - P[i,-1])
             P[i,0] = -np.inf
-            P[i,1:-1] = np.log10(dist)
-            P[i,-1] = np.log10(P[i,-1])
+            P[i,1:] = np.log10(sampleSimpleDirichlet(base))
 
     return P
 
+def sampleSimpleDirichlet(base):
+    dist = np.random.gamma(base, 1)
+    dist /= dist.sum()
+    return dist
+    
 def sampleBernoulli(counts, H):
     ## How many inputs?
     K = counts.pairCounts.shape[0]
@@ -47,7 +44,11 @@ def sampleBernoulli(counts, H):
     
     for i in range(0,K):
         base = counts.pairCounts[i,:] + H.flatten()
-        P[i,:] = np.log10(np.random.dirichlet(base, 1)[0])
+        P[i,:] = np.log10(sampleSimpleBernoulli(base))
         
     return P
         
+        
+def sampleSimpleBernoulli(base):
+    return np.random.dirichlet(base)
+    
