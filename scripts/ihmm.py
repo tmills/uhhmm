@@ -7,6 +7,8 @@ import numpy as np
 import ihmm_sampler as sampler
 import pdb
 import sys
+from beam_sampler import *
+from log_math import *
 from multiprocessing import Process,Queue,JoinableQueue
 
 # The set of random variable values at one word
@@ -63,13 +65,15 @@ class Stats:
 # TODO: Sub-class for BooleanModel vs. InfiniteModel  with single sample()/resample() method
 # and automatically adjusting sizes for infinite version.
 class Model:
-    def __init__(self, shape):
+    def __init__(self, shape, alpha=0.0, beta=None, corpus_shape=(0,0)):
         self.pairCounts = np.zeros(shape, dtype=np.uint)
-        self.dist = np.zeros(shape)
-        self.u = None
-        self.trans_prob = 0.0
-        self.alpha = 0.0
-        self.beta = None
+        self.dist = np.random.random(shape)
+        self.dist /= self.dist.sum(1, keepdims=True)
+        self.dist = np.log10(self.dist)
+        self.u = np.zeros(corpus_shape) + -np.inf
+        self.trans_prob = np.zeros(corpus_shape)
+        self.alpha = alpha
+        self.beta = beta
 
     def count(self, cond, out):
         self.pairCounts[cond, out] += 1
@@ -125,25 +129,25 @@ def sample_beam(ev_seqs, params, report_function):
     models = Models()
     
     logging.info("Initializing state")
-    models = initialize_models(models, max_output, params)
+    models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen))
     hid_seqs = initialize_state(ev_seqs, models)
     
     sample = Sample()
-    sample.hid_seqs = hid_seqs
+#    sample.hid_seqs = hid_seqs
     sample.alpha_a = float(params.get('alphaa'))
     sample.alpha_b = float(params.get('alphab'))
 #    sample.alpha_g = float(params.get('alphag'))
     sample.alpha_f = float(params.get('alphaf'))
     sample.alpha_j = float(params.get('alphaj'))
+    ## use plus 2 here (until moved later) since we need the null state (0) as well as 
+    ## the extra part of the stick for "new tables"
     sample.beta_a = np.ones((1,start_a+2)) / start_a
     sample.beta_a[0][0] = 0
     sample.beta_b = np.ones((1,start_b+2)) / start_b
     sample.beta_b[0][0] = 0
     sample.beta_g = models.pos.beta
-#    sample.beta_g = np.ones((1,start_g+2)) / start_g
-#    sample.beta_g[0][0] = 0
-    sample.beta_f = np.ones((1,2)) / 2
-    sample.beta_j = np.ones((1,2)) / 2
+    sample.beta_f = np.ones(2) / 2
+    sample.beta_j = np.ones(2) / 2
     sample.gamma = float(params.get('gamma'))
     sample.discount = float(params.get('discount'))
     
@@ -151,13 +155,14 @@ def sample_beam(ev_seqs, params, report_function):
     ## Sample distributions for all the model params and emissions params
     ## TODO -- make the Models class do this in a resample_all() method
     models.lex.sampleDirichlet(params['h'])
-    models.pos.selfSampleDirichlet()    
+    models.pos.selfSampleDirichlet()
     models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
     models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
     models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
     models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
     models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
     models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+    collect_trans_probs(hid_seqs, models)
     
     stats = Stats()
     
@@ -168,14 +173,91 @@ def sample_beam(ev_seqs, params, report_function):
     
     while len(samples) < num_samples:
         
-        
+        models.pos.u = models.pos.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)))
+
+        ## Break off the beta sticks before actual processing -- instead of determining during
+        ## inference whether to create a new state we use an auxiliary variable u to do it
+        ## ahead of time, but note there is no guarantee we will ever use it.
+        ## TODO: Resample beta, which will allow for unused probability mass to go to the end again?
+        while g_max < 50 and models.pos.u.min() < models.pos.dist[:,-1].max():
+            g_max += 1
+            num_conds = models.pos.dist.shape[0]
+            
+             
+            ## Add a row to the lexical distribution for this new POS tag:
+            num_outs = models.lex.dist.shape[1]
+            models.lex.pairCounts = np.append(models.lex.pairCounts, np.zeros((1,num_outs)), 0)
+            models.lex.dist = np.append(models.lex.dist, np.zeros((1,num_outs)) , 0)
+            models.lex.dist[-1,0] = -np.inf
+            models.lex.dist[-1,1:] = np.log10(sampler.sampleSimpleDirichlet(models.lex.pairCounts[-1,1:] + params['h'][0,1:]))
+            
+            ## Add a row to the awaited (b) model for the new conditional value of g 
+            models.root.pairCounts = np.append(models.root.pairCounts, np.zeros((1,a_max)), 0)
+            models.root.dist = np.append(models.root.dist, np.zeros((1,a_max)), 0)
+            models.root.dist[-1,0] = -np.inf
+            models.root.dist[-1,1:] = np.log10(sampler.sampleSimpleDirichlet(models.root.pairCounts[-1,1:] + sample.alpha_a * sample.beta_a[0,1:]))
+            
+            
+            ## Resample beta when the stick is broken:
+            beta_end = models.pos.beta[-1]
+            new_group_fraction = np.random.beta(1, sample.gamma);
+            models.pos.beta = np.append(models.pos.beta, np.zeros(1))
+            models.pos.beta[-2] = new_group_fraction * beta_end
+            models.pos.beta[-1] = (1-new_group_fraction) * beta_end
+            
+            if models.pos.beta[-1] == 0.0:
+                logging.error("This shouldn't be 0!")
+            
+            ## Add a column to the distribution that outputs POS tags:
+            models.pos.pairCounts = np.append(models.pos.pairCounts, np.zeros((num_conds,1)), 1)
+            dist_end = models.pos.dist[:,-1]
+            param_a = np.tile(models.pos.alpha * models.pos.beta[-2], (num_conds,1))
+            param_b = models.pos.alpha * (1 - models.pos.beta[0:-1].sum());
+            pg = np.random.beta( param_a, param_b).flatten()
+            
+            models.pos.dist[:,-1] += np.log10(pg)
+            models.pos.dist = np.append(models.pos.dist, np.tile(np.log10(1-pg) + dist_end, (1,1)).transpose(), 1)
+            
+            ## The slightly trickier case of distributions which depend on g as well as
+            ## other variables (in this case, both depend on b) : Need to grab out slices of 
+            ## distributions and insert into new model with gaps in interior rows
+
+            ## Add rows to the input distributions for all the models dependent on g
+            ## at the next time step: (trans [not used yet], cont)
+            old_cont = models.cont.pairCounts
+            models.cont.pairCounts = np.zeros((b_max*g_max,b_max))
+            old_cont_dist = models.cont.dist
+            models.cont.dist = np.zeros((b_max*g_max,b_max))
+            
+            old_cont_ind = 0
+            
+            old_fork = models.fork.pairCounts
+            models.fork.pairCounts = np.zeros((b_max*g_max,2))
+            old_fork_dist = models.fork.dist
+            models.fork.dist = np.zeros((b_max*g_max,2))
+            
+            for b in range(0, b_max):
+                bg = b * g_max
+                models.cont.pairCounts[bg:bg+g_max-1,:] = old_cont[old_cont_ind:old_cont_ind+g_max-1,:]
+                models.cont.dist[bg:bg+g_max-1,:] = old_cont_dist[old_cont_ind:old_cont_ind+g_max-1,:]
+                models.cont.dist[bg+g_max-1,0] = -np.inf
+                models.cont.dist[bg+g_max-1,1:] = np.log10(sampler.sampleSimpleDirichlet(sample.alpha_b * sample.beta_b[0,1:]))
+                
+                models.fork.pairCounts[bg:bg+g_max-1,:] = old_fork[old_cont_ind:old_cont_ind+g_max-1,:]
+                models.fork.dist[bg:bg+g_max-1,:] = old_fork_dist[old_cont_ind:old_cont_ind+g_max-1,:]
+                models.fork.dist[bg+g_max-1,:] = np.log10(sampler.sampleSimpleBernoulli(sample.alpha_f * sample.beta_f))
+                
+                old_cont_ind = old_cont_ind + g_max - 1
+            
+
+
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
         a_max = models.act.dist.shape[1]
         b_max = models.cont.dist.shape[1]
         g_max = models.pos.dist.shape[1]
         
-        logging.info("Number of a states=%d, b states=%d, g states=%d" % (a_max, b_max, g_max))
+        logging.info("Number of a states=%d, b states=%d, g states=%d" % (a_max-2, b_max-2, g_max-2))
         
         ## How many total states are there?
         ## 2*2*|Act|*|Awa|*|G|
@@ -226,7 +308,7 @@ def sample_beam(ev_seqs, params, report_function):
             if sent_index % 10 == 0:
                 logging.info("Processed sentence {0}".format(sent_index))
             #pdb.set_trace()
-            increment_counts(sent_sample, ev_seqs[sent_index], models)
+            increment_counts(sent_sample, ev_seqs[sent_index], models, sent_index)
             sample_map[sent_index] = sent_sample
             sample.log_prob += log_prob
 
@@ -247,52 +329,9 @@ def sample_beam(ev_seqs, params, report_function):
 
         next_sample = Sample()
         
+
+        
         ## Sample hyper-parameters
-        models.pos.u = models.pos.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)))
-
-        ## Break off the beta sticks before actual processing -- instead of determining during
-        ## inference whether to create a new state we use an auxiliary variable u to do it
-        ## ahead of time, but note there is no guarantee we will ever use it.
-        ## TODO: Resample beta, which will allow for unused probability mass to go to the end again?
-        while models.pos.u.min() < np.log10(models.pos.beta[-1]):
-            g_max += 1
-            num_conds = models.pos.dist.shape[0]
-            ## Add a column to the distribution that outputs POS tags:
-            models.pos.pairCounts = np.append(models.pos.pairCounts, np.zeros((num_conds,1)), 1)
-
-            ## Add a row to the lexical distribution:
-            num_outs = models.lex.dist.shape[1]
-            models.lex.pairCounts = np.append(models.lex.pairCounts, np.zeros((1,num_outs)), 0)
-            
-            ## Add a row to the awaited (b) model for the new conditional value of g 
-            models.root.pairCounts = np.append(models.root.pairCounts, np.zeros((1,a_max)), 0)
-            
-            ## Add rows to the input distributions for all the models dependent on g
-            ## at the next time step: (trans [not used yet], cont)
-            old_cont = models.cont.pairCounts
-            models.cont.pairCounts = np.zeros((b_max*g_max,b_max))
-            old_cont_ind = 0
-            
-            old_fork = models.fork.pairCounts
-            models.fork.pairCounts = np.zeros((b_max*g_max,2))
-            
-            ## Resample beta when the stick is broken:
-            beta_end = models.pos.beta[-1]
-            new_group_fraction = np.random.beta(1, sample.gamma);
-            models.pos.beta = np.append(models.pos.beta, np.zeros(1))
-            models.pos.beta[-2] = new_group_fraction * beta_end
-            models.pos.beta[-1] = (1-new_group_fraction) * beta_end
-            
-            ## The slightly trickier case of distributions which depend on g as well as
-            ## other variables (in this case, both depend on b) : Need to grab out slices of 
-            ## distributions and insert into new model with gaps in interior rows
-            for b in range(0, b_max):
-                bg = b * g_max
-                models.cont.pairCounts[bg:bg+g_max-1,:] = old_cont[old_cont_ind:old_cont_ind+g_max-1,:]
-                models.fork.pairCounts[bg:bg+g_max-1,:] = old_fork[old_cont_ind:old_cont_ind+g_max-1,:]
-                old_cont_ind = old_cont_ind + g_max - 1
-            
-
         ## This is, e.g., where we might add categories to the a,b,g variables with
         ## stick-breaking. Without that, the values will stay what they were 
         next_sample.alpha_f = sample.alpha_f
@@ -309,6 +348,7 @@ def sample_beam(ev_seqs, params, report_function):
         next_sample.beta_g = models.pos.beta
         next_sample.gamma = sample.gamma
         
+        prev_sample = sample
         sample = next_sample
 
         ## Sample distributions for all the model params and emissions params
@@ -324,6 +364,11 @@ def sample_beam(ev_seqs, params, report_function):
         t1 = time.time()
         
         logging.debug("Resampling models took %d s" % (t1-t0))
+        
+        ## now that we've resampled models, store the transition probabilities that
+        ## the new model assigned to all the transitions
+        collect_trans_probs(prev_sample.hid_seqs, models)
+        
         sample.models = models
         sample.iter = iter
         
@@ -332,201 +377,10 @@ def sample_beam(ev_seqs, params, report_function):
 
     return (samples, stats)
 
-# This class does the actual sampling. It is a Python process rather than a Thread
-# because python threads do not work well due to the global interpreter lock (GIL), 
-# which only allows one thread at a time to access the interpreter. Making it a process
-# is requires more indirect communicatino using shared input/output queues between 
-# different sampler instances
-class Sampler(Process):
-    def __init__(self, in_q, out_q, models, totalK, maxLen, tid):
-        Process.__init__(self)
-        self.in_q = in_q
-        self.out_q = out_q
-        self.models = models
-        self.K = totalK
-        self.dyn_prog = np.zeros((totalK,maxLen))
-        self.tid = tid
-    
-    def set_data(self, sent):
-        self.sent = sent
 
-    def run(self):
-        self.dyn_prog[:,:] = -np.inf
-        #logging.debug("Starting forward pass in thread %s", self.tid)
-
-        while True:
-            task = self.in_q.get()
-            if task == None:
-                self.in_q.task_done()
-                break
-            
-            (sent_index, sent) = task
-            t0 = time.time()
-            self.dyn_prog[:,:] = -np.inf
-            (self.dyn_prog, log_prob) = self.forward_pass(self.dyn_prog, sent, self.models, self.K, sent_index)
-            sent_sample = self.reverse_sample(self.dyn_prog, sent, self.models, self.K, sent_index)
-            t1 = time.time()
-            self.in_q.task_done()
-            self.out_q.put((sent_index, sent_sample,log_prob))
-            
-            if log_prob > 0:
-                logging.error("Sentence %d had positive log probability %f" % (sent_index, log_prob))
-            
-            #logging.debug("Thread %d required %d s to process sentence.", self.tid, (t1-t0))
-
-    def get_sample(self):
-        return self.sent_sample
-
-    def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
-        global g_max
-        ## keep track of forward probs for this sentence:
-        for index,token in enumerate(sent):
-            if index == 0:
-                g0_ind = getStateIndex(0,0,0,0,0)
-                dyn_prog[g0_ind:g0_ind+g_max,0] = models.lex.dist[:,token]
-                logging.debug(dyn_prog[g0_ind:g0_ind+g_max,0])
-            else:
-                for prevInd in range(0,dyn_prog.shape[0]):
-                    if dyn_prog[prevInd,index-1] == -np.inf:
-                        continue
-
-                    (prevF, prevJ, prevA, prevB, prevG) = extractStates(prevInd, totalK)
-
-                    assert index == 1 or (prevA != 0 and prevB != 0 and prevG != 0), 'Unexpected values in sentence {0} with non-zero probabilities: {1}, {2}, {3} at index {4}, and f={5} and j={6}, ind={7}'.format(sent_index,prevA, prevB, prevG, index, prevF, prevJ, prevInd)
-                
-                    cumProbs = np.zeros(5)
-                    prevBG = bg_state(prevB,prevG)
-                
-                    ## Sample f & j:
-                    for f in (0,1):
-                        if index == 1 and f == 0:
-                            continue
-
-                        cumProbs[0] = dyn_prog[prevInd,index-1] + models.fork.dist[prevBG,f]
-                        if index == 1:
-                            j = 0
-                        else:
-                            j = f
-                        
-                        ## At depth 1 -- no probability model for j 
-                        cumProbs[1] = cumProbs[0]
-                        
-                        
-                        for a in range(1,a_max-1):
-                            if f == 0 and j == 0:
-                                ## active transition:
-                                cumProbs[2] = cumProbs[1] + models.act.dist[prevA,a]
-                            elif f == 1 and j == 0:
-                                ## root -- technically depends on prevA and prevG
-                                ## but in depth 1 this case only comes up at start
-                                ## of sentence and prevA will always be 0
-                                cumProbs[2] = cumProbs[1] + models.root.dist[prevG,a]
-                            elif f == 1 and j == 1 and prevA == a:
-                                cumProbs[2] = cumProbs[1]
-                            else:
-                                ## zero probability here
-                                continue
-                        
-                            prevAa = aa_state(prevA, a)
-                        
-                            for b in range(1,b_max-1):
-                                if j == 1:
-                                    cumProbs[3] = cumProbs[2] + models.cont.dist[prevBG,b]
-                                else:
-                                    cumProbs[3] = cumProbs[2] + models.start.dist[prevAa,b]
-                            
-                                logging.debug(cumProbs)
-                                # Multiply all the g's in one pass:
-                                ## range gets the range of indices in the forward pass
-                                ## that are contiguous in the state space
-                                state_range = getStateRange(f,j,a,b)
-                                
-                                logging.debug(dyn_prog[state_range, index])
-                                
-                                range_probs = cumProbs[3] + models.pos.dist[b,:] + models.lex.dist[:,token]
-                                logging.debug(range_probs)
-                                
-                                dyn_prog[state_range,index] = log_vector_add(dyn_prog[state_range,index], range_probs)
-
-        ## For the last token, multiply in the probability
-        ## of transitioning to the end state. also can add up
-        ## total probability of data given model here.
-        sentence_log_prob = -np.inf
-        last_index = len(sent)-1
-        for state in range(0,dyn_prog.shape[0]):
-            (f,j,a,b,g) = extractStates(state, totalK)
-            curBG = bg_state(b,g)
-            dyn_prog[state,last_index] += ((models.fork.dist[curBG,0] + models.reduce.dist[a,1]))
-            sentence_log_prob = log_add(sentence_log_prob, dyn_prog[state, last_index])
-            logging.debug(dyn_prog[state,last_index])
-                       
-            if (a == 0 or b == 0 or g == 0) and dyn_prog[state, last_index] != -np.inf:
-                logging.error("Error: Non-zero probability at g=0 in forward pass!")
-                sys.exit(-1)
-
-        return dyn_prog, sentence_log_prob
-
-    def reverse_sample(self, dyn_prog, sent, models, totalK, sent_index):            
-        sample_seq = []
-        sample_log_prob = 0
-        
-        ## Normalize and grab the sample from the forward probs at the end of the sentence
-        last_index = len(sent)-1
-        
-        dyn_prog[:,last_index] = normalize_from_log(dyn_prog[:,last_index])
-        sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,last_index]))
-                
-        sample_seq.append(State(extractStates(sample_t, totalK)))
-        if sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0:
-            logging.error("Error: First sample has a|b|g = 0")
-            sys.exit(-1)
-  
-        for t in range(len(sent)-2,-1,-1):
-            for ind in range(0,dyn_prog.shape[0]):
-                if dyn_prog[ind,t] == -np.inf:
-                    continue
-
-                (pf,pj,pa,pb,pg) = extractStates(ind,totalK)
-                (nf,nj,na,nb,ng) = sample_seq[-1].to_list()
-                prevBG = bg_state(pb,pg)
-                trans_prob = models.fork.dist[prevBG,nf]
-                if nf == 0:
-                    trans_prob += models.reduce.dist[pa,nj]
-      
-                if nf == 0 and nj == 0:
-                    trans_prob += models.act.dist[pa,na]
-                elif nf == 1 and nj == 0:
-                    trans_prob += models.root.dist[pg,na]
-                elif nf == 1 and nj == 1:
-                    if na != pa:
-                        trans_prob = -np.inf
-      
-                if nj == 0:
-                    prevAA = aa_state(pa,na)
-                    trans_prob += models.start.dist[prevAA,nb]
-                else:
-                    trans_prob += models.cont.dist[prevBG,nb]
-      
-                trans_prob += models.pos.dist[nb,ng]
-                dyn_prog[ind,t] += trans_prob
-
-            dyn_prog[:,t] = normalize_from_log(dyn_prog[:,t])
-            sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,t]))
-            state_list = extractStates(sample_t, totalK)
-            
-            sample_state = State(state_list)
-            if t > 0 and sample_state.g == 0:
-                logging.error("Error: Sampled a g=0 state in backwards pass! {0}".format(sample_state.str()))
-            sample_seq.append(sample_state)
-
-        sample_seq.reverse()
-        logging.debug("Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
-        return sample_seq
-
-def initialize_models(models, max_output, params):
+def initialize_models(models, max_output, params, corpus_shape):
     global a_max, b_max, g_max
-    ## Add 2 to every start value -- one for "Null/start" state, one for extra probability
-    ## mass for infinite states:
+    ## Add 1 to every start value for "Null/start" state
     a_max = start_a+2
     b_max = start_b+2
     g_max = start_g+2
@@ -543,8 +397,7 @@ def initialize_models(models, max_output, params):
     models.cont = Model(((g_max)*(b_max),b_max))
     models.start = Model(((a_max)*(a_max), b_max))
     ## one pos model:
-    models.pos = Model((b_max, g_max))
-    models.pos.alpha = float(params.get('alphag'))
+    models.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape)
     models.pos.beta = np.zeros(g_max)
     models.pos.beta[1:] = np.ones(g_max-1) / (g_max-1)
     
@@ -559,15 +412,9 @@ def initialize_models(models, max_output, params):
 # samples randomly.
 def initialize_state(ev_seqs, models):
     global a_max, b_max, g_max
-    ## Add 2 to every start value -- one for "Null/start" state, one for extra probability
-    ## mass for infinite states:
-    a_max = start_a+2
-    b_max = start_b+2
-    g_max = start_g+2
-    
     
     state_seqs = list()
-    for sent in ev_seqs:
+    for sent_index,sent in enumerate(ev_seqs):
         hid_seq = list()
         for index,word in enumerate(sent):
             state = State()
@@ -602,12 +449,39 @@ def initialize_state(ev_seqs, models):
                             
             hid_seq.append(state)
             
-        increment_counts(hid_seq, sent, models)
+        increment_counts(hid_seq, sent, models, sent_index)
         state_seqs.append(hid_seq)
 
     return state_seqs
 
-def increment_counts(hid_seq, sent, models):
+def collect_trans_probs(hid_seqs, models):
+    for sent_index,hid_seq in enumerate(hid_seqs):
+        ## for every state transition in the sentence increment the count
+        ## for the condition and for the output
+        for index, state in enumerate(hid_seq):
+            if index != 0:
+                prevBG = bg_state(prevState.b, prevState.g)
+                ## Count F & J
+                if index == 1:
+                    models.root.trans_prob = models.root.dist[prevState.g, state.a]
+
+                    ## Count A & B
+                    if state.f == 0 and state.j == 0:
+                        models.act.trans_prob = models.act.dist[prevState.a, state.a]
+
+                if state.j == 0:
+                    aa = aa_state(prevState.a, state.a)
+                    models.start.trans_prob = models.start.dist[aa, state.b]
+                else:
+                    models.cont.trans_prob = models.cont.dist[prevBG, state.b]
+
+            
+            ## Count G
+            models.pos.trans_prob[sent_index, index] = models.pos.dist[state.b, state.g]
+            
+            prevState = state
+
+def increment_counts(hid_seq, sent, models, sent_index):
     ## for every state transition in the sentence increment the count
     ## for the condition and for the output
     for index,word in enumerate(sent):
@@ -617,14 +491,12 @@ def increment_counts(hid_seq, sent, models):
             ## Count F & J
             if index == 1:
                 models.root.count(prevState.g, state.a)
-                models.root.trans_prob = models.root.dist[prevState.g, state.a]
             else:
                 models.fork.count(prevBG, state.f)
 
                 ## Count A & B
                 if state.f == 0 and state.j == 0:
                     models.act.count(prevState.a, state.a)
-                    models.act.trans_prob = models.act.dist[prevState.a, state.a]
 
             if state.f == 0 and state.j == 0:
                 models.reduce.count(prevState.a, state.j)
@@ -632,16 +504,13 @@ def increment_counts(hid_seq, sent, models):
             if state.j == 0:
                 aa = aa_state(prevState.a, state.a)
                 models.start.count(aa, state.b)
-                models.start.trans_prob = models.start.dist[aa, state.b]
             else:
                 models.cont.count(prevBG, state.b)
-                models.cont.trans_prob = models.cont.dist[prevBG, state.b]
 
             
         ## Count G
         models.pos.count(state.b, state.g)
-        models.pos.trans_prob = models.pos.dist[state.b, state.g]
-        
+            
         ## Count w
         models.lex.count(state.g, word)
         
@@ -652,94 +521,13 @@ def increment_counts(hid_seq, sent, models):
 #    models.fork.count(prevBG, 0)
 #    models.reduce.count(hid_seq[-1].a, 1)
 
-## Don't think we actually need this since we are not using counts to integrate
-## out models -- instead we sample models so we can just reset all counts to 0
-## after resampling models at each iteration
-def decrement_counts(hid_seq, sent, models):
-    ## for every state transition in the sentence decrement the count
-    ## for the condition and and the generated value
-    for index,word in enumerate(sent):
-        state = hid_seq[index]
-        if index != 0:
-            prevBG = bg_state(prevState.b, prevState.g)
-            if index == 1:
-                models.root.dec(prevState.g, state.a)
-            else:
-                
-                models.fork.dec(prevBG, state.f)
-                
-                if state.f == 0 and state.j == 0:
-                    models.act.dec(prevState.a, state.a)
-                
-            if state.j == 0:
-                models.start.dec(aa_state(prevState.a, state.a), state.b)
-            else:
-                models.cont.dec(prevBG, state.b)
-                
-        models.pos.dec(state.b, state.g)
-        models.lex.dec(state.g, sent[index])
-        
-        prevState = state
-
-def log_vector_add(x, y):
-    p = np.zeros(x.shape)
-    for ind,val in enumerate(x):
-        p[ind] = log_add(x[ind],y[ind])
-    
-    return p
-    
-## From here: https://facwiki.cs.byu.edu/nlp/index.php/Log_Domain_Computations
-def log_add(x, y):
-    ## Step 0: An addition -- if one of the values is 0 that means it has not been initialized yet
-    if x == 0:
-        return y
-    
-    if y == 0:
-        return x
-    
-    if x == -np.inf:
-        return y
-        
-    if y == -np.inf:
-        return x
-    
-    ## Step 1: make x bigger
-    if y > x:
-        temp = y
-        y = x
-        x = temp
-    
-    ## Step 2:
-    if x == sys.float_info[3]:   ## min value
-        return x
-        
-    ## Step 3: How far down is y from x
-    ## If it's small, ignore:
-    neg_diff = y - x
-    if neg_diff < -20:
-        return x
-    
-    ## Step 4: Otherwise use algebra:
-    return x + np.log10(1.0 + 10**neg_diff)
-
-def normalize_from_log(log_dist):
-    ## scale back up to a safe range
-    log_dist -= log_dist.max()
-    
-    ## Back into prob space
-    dist = 10**log_dist
-    
-    dist /= dist.sum()
-    
-    return dist
-
 def bg_state(b, g):
     global g_max
-    return b*g_max + g
+    return b*(g_max) + g
 
 def aa_state(prevA, a):
     global a_max
-    return prevA * a_max + a
+    return prevA * (a_max) + a
     
 def extractStates(index, totalK):
     global a_max, b_max, g_max
@@ -776,4 +564,16 @@ def getStateIndex(f,j,a,b,g):
 def getStateRange(f,j,a,b):
     global g_max
     start = getStateIndex(f,j,a,b,0)
-    return range(start,start+g_max-1)
+    return range(start,start+g_max)
+
+def getGmax():
+    global g_max
+    return g_max
+    
+def getAmax():
+    global a_max
+    return a_max
+    
+def getBmax():
+    global b_max
+    return b_max
