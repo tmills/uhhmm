@@ -180,76 +180,8 @@ def sample_beam(ev_seqs, params, report_function):
         ## ahead of time, but note there is no guarantee we will ever use it.
         ## TODO: Resample beta, which will allow for unused probability mass to go to the end again?
         while g_max < 50 and models.pos.u.min() < models.pos.dist[:,-1].max():
-            g_max += 1
-            num_conds = models.pos.dist.shape[0]
+            break_g_stick(models, sample, params)
             
-             
-            ## Add a row to the lexical distribution for this new POS tag:
-            num_outs = models.lex.dist.shape[1]
-            models.lex.pairCounts = np.append(models.lex.pairCounts, np.zeros((1,num_outs)), 0)
-            models.lex.dist = np.append(models.lex.dist, np.zeros((1,num_outs)) , 0)
-            models.lex.dist[-1,0] = -np.inf
-            models.lex.dist[-1,1:] = np.log10(sampler.sampleSimpleDirichlet(models.lex.pairCounts[-1,1:] + params['h'][0,1:]))
-            
-            ## Add a row to the awaited (b) model for the new conditional value of g 
-            models.root.pairCounts = np.append(models.root.pairCounts, np.zeros((1,a_max)), 0)
-            models.root.dist = np.append(models.root.dist, np.zeros((1,a_max)), 0)
-            models.root.dist[-1,0] = -np.inf
-            models.root.dist[-1,1:] = np.log10(sampler.sampleSimpleDirichlet(models.root.pairCounts[-1,1:] + sample.alpha_a * sample.beta_a[0,1:]))
-            
-            
-            ## Resample beta when the stick is broken:
-            beta_end = models.pos.beta[-1]
-            new_group_fraction = np.random.beta(1, sample.gamma);
-            models.pos.beta = np.append(models.pos.beta, np.zeros(1))
-            models.pos.beta[-2] = new_group_fraction * beta_end
-            models.pos.beta[-1] = (1-new_group_fraction) * beta_end
-            
-            if models.pos.beta[-1] == 0.0:
-                logging.error("This shouldn't be 0!")
-            
-            ## Add a column to the distribution that outputs POS tags:
-            models.pos.pairCounts = np.append(models.pos.pairCounts, np.zeros((num_conds,1)), 1)
-            dist_end = models.pos.dist[:,-1]
-            param_a = np.tile(models.pos.alpha * models.pos.beta[-2], (num_conds,1))
-            param_b = models.pos.alpha * (1 - models.pos.beta[0:-1].sum());
-            pg = np.random.beta( param_a, param_b).flatten()
-            
-            models.pos.dist[:,-1] += np.log10(pg)
-            models.pos.dist = np.append(models.pos.dist, np.tile(np.log10(1-pg) + dist_end, (1,1)).transpose(), 1)
-            
-            ## The slightly trickier case of distributions which depend on g as well as
-            ## other variables (in this case, both depend on b) : Need to grab out slices of 
-            ## distributions and insert into new model with gaps in interior rows
-
-            ## Add rows to the input distributions for all the models dependent on g
-            ## at the next time step: (trans [not used yet], cont)
-            old_cont = models.cont.pairCounts
-            models.cont.pairCounts = np.zeros((b_max*g_max,b_max))
-            old_cont_dist = models.cont.dist
-            models.cont.dist = np.zeros((b_max*g_max,b_max))
-            
-            old_cont_ind = 0
-            
-            old_fork = models.fork.pairCounts
-            models.fork.pairCounts = np.zeros((b_max*g_max,2))
-            old_fork_dist = models.fork.dist
-            models.fork.dist = np.zeros((b_max*g_max,2))
-            
-            for b in range(0, b_max):
-                bg = b * g_max
-                models.cont.pairCounts[bg:bg+g_max-1,:] = old_cont[old_cont_ind:old_cont_ind+g_max-1,:]
-                models.cont.dist[bg:bg+g_max-1,:] = old_cont_dist[old_cont_ind:old_cont_ind+g_max-1,:]
-                models.cont.dist[bg+g_max-1,0] = -np.inf
-                models.cont.dist[bg+g_max-1,1:] = np.log10(sampler.sampleSimpleDirichlet(sample.alpha_b * sample.beta_b[0,1:]))
-                
-                models.fork.pairCounts[bg:bg+g_max-1,:] = old_fork[old_cont_ind:old_cont_ind+g_max-1,:]
-                models.fork.dist[bg:bg+g_max-1,:] = old_fork_dist[old_cont_ind:old_cont_ind+g_max-1,:]
-                models.fork.dist[bg+g_max-1,:] = np.log10(sampler.sampleSimpleBernoulli(sample.alpha_f * sample.beta_f))
-                
-                old_cont_ind = old_cont_ind + g_max - 1
-            
-
 
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
@@ -376,6 +308,80 @@ def sample_beam(ev_seqs, params, report_function):
         
 
     return (samples, stats)
+
+
+
+def break_g_stick(models, sample, params):
+    global a_max, b_max, g_max
+    
+    g_max += 1
+    num_conds = models.pos.dist.shape[0]
+    
+     
+    ## Add a row to the lexical distribution for this new POS tag:
+    num_outs = models.lex.dist.shape[1]
+    models.lex.pairCounts = np.append(models.lex.pairCounts, np.zeros((1,num_outs)), 0)
+    models.lex.dist = np.append(models.lex.dist, np.zeros((1,num_outs)) , 0)
+    models.lex.dist[-1,0] = -np.inf
+    models.lex.dist[-1,1:] = np.log10(sampler.sampleSimpleDirichlet(models.lex.pairCounts[-1,1:] + params['h'][0,1:]))
+    
+    ## Add a row to the awaited (b) model for the new conditional value of g 
+    models.root.pairCounts = np.append(models.root.pairCounts, np.zeros((1,a_max)), 0)
+    models.root.dist = np.append(models.root.dist, np.zeros((1,a_max)), 0)
+    models.root.dist[-1,0] = -np.inf
+    models.root.dist[-1,1:] = np.log10(sampler.sampleSimpleDirichlet(models.root.pairCounts[-1,1:] + sample.alpha_a * sample.beta_a[0,1:]))
+    
+    
+    ## Resample beta when the stick is broken:
+    beta_end = models.pos.beta[-1]
+    new_group_fraction = np.random.beta(1, sample.gamma);
+    models.pos.beta = np.append(models.pos.beta, np.zeros(1))
+    models.pos.beta[-2] = new_group_fraction * beta_end
+    models.pos.beta[-1] = (1-new_group_fraction) * beta_end
+    
+    if models.pos.beta[-1] == 0.0:
+        logging.error("This shouldn't be 0!")
+    
+    ## Add a column to the distribution that outputs POS tags:
+    models.pos.pairCounts = np.append(models.pos.pairCounts, np.zeros((num_conds,1)), 1)
+    dist_end = models.pos.dist[:,-1]
+    param_a = np.tile(models.pos.alpha * models.pos.beta[-2], (num_conds,1))
+    param_b = models.pos.alpha * (1 - models.pos.beta[0:-1].sum());
+    pg = np.random.beta( param_a, param_b).flatten()
+    
+    models.pos.dist[:,-1] += np.log10(pg)
+    models.pos.dist = np.append(models.pos.dist, np.tile(np.log10(1-pg) + dist_end, (1,1)).transpose(), 1)
+    
+    ## The slightly trickier case of distributions which depend on g as well as
+    ## other variables (in this case, both depend on b) : Need to grab out slices of 
+    ## distributions and insert into new model with gaps in interior rows
+
+    ## Add rows to the input distributions for all the models dependent on g
+    ## at the next time step: (trans [not used yet], cont)
+    old_cont = models.cont.pairCounts
+    models.cont.pairCounts = np.zeros((b_max*g_max,b_max))
+    old_cont_dist = models.cont.dist
+    models.cont.dist = np.zeros((b_max*g_max,b_max))
+    
+    old_cont_ind = 0
+    
+    old_fork = models.fork.pairCounts
+    models.fork.pairCounts = np.zeros((b_max*g_max,2))
+    old_fork_dist = models.fork.dist
+    models.fork.dist = np.zeros((b_max*g_max,2))
+    
+    for b in range(0, b_max):
+        bg = b * g_max
+        models.cont.pairCounts[bg:bg+g_max-1,:] = old_cont[old_cont_ind:old_cont_ind+g_max-1,:]
+        models.cont.dist[bg:bg+g_max-1,:] = old_cont_dist[old_cont_ind:old_cont_ind+g_max-1,:]
+        models.cont.dist[bg+g_max-1,0] = -np.inf
+        models.cont.dist[bg+g_max-1,1:] = np.log10(sampler.sampleSimpleDirichlet(sample.alpha_b * sample.beta_b[0,1:]))
+        
+        models.fork.pairCounts[bg:bg+g_max-1,:] = old_fork[old_cont_ind:old_cont_ind+g_max-1,:]
+        models.fork.dist[bg:bg+g_max-1,:] = old_fork_dist[old_cont_ind:old_cont_ind+g_max-1,:]
+        models.fork.dist[bg+g_max-1,:] = np.log10(sampler.sampleSimpleBernoulli(sample.alpha_f * sample.beta_f))
+        
+        old_cont_ind = old_cont_ind + g_max - 1
 
 
 def initialize_models(models, max_output, params, corpus_shape):
