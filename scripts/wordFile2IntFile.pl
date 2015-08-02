@@ -16,6 +16,7 @@ while(<STDIN>){
   my @words = split /\s+/;
   my $buf;
   for my $element (@words){
+    $pos = "";
     $element = lc($element);
     if($element =~ m/(.+)\/(.+)/){
       $pos = $1;
