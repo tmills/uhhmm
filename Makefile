@@ -2,6 +2,12 @@
 all:  config/myconfig.ini
 	python3 scripts/d1trainer.py $<
 
+debug: config/debug.ini
+	python3 -m pdb scripts/d1trainer.py $<
+
+short: config/debug.ini
+	python3 scripts/d1trainer.py $<
+
 config/myconfig.ini:  config/d1train.ini
 	cp $< $@
 
@@ -22,3 +28,21 @@ data/good_sents_tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-
 
 data/good_sents_tagwords_ints.txt:data/good_sents_tagwords.txt
 	cat $< | perl scripts/wordFile2IntFile.pl data/dict.txt > $@
+
+############################
+# Targets for building input files for morphologically-rich languages (tested on Korean wikipedia)
+############################
+
+.PRECIOUS: data/%.morf.txt genmodel/%.morf.model
+
+data/%.ints.txt: data/%.txt
+	cat $< | perl scripts/wordFile2IntFile.pl data/$*.dict > $@
+
+data/%.morf.txt: data/%.txt genmodel/%.morf.model
+	cat $< | morfessor-segment -l genmodel/$*.morf.model - | perl scripts/morf2sents.pl > $@
+
+
+genmodel/%.morf.model: data/%.txt
+	morfessor-train -s $@ $^
+
+	
