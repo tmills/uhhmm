@@ -134,15 +134,15 @@ def sample_beam(ev_seqs, params, report_function):
     
     sample = Sample()
 #    sample.hid_seqs = hid_seqs
-    sample.alpha_a = float(params.get('alphaa'))
+    sample.alpha_a = models.root.alpha ## float(params.get('alphaa'))
     sample.alpha_b = float(params.get('alphab'))
 #    sample.alpha_g = float(params.get('alphag'))
     sample.alpha_f = float(params.get('alphaf'))
     sample.alpha_j = float(params.get('alphaj'))
     ## use plus 2 here (until moved later) since we need the null state (0) as well as 
     ## the extra part of the stick for "new tables"
-    sample.beta_a = np.ones((1,start_a+2)) / start_a
-    sample.beta_a[0][0] = 0
+    sample.beta_a = models.root.beta ## np.ones((1,start_a+2)) / start_a
+#    sample.beta_a[0][0] = 0
     sample.beta_b = np.ones((1,start_b+2)) / start_b
     sample.beta_b[0][0] = 0
     sample.beta_g = models.pos.beta
@@ -156,6 +156,9 @@ def sample_beam(ev_seqs, params, report_function):
     ## TODO -- make the Models class do this in a resample_all() method
     models.lex.sampleDirichlet(params['h'])
     models.pos.selfSampleDirichlet()
+    if np.argwhere(np.isnan(models.pos.dist)).size > 0:
+        logging.error("Resampling the pos dist resulted in a nan")
+        
     models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
     models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
     models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
@@ -173,16 +176,29 @@ def sample_beam(ev_seqs, params, report_function):
     
     while len(samples) < num_samples:
         
-        models.pos.u = models.pos.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)))
-
+        models.pos.u =  models.pos.trans_prob +  np.log10(np.random.random((len(ev_seqs), maxLen)))
+        models.root.u = models.root.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)))
+        
         ## Break off the beta sticks before actual processing -- instead of determining during
         ## inference whether to create a new state we use an auxiliary variable u to do it
         ## ahead of time, but note there is no guarantee we will ever use it.
         ## TODO: Resample beta, which will allow for unused probability mass to go to the end again?
         while g_max < 50 and models.pos.u.min() < models.pos.dist[:,-1].max():
+            logging.info('Breaking g stick')
             break_g_stick(models, sample, params)
+            if np.argwhere(np.isnan(models.pos.dist)).size > 0:
+                logging.error("Breaking the g stick resulted in a nan in the output distribution")
             
-
+        if g_max >= 50:
+            logging.warn('Stick-breaking (g) terminated due to hard limit and not gracefully.')
+        
+        while a_max < 20 and models.root.u.min() < max(models.root.dist[:,-1].max(),models.act.dist[:,-1].max()):
+            logging.info('Breaking a stick')
+            break_a_stick(models, sample, params)
+            
+        if a_max >= 20:
+            logging.warn('Stick-breaking (a) terminated due to hard limit and not gracefully.')
+        
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
         a_max = models.act.dist.shape[1]
@@ -270,8 +286,8 @@ def sample_beam(ev_seqs, params, report_function):
         next_sample.beta_f = sample.beta_f
         next_sample.alpha_j = sample.alpha_j
         next_sample.beta_j = sample.beta_j
-        next_sample.alpha_a = sample.alpha_a
-        next_sample.beta_a = sample.beta_a
+        next_sample.alpha_a = models.root.alpha
+        next_sample.beta_a = models.root.beta
         next_sample.alpha_b = sample.alpha_b
         next_sample.beta_b = sample.beta_b
 #        next_sample.alpha_g = sample.alpha_g
@@ -309,48 +325,105 @@ def sample_beam(ev_seqs, params, report_function):
 
     return (samples, stats)
 
+def add_model_column(model):
+    num_conds = model.dist.shape[0]
+    model.pairCounts = np.append(model.pairCounts, np.zeros((num_conds, 1)), 1)
+    dist_end = model.dist[:,-1]
+    param_a = np.tile(model.alpha * model.beta[-2], (num_conds, 1))
+    param_b = model.alpha * (1 - model.beta[0:-1].sum())
+    if param_a.min() < 1e-2 or param_b < 1e-2:
+        pg = np.random.binomial(1, param_a / (param_a+param_b)).flatten()
+    else:
+        pg = np.random.beta(param_a, param_b).flatten()
 
+    model.dist[:,-1] = np.log10(pg)
+    model.dist = np.append(model.dist, np.tile(np.log10(1-pg) + dist_end, (1,1)).transpose(), 1)
+    if np.argwhere(np.isnan(model.dist)).size > 0:
+        logging.error("Addition of column resulted in nan!")
 
+def add_model_row_simple(model, base):
+    num_outs = model.dist.shape[1]
+    model.pairCounts = np.append(model.pairCounts, np.zeros((1,num_outs)), 0)
+    model.dist = np.append(model.dist, np.zeros((1,num_outs)), 0)
+    model.dist[-1,0] = -np.inf
+    model.dist[-1,1:] = np.log10(sampler.sampleSimpleDirichlet(model.pairCounts[-1,1:] + base))
+    if np.argwhere(np.isnan(model.dist)).size > 0:
+        logging.error("Addition of column resulted in nan!")
+
+def break_beta_stick(model, gamma):
+    beta_end = model.beta[-1]
+    new_group_fraction = np.random.beta(1, gamma)
+    model.beta = np.append(model.beta, np.zeros(1))
+    model.beta[-2] = new_group_fraction * beta_end
+    model.beta[-1] = (1-new_group_fraction) * beta_end
+
+def break_a_stick(models, sample, params):
+    global a_max, b_max, g_max
+    
+    a_max += 1
+    
+    ## Break the a stick (stored in root by convention -- TODO --  move this out to its own class later)
+    break_beta_stick(models.root, sample.gamma)
+    models.act.beta = models.root.beta
+    
+    ## Add a column to each of the out distributions (ACT and ROOT)
+    add_model_column(models.root)
+    add_model_column(models.act)  
+    
+    ## Add a row to the j distribution (TODO)
+    ## Add a row to the ACT distributions (which depends on a_{t-1})
+    add_model_row_simple(models.act, models.act.alpha * models.act.beta[1:])
+    
+    ## For boolean variables can't do the simple row add:
+    models.reduce.pairCounts = np.append(models.reduce.pairCounts, np.zeros((1,2)), 0)
+    new_dist = np.log10([[0.5, 0.5]])
+    models.reduce.dist = np.append(models.reduce.dist, new_dist, 0)
+    
+    old_start = models.start.pairCounts
+    models.start.pairCounts = np.zeros((a_max*a_max,b_max))
+    old_start_dist = models.start.dist
+    models.start.dist = np.zeros((a_max*a_max,b_max))
+    old_start_ind = 0
+    
+    ## Add intermittent rows to the start distribution (depends on a_{t-1}, a_t)
+    ## Special case -- because both variables are 'a', we can't go all the way to a_max in the
+    ## range variable -- that will take us too far. The last case we will handle just below
+    ## this loop and do all at once.
+    for a in range(0,a_max-1):
+        aa = a * a_max
+        models.start.pairCounts[aa:aa+a_max-1,:] = old_start[old_start_ind:old_start_ind+a_max-1,:]
+        models.start.dist[aa:aa+a_max-1,:] = old_start_dist[old_start_ind:old_start_ind+a_max-1,:]
+        models.start.dist[aa+a_max-1,0] = -np.inf
+        models.start.dist[aa+a_max-1,1:] = np.log10(sampler.sampleSimpleDirichlet(sample.alpha_b * sample.beta_b[0,1:]))
+        old_start_ind += a_max - 1
+
+    ## Also need to add a whole block at the end
+    aa = a_max * (a_max - 1)
+    for a in range(0,a_max):
+        models.start.dist[aa+a,0] = -np.inf
+        models.start.dist[aa+a,1:] = np.log10(sampler.sampleSimpleDirichlet(sample.alpha_b * sample.beta_b[0,1:]))
+
+        
 def break_g_stick(models, sample, params):
     global a_max, b_max, g_max
     
     g_max += 1
     num_conds = models.pos.dist.shape[0]
-    
-     
-    ## Add a row to the lexical distribution for this new POS tag:
-    num_outs = models.lex.dist.shape[1]
-    models.lex.pairCounts = np.append(models.lex.pairCounts, np.zeros((1,num_outs)), 0)
-    models.lex.dist = np.append(models.lex.dist, np.zeros((1,num_outs)) , 0)
-    models.lex.dist[-1,0] = -np.inf
-    models.lex.dist[-1,1:] = np.log10(sampler.sampleSimpleDirichlet(models.lex.pairCounts[-1,1:] + params['h'][0,1:]))
-    
-    ## Add a row to the awaited (b) model for the new conditional value of g 
-    models.root.pairCounts = np.append(models.root.pairCounts, np.zeros((1,a_max)), 0)
-    models.root.dist = np.append(models.root.dist, np.zeros((1,a_max)), 0)
-    models.root.dist[-1,0] = -np.inf
-    models.root.dist[-1,1:] = np.log10(sampler.sampleSimpleDirichlet(models.root.pairCounts[-1,1:] + sample.alpha_a * sample.beta_a[0,1:]))
-    
-    
+
     ## Resample beta when the stick is broken:
-    beta_end = models.pos.beta[-1]
-    new_group_fraction = np.random.beta(1, sample.gamma);
-    models.pos.beta = np.append(models.pos.beta, np.zeros(1))
-    models.pos.beta[-2] = new_group_fraction * beta_end
-    models.pos.beta[-1] = (1-new_group_fraction) * beta_end
+    break_beta_stick(models.pos, sample.gamma)
     
     if models.pos.beta[-1] == 0.0:
         logging.error("This shouldn't be 0!")
     
     ## Add a column to the distribution that outputs POS tags:
-    models.pos.pairCounts = np.append(models.pos.pairCounts, np.zeros((num_conds,1)), 1)
-    dist_end = models.pos.dist[:,-1]
-    param_a = np.tile(models.pos.alpha * models.pos.beta[-2], (num_conds,1))
-    param_b = models.pos.alpha * (1 - models.pos.beta[0:-1].sum());
-    pg = np.random.beta( param_a, param_b).flatten()
+    add_model_column(models.pos)
+
+    ## Add a row to the lexical distribution for this new POS tag:
+    add_model_row_simple(models.lex, params['h'][0,1:])
     
-    models.pos.dist[:,-1] += np.log10(pg)
-    models.pos.dist = np.append(models.pos.dist, np.tile(np.log10(1-pg) + dist_end, (1,1)).transpose(), 1)
+    ## Add a row to the awaited (b) model for the new conditional value of g 
+    add_model_row_simple(models.root, sample.alpha_a * sample.beta_a[1:])
     
     ## The slightly trickier case of distributions which depend on g as well as
     ## other variables (in this case, both depend on b) : Need to grab out slices of 
@@ -397,8 +470,10 @@ def initialize_models(models, max_output, params, corpus_shape):
     models.reduce = Model((a_max, 2))
     
     ## One active model:
-    models.act = Model((a_max, a_max))
-    models.root = Model((g_max, a_max))
+    models.act = Model((a_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape)
+    models.root = Model((g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape)
+    models.root.beta = np.zeros(a_max)
+    models.root.beta[1:] = np.ones(a_max-1) / (a_max-1)
     ## two awaited models:
     models.cont = Model(((g_max)*(b_max),b_max))
     models.start = Model(((a_max)*(a_max), b_max))
@@ -469,11 +544,11 @@ def collect_trans_probs(hid_seqs, models):
                 prevBG = bg_state(prevState.b, prevState.g)
                 ## Count F & J
                 if index == 1:
-                    models.root.trans_prob = models.root.dist[prevState.g, state.a]
+                    models.root.trans_prob[sent_index,index] = models.root.dist[prevState.g, state.a]
 
                     ## Count A & B
                     if state.f == 0 and state.j == 0:
-                        models.act.trans_prob = models.act.dist[prevState.a, state.a]
+                        models.root.trans_prob[sent_index,index] = models.act.trans_prob[sent_index,index] = models.act.dist[prevState.a, state.a]
 
                 if state.j == 0:
                     aa = aa_state(prevState.a, state.a)

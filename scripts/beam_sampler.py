@@ -91,18 +91,21 @@ class Sampler(Process):
                         for a in range(1,ihmm.getAmax()):
                             if f == 0 and j == 0:
                                 ## active transition:
-                                cumProbs[2] = cumProbs[1] + models.act.dist[prevA,a]
+                                cumProbs[2] = cumProbs[1] + np.log10(models.act.dist[prevA,a] > models.act.u[sent_index,index])
                             elif f == 1 and j == 0:
                                 ## root -- technically depends on prevA and prevG
                                 ## but in depth 1 this case only comes up at start
                                 ## of sentence and prevA will always be 0
-                                cumProbs[2] = cumProbs[1] + models.root.dist[prevG,a]
+                                cumProbs[2] = cumProbs[1] +  np.log10(models.root.dist[prevG,a] > models.root.u[sent_index, index])
                             elif f == 1 and j == 1 and prevA == a:
                                 cumProbs[2] = cumProbs[1]
                             else:
                                 ## zero probability here
                                 continue
                         
+                            if cumProbs[2] == -np.inf:
+                                continue
+
                             prevAa = ihmm.aa_state(prevA, a)
                         
                             for b in range(1,ihmm.getBmax()):
@@ -123,6 +126,11 @@ class Sampler(Process):
                                 logging.debug(range_probs)
                                 
                                 dyn_prog[state_range,index] = lm.log_vector_add(dyn_prog[state_range,index], range_probs)
+
+        
+            if np.argwhere(np.logical_not(np.isnan(dyn_prog[:,4]))).size == 0:
+                logging.error("Error: Every value in the forward probability is nan!")
+                sys.exit(-1)
 
         ## For the last token, multiply in the probability
         ## of transitioning to the end state. also can add up
@@ -188,17 +196,21 @@ class Sampler(Process):
                     trans_prob += models.cont.dist[prevBG,nb]
       
                 trans_prob += models.pos.dist[nb,ng]
+                if np.isnan(trans_prob):
+                    logging.error("pos model is nan!")
+                    
                 dyn_prog[ind,t] += trans_prob
 
-            dyn_prog[:,t] = lm.normalize_from_log(dyn_prog[:,t])
-            sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,t]))
+            normalized_dist = lm.normalize_from_log(dyn_prog[:,t])
+            sample_t = sum(np.random.random() > np.cumsum(normalized_dist))
             state_list = ihmm.extractStates(sample_t, totalK)
             
             sample_state = ihmm.State(state_list)
             if t > 0 and sample_state.g == 0:
                 logging.error("Error: Sampled a g=0 state in backwards pass! {0}".format(sample_state.str()))
             sample_seq.append(sample_state)
-
+            dyn_prog[:,t] = normalized_dist
+            
         sample_seq.reverse()
         logging.debug("Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
         return sample_seq
