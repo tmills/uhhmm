@@ -3,6 +3,7 @@
 \usepackage{verbatim}
 \usepackage{tikz}
 \usepackage{tikz-qtree}
+\usepackage{todonotes}
 \usetikzlibrary{fit,positioning}
 \definecolor{mygray}{RGB}{200,200,200}
 
@@ -85,6 +86,8 @@ p_{W}(w_t|s_t) = p_{LEX}(w_t | g_t)
 Lexical item ($w_t$) only depends on the part of speech tag ($g_t$) at the same time step.
 
 \section{Graphical Model}
+
+\todo[inline]{In Figure~\ref{fig:hhmm_eg}, it is somewhat confusing to see the $-$ symbol used as both a minus sign (in the $f$ and $j$ variables) and as a syntactic placeholder symbol (in the $a$ and $b$ nodes. If possible, use a different symbol in the $a$ and $b$ nodes.}
 
 \begin{figure}[p]
 a) F--,J--:\hspace{-15mm}
@@ -389,7 +392,7 @@ d) F+,J+:\hspace{-15mm}
 \end{figure}
 \end{comment}
 
-
+\clearpage
 \section{Inference Algorithm}
 
 
