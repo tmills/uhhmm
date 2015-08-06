@@ -118,9 +118,10 @@ def sample_beam(ev_seqs, params, report_function):
     num_samples = int(params.get('num_samples'))
     num_procs = int(params.get('num_procs'))
     debug = params.get('debug')
-    cython = params.get('cython')
+    profile = params.get('profile')
     
-    if cython:
+    if not profile:
+        logging.info('profile is set to %s, importing and installing pyx' % profile)    
         import pyximport; pyximport.install()
 
     import beam_sampler

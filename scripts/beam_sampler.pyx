@@ -1,5 +1,3 @@
-# cython: profile=True
-
 import ihmm
 import logging
 import time
