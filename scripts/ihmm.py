@@ -7,7 +7,6 @@ import numpy as np
 import ihmm_sampler as sampler
 import pdb
 import sys
-from beam_sampler import *
 from log_math import *
 from multiprocessing import Process,Queue,JoinableQueue
 
@@ -119,8 +118,13 @@ def sample_beam(ev_seqs, params, report_function):
     num_samples = int(params.get('num_samples'))
     num_procs = int(params.get('num_procs'))
     debug = params.get('debug')
+    cython = params.get('cython')
     
-#    num_iters = burnin + (samples-1)*iters
+    if cython:
+        import pyximport; pyximport.install()
+
+    import beam_sampler
+    
     samples = []
     
     maxLen = max(map(len, ev_seqs))
@@ -165,6 +169,8 @@ def sample_beam(ev_seqs, params, report_function):
     models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
     models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
     models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+    
+    sample.models = models
     collect_trans_probs(hid_seqs, models)
     
     stats = Stats()
@@ -175,7 +181,8 @@ def sample_beam(ev_seqs, params, report_function):
     iter = 0
     
     while len(samples) < num_samples:
-        
+        sample.iter = iter
+
         models.pos.u =  models.pos.trans_prob +  np.log10(np.random.random((len(ev_seqs), maxLen)) )
         models.root.u = models.root.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)) )
         models.cont.u = models.cont.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)) )
@@ -238,7 +245,7 @@ def sample_beam(ev_seqs, params, report_function):
             sent_q.put(None)
             
             ## Initialize and start the sub-process
-            inf_procs[cur_proc] = Sampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc)
+            inf_procs[cur_proc] = beam_sampler.Sampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc)
             if debug:
                 ## calling run instead of start just treats it like a plain object --
                 ## doesn't actually do a fork. So we'll just block here for it to finish
@@ -261,8 +268,8 @@ def sample_beam(ev_seqs, params, report_function):
             num_processed += 1
             (sent_index, sent_sample, log_prob) = state_q.get()
             #logging.debug("Incrementing count for sent index %d and %d sentences left in queue" % (sent_index, len(ev_seqs)-num_processed))
-            if sent_index % 10 == 0:
-                logging.info("Processed sentence {0}".format(sent_index))
+#            if sent_index % 10 == 0:
+#                logging.info("Processed sentence {0}".format(sent_index))
             #pdb.set_trace()
             increment_counts(sent_sample, ev_seqs[sent_index], models, sent_index)
             sample_map[sent_index] = sent_sample
@@ -327,7 +334,6 @@ def sample_beam(ev_seqs, params, report_function):
         collect_trans_probs(prev_sample.hid_seqs, models)
         
         sample.models = models
-        sample.iter = iter
         
         iter += 1
         

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+# cython: profile=True
 
 import ihmm
 import logging
@@ -46,13 +46,14 @@ class Sampler(Process):
             self.out_q.put((sent_index, sent_sample,log_prob))
             
             if log_prob > 0:
-                logging.error("Sentence %d had positive log probability %f" % (sent_index, log_prob))
+                logging.error('Sentence %d had positive log probability %f' % (sent_index, log_prob))
             
             #logging.debug("Thread %d required %d s to process sentence.", self.tid, (t1-t0))
 
     def get_sample(self):
         return self.sent_sample
-
+    
+#    @profile
     def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
         g_max = ihmm.getGmax()
         ## keep track of forward probs for this sentence:
@@ -114,24 +115,29 @@ class Sampler(Process):
                                 else:
                                     cumProbs[3] = cumProbs[2] + models.start.dist[prevAa,b]
                             
-                                logging.debug(cumProbs)
+                                #logging.debug(cumProbs)
                                 # Multiply all the g's in one pass:
                                 ## range gets the range of indices in the forward pass
                                 ## that are contiguous in the state space
                                 state_range = ihmm.getStateRange(f,j,a,b)
                                 
-                                logging.debug(dyn_prog[state_range, index])
+                                #logging.debug(dyn_prog[state_range, index])
                                 
-                                range_probs = cumProbs[3] + np.log10(models.pos.dist[b,:] > models.pos.u[sent_index,index]) + models.lex.dist[:,token]
-                                logging.debug(range_probs)
+                                valid_inds = np.where(models.pos.dist[b,:] > models.pos.u[sent_index,index])
+                                effective_probs = np.zeros(models.pos.dist[b,:].shape) + -np.inf
+                                effective_probs[valid_inds] = 0
+                                
+                                range_probs = cumProbs[3] + effective_probs + models.lex.dist[:,token]
+                                #logging.debug(range_probs)
                                 
                                 dyn_prog[state_range,index] = lm.log_vector_add(dyn_prog[state_range,index], range_probs)
 
         
-            if np.argwhere(np.logical_not(np.isnan(dyn_prog[:,4]))).size == 0:
+            if np.argwhere(np.logical_not(np.isnan(dyn_prog[:,index]))).size == 0:
                 logging.error("Error: Every value in the forward probability is nan!")
                 sys.exit(-1)
 
+        
         ## For the last token, multiply in the probability
         ## of transitioning to the end state. also can add up
         ## total probability of data given model here.
@@ -151,6 +157,9 @@ class Sampler(Process):
         if np.argwhere(dyn_prog.max(0)[0:last_index+1] == -np.inf).size > 0:
             logging.error("Error; There is a word with no positive probabilities for its generation")
             sys.exit(-1)
+
+        if sent_index % 10 == 0:
+            logging.info("Processed sentence {0}".format(sent_index))
 
         return dyn_prog, sentence_log_prob
 
