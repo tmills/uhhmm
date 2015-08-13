@@ -58,7 +58,7 @@ class Sampler(Process):
         for index,token in enumerate(sent):
             if index == 0:
                 g0_ind = ihmm.getStateIndex(0,0,0,0,0)
-                dyn_prog[g0_ind:g0_ind+g_max,0] = models.lex.dist[:,token]
+                dyn_prog[g0_ind+1:g0_ind+g_max,0] = models.lex.dist[1:,token]
                 logging.debug(dyn_prog[g0_ind:g0_ind+g_max,0])
             else:
                 for prevInd in range(0,dyn_prog.shape[0]):
@@ -148,7 +148,7 @@ class Sampler(Process):
             sentence_log_prob = lm.log_add(sentence_log_prob, dyn_prog[state, last_index])
             logging.debug(dyn_prog[state,last_index])
                        
-            if (a == 0 or b == 0 or g == 0) and dyn_prog[state, last_index] != -np.inf:
+            if last_index > 0 and (a == 0 or b == 0 or g == 0) and dyn_prog[state, last_index] != -np.inf:
                 logging.error("Error: Non-zero probability at g=0 in forward pass!")
                 sys.exit(-1)
 
@@ -172,7 +172,7 @@ class Sampler(Process):
         sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,last_index]))
                 
         sample_seq.append(ihmm.State(ihmm.extractStates(sample_t, totalK)))
-        if sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0:
+        if (last_index > 0 and (sample_seq[-1].a == 0 or sample_seq[-1].b == 0)) or sample_seq[-1].g == 0:
             logging.error("Error: First sample has a|b|g = 0")
             sys.exit(-1)
   
