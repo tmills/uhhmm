@@ -17,6 +17,7 @@ class FiniteSampler(Sampler):
         (self.pi, self.phi) = self.compile_models(self.state_size, models)
         
     def compile_models(self, totalK, models):
+        logging.info("Compiling component models into mega-HMM transition and observation matrices")
         pi = np.zeros((totalK, totalK))
         phi = np.zeros((totalK, models.lex.dist.shape[1]))
         
