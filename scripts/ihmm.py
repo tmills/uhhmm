@@ -7,7 +7,6 @@ import numpy as np
 import ihmm_sampler as sampler
 import pdb
 import sys
-from beam_sampler import *
 from finite_sampler import *
 from log_math import *
 from multiprocessing import Process,Queue,JoinableQueue

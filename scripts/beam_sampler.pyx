@@ -39,6 +39,9 @@ class Sampler(Process):
             self.dyn_prog[:,:] = -np.inf
             (self.dyn_prog, log_prob) = self.forward_pass(self.dyn_prog, sent, self.models, self.K, sent_index)
             sent_sample = self.reverse_sample(self.dyn_prog, sent, self.models, self.K, sent_index)
+            if sent_index % 10 == 0:
+                logging.info("Processed sentence {0}".format(sent_index))
+
             t1 = time.time()
             self.in_q.task_done()
             self.out_q.put((sent_index, sent_sample,log_prob))
@@ -155,9 +158,6 @@ class Sampler(Process):
         if np.argwhere(dyn_prog.max(0)[0:last_index+1] == -np.inf).size > 0:
             logging.error("Error; There is a word with no positive probabilities for its generation")
             sys.exit(-1)
-
-        if sent_index % 10 == 0:
-            logging.info("Processed sentence {0}".format(sent_index))
 
         return dyn_prog, sentence_log_prob
 

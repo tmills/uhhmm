@@ -6,8 +6,9 @@ import time
 import numpy as np
 import log_math as lm
 import sys
-from beam_sampler import *
 from multiprocessing import Process,Queue,JoinableQueue
+import pyximport; pyximport.install()
+from beam_sampler import *
 
 class FiniteSampler(Sampler):
     def __init__(self, in_q, out_q, models, totalK, maxLen, tid):
