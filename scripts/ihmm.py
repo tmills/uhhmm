@@ -8,6 +8,7 @@ import ihmm_sampler as sampler
 import pdb
 import sys
 from beam_sampler import *
+from finite_sampler import *
 from log_math import *
 from multiprocessing import Process,Queue,JoinableQueue
 
@@ -118,7 +119,8 @@ def sample_beam(ev_seqs, params, report_function):
     iters = int(params.get('sample_iters'))
     num_samples = int(params.get('num_samples'))
     num_procs = int(params.get('num_procs'))
-    debug = params.get('debug')
+    debug = bool(params.get('debug'))
+    finite = bool(params.get('finite'))
     
 #    num_iters = burnin + (samples-1)*iters
     samples = []
@@ -176,36 +178,37 @@ def sample_beam(ev_seqs, params, report_function):
     
     while len(samples) < num_samples:
         
-        models.pos.u =  models.pos.trans_prob +  np.log10(np.random.random((len(ev_seqs), maxLen)) )
-        models.root.u = models.root.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)) )
-        models.cont.u = models.cont.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)) )
+        if not finite:
+            models.pos.u =  models.pos.trans_prob +  np.log10(np.random.random((len(ev_seqs), maxLen)) )
+            models.root.u = models.root.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)) )
+            models.cont.u = models.cont.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)) )
         
-        ## Break off the beta sticks before actual processing -- instead of determining during
-        ## inference whether to create a new state we use an auxiliary variable u to do it
-        ## ahead of time, but note there is no guarantee we will ever use it.
-        ## TODO: Resample beta, which will allow for unused probability mass to go to the end again?
-        while a_max < 20 and models.root.u.min() < max(models.root.dist[:,-1].max(),models.act.dist[:,-1].max()):
-            logging.info('Breaking a stick')
-            break_a_stick(models, sample, params)
+            ## Break off the beta sticks before actual processing -- instead of determining during
+            ## inference whether to create a new state we use an auxiliary variable u to do it
+            ## ahead of time, but note there is no guarantee we will ever use it.
+            ## TODO: Resample beta, which will allow for unused probability mass to go to the end again?
+            while a_max < 20 and models.root.u.min() < max(models.root.dist[:,-1].max(),models.act.dist[:,-1].max()):
+                logging.info('Breaking a stick')
+                break_a_stick(models, sample, params)
             
-        if a_max >= 20:
-            logging.warn('Stick-breaking (a) terminated due to hard limit and not gracefully.')
+            if a_max >= 20:
+                logging.warn('Stick-breaking (a) terminated due to hard limit and not gracefully.')
         
-        while b_max < 50 and models.cont.u.min() < models.cont.dist[:,-1].max():
-            logging.info('Breaking b stick')
-            break_b_stick(models, sample, params)
+            while b_max < 50 and models.cont.u.min() < models.cont.dist[:,-1].max():
+                logging.info('Breaking b stick')
+                break_b_stick(models, sample, params)
 
-        if b_max >= 50:
-            logging.warn('Stick-breaking (b) terminated due to hard limit and not gracefully.')
+            if b_max >= 50:
+                logging.warn('Stick-breaking (b) terminated due to hard limit and not gracefully.')
 
-        while g_max < 50 and models.pos.u.min() < models.pos.dist[:,-1].max():
-            logging.info('Breaking g stick')
-            break_g_stick(models, sample, params)
-            if np.argwhere(np.isnan(models.pos.dist)).size > 0:
-                logging.error("Breaking the g stick resulted in a nan in the output distribution")
+            while g_max < 50 and models.pos.u.min() < models.pos.dist[:,-1].max():
+                logging.info('Breaking g stick')
+                break_g_stick(models, sample, params)
+                if np.argwhere(np.isnan(models.pos.dist)).size > 0:
+                    logging.error("Breaking the g stick resulted in a nan in the output distribution")
             
-        if g_max >= 50:
-            logging.warn('Stick-breaking (g) terminated due to hard limit and not gracefully.')
+            if g_max >= 50:
+                logging.warn('Stick-breaking (g) terminated due to hard limit and not gracefully.')
         
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
@@ -238,7 +241,10 @@ def sample_beam(ev_seqs, params, report_function):
             sent_q.put(None)
             
             ## Initialize and start the sub-process
-            inf_procs[cur_proc] = Sampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc)
+            if finite:
+                inf_procs[cur_proc] = FiniteSampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc)
+            else:
+                inf_procs[cur_proc] = Sampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc)
             if debug:
                 ## calling run instead of start just treats it like a plain object --
                 ## doesn't actually do a fork. So we'll just block here for it to finish
