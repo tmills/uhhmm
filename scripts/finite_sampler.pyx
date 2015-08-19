@@ -6,88 +6,98 @@ import time
 import numpy as np
 import log_math as lm
 import sys
+import scipy.sparse
 from multiprocessing import Process,Queue,JoinableQueue
 import pyximport; pyximport.install()
 from beam_sampler import *
 
-class FiniteSampler(Sampler):
-    def __init__(self, in_q, out_q, models, totalK, maxLen, tid):
-        Sampler.__init__(self, in_q, out_q, models, totalK, maxLen, tid)
-        ## TODO -- compute total model matrix dimensions
-        self.state_size = totalK
-        (self.pi, self.phi) = self.compile_models(self.state_size, models)
-        
-    def compile_models(self, totalK, models):
-        logging.info("Compiling component models into mega-HMM transition and observation matrices")
-        pi = np.zeros((totalK, totalK))
-        phi = np.zeros((totalK, models.lex.dist.shape[1]))
-        
-        ## For previous state i:
-        for prevState in range(0,totalK):
-            (prevF, prevJ, prevA, prevB, prevG) = ihmm.extractStates(prevState, totalK)
-            cumProbs = np.zeros(5)
-            prevBG = ihmm.bg_state(prevB,prevG)
-            ## Sample f & j:
-            for f in (0,1):
-                if prevA == 0 and prevB == 0 and f == 0:
-                    continue
+#@profile
+def compile_models(totalK, models):
+    logging.info("Compiling component models into mega-HMM transition and observation matrices")
+    t0 = time.time()
+    pi = np.zeros((totalK, totalK))
+    phi = np.zeros((totalK, models.lex.dist.shape[1]))
+#    pi = scipy.sparse.lil_matrix((totalK, totalK))
+#    phi = scipy.sparse.lil_matrix((totalK, models.lex.dist.shape[1]))
+    
+    ## Take exponent out of inner loop:
+    word_dist = 10**models.lex.dist
+    
+    ## For previous state i:
+    for prevState in range(0,totalK):
+        (prevF, prevJ, prevA, prevB, prevG) = ihmm.extractStates(prevState, totalK)
+        cumProbs = np.zeros(5)
+        prevBG = ihmm.bg_state(prevB,prevG)
+        ## Sample f & j:
+        for f in (0,1):
+            if prevA == 0 and prevB == 0 and f == 0:
+                continue
 
-                cumProbs[0] = (10**models.fork.dist[prevBG,f])
+            cumProbs[0] = (10**models.fork.dist[prevBG,f])
 
-                for j in (0,1):
-                    ## At depth 1 -- no probability model for j
-                    if prevA == 0 and prevB == 0:
-                        ## index 1:
-                        if j == 0:
-                            cumProbs[1] = cumProbs[0]
-                        else:
-                            cumProbs[1] = 0
-                            ## No point in continuing -- matrix is zero'd to start
-                            continue
-                    
-                    elif f == j:
+            for j in (0,1):
+                ## At depth 1 -- no probability model for j
+                if prevA == 0 and prevB == 0:
+                    ## index 1:
+                    if j == 0:
                         cumProbs[1] = cumProbs[0]
                     else:
                         cumProbs[1] = 0
-                        continue    
-            
-                    for a in range(1,ihmm.getAmax()):
-                        if f == 0 and j == 0:
-                            ## active transition:
-                            cumProbs[2] = cumProbs[1] * (10**models.act.dist[prevA,a])
-                        elif f == 1 and j == 0:
-                            ## root -- technically depends on prevA and prevG
-                            ## but in depth 1 this case only comes up at start
-                            ## of sentence and prevA will always be 0
-                            cumProbs[2] = cumProbs[1] * (10**models.root.dist[prevG,a])
-                        elif f == 1 and j == 1 and prevA == a:
-                            cumProbs[2] = cumProbs[1]
-                        else:
-                            ## zero probability here
-                            continue
-            
-                        if cumProbs[2] == -np.inf:
-                            continue
-
-                        prevAa = ihmm.aa_state(prevA, a)
-            
-                        for b in range(1,ihmm.getBmax()):
-                            if j == 1:
-                                cumProbs[3] = cumProbs[2] * (10**models.cont.dist[prevBG,b])
-                            else:
-                                cumProbs[3] = cumProbs[2] * (10**models.start.dist[prevAa,b])
+                        ## No point in continuing -- matrix is zero'd to start
+                        continue
                 
-                            # Multiply all the g's in one pass:
-                            ## range gets the range of indices in the forward pass
-                            ## that are contiguous in the state space
-                            state_range = ihmm.getStateRange(f,j,a,b)
-                                         
-                            range_probs = cumProbs[3] * (10**models.pos.dist[b,:])
-                            pi[prevState, state_range] = range_probs
-                            phi[state_range,:] = 10**models.lex.dist
-                    
-        return (np.matrix(pi), np.matrix(phi))
+                elif f == j:
+                    cumProbs[1] = cumProbs[0]
+                else:
+                    cumProbs[1] = 0
+                    continue    
+        
+                for a in range(1,ihmm.getAmax()):
+                    if f == 0 and j == 0:
+                        ## active transition:
+                        cumProbs[2] = cumProbs[1] * (10**models.act.dist[prevA,a])
+                    elif f == 1 and j == 0:
+                        ## root -- technically depends on prevA and prevG
+                        ## but in depth 1 this case only comes up at start
+                        ## of sentence and prevA will always be 0
+                        cumProbs[2] = cumProbs[1] * (10**models.root.dist[prevG,a])
+                    elif f == 1 and j == 1 and prevA == a:
+                        cumProbs[2] = cumProbs[1]
+                    else:
+                        ## zero probability here
+                        continue
+        
+                    if cumProbs[2] == -np.inf:
+                        continue
+
+                    prevAa = ihmm.aa_state(prevA, a)
+        
+                    for b in range(1,ihmm.getBmax()):
+                        if j == 1:
+                            cumProbs[3] = cumProbs[2] * (10**models.cont.dist[prevBG,b])
+                        else:
+                            cumProbs[3] = cumProbs[2] * (10**models.start.dist[prevAa,b])
+            
+                        # Multiply all the g's in one pass:
+                        ## range gets the range of indices in the forward pass
+                        ## that are contiguous in the state space
+                        state_range = ihmm.getStateRange(f,j,a,b)
+                                     
+                        range_probs = cumProbs[3] * (10**models.pos.dist[b,:])
+                        pi[prevState, state_range] = range_probs
+                        phi[state_range,:] = word_dist
+    
+    time_spent = time.time() - t0
+    logging.info("Done in %d s" % time_spent)
+    return (np.matrix(pi, copy=False), np.matrix(phi, copy=False))
+#    return (scipy.sparse.bsr_matrix(pi), scipy.sparse.bsr_matrix(phi))
           
+class FiniteSampler(Sampler):
+    def __init__(self, pi, phi, in_q, out_q, models, totalK, maxLen, tid):
+        Sampler.__init__(self, in_q, out_q, models, totalK, maxLen, tid)
+        self.state_size = totalK
+        (self.pi, self.phi) = pi, phi
+
     def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
         ## keep track of forward probs for this sentence:
         g_max = ihmm.getGmax()

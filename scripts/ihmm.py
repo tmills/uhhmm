@@ -7,7 +7,6 @@ import numpy as np
 import ihmm_sampler as sampler
 import pdb
 import sys
-from finite_sampler import *
 from log_math import *
 from multiprocessing import Process,Queue,JoinableQueue
 
@@ -118,15 +117,17 @@ def sample_beam(ev_seqs, params, report_function):
     iters = int(params.get('sample_iters'))
     num_samples = int(params.get('num_samples'))
     num_procs = int(params.get('num_procs'))
-    debug = params.get('debug')
-    profile = params.get('profile')
-    finite = bool(params.get('finite'))
+    debug = bool(int(params.get('debug', 0)))
+    profile = bool(int(params.get('profile', 0)))
+    finite = bool(int(params.get('finite')))
     
     if not profile:
         logging.info('profile is set to %s, importing and installing pyx' % profile)    
         import pyximport; pyximport.install()
 
     import beam_sampler
+    import finite_sampler
+
     debug = bool(params.get('debug'))
     
     samples = []
@@ -219,25 +220,32 @@ def sample_beam(ev_seqs, params, report_function):
             
             if g_max >= 50:
                 logging.warn('Stick-breaking (g) terminated due to hard limit and not gracefully.')
-        
+            
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
         a_max = models.act.dist.shape[1]
         b_max = models.cont.dist.shape[1]
         g_max = models.pos.dist.shape[1]
         
-        logging.info("Number of a states=%d, b states=%d, g states=%d" % (a_max-2, b_max-2, g_max-2))
-        
         ## How many total states are there?
         ## 2*2*|Act|*|Awa|*|G|
         totalK = 2 * 2 * a_max * b_max * g_max
+
+        logging.info("Number of a states=%d, b states=%d, g states=%d, total=%d" % (a_max-2, b_max-2, g_max-2, totalK))
+        
+        
+        if finite:
+            (trans_mat, obs_mat) = finite_sampler.compile_models(totalK, models)
+        
         inf_procs = dict()
         cur_proc = 0
 
         sent_q = JoinableQueue() ## Input queue
         state_q = Queue() ## Output queue
         
-            
+        
+        logging.info("Placing sentences into shared queue")
+        
         ## Place all sentences into the input queue
         for sent_index,sent in enumerate(ev_seqs):
             sent_q.put((sent_index,sent))
@@ -245,6 +253,7 @@ def sample_beam(ev_seqs, params, report_function):
         ## Initialize all the sub-processes with their input-output queues,
         ## read-only models, and dimensions of matrix they'll need
         t0 = time.time()
+            
         for cur_proc in range(0,num_procs):
             ## For each sub-process add a "None" element to the queue that tells it that
             ## we are out of sentences (we've added them all above)
@@ -252,7 +261,7 @@ def sample_beam(ev_seqs, params, report_function):
             
             ## Initialize and start the sub-process
             if finite:
-                inf_procs[cur_proc] = FiniteSampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc)
+                inf_procs[cur_proc] = finite_sampler.FiniteSampler(trans_mat, obs_mat, sent_q, state_q, models, totalK, maxLen+1, cur_proc)
             else:
                 inf_procs[cur_proc] = Sampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc)
             if debug:
@@ -267,8 +276,7 @@ def sample_beam(ev_seqs, params, report_function):
         ## Close the queue
         sent_q.join()
         t1 = time.time()
-        logging.info(".")
-        logging.debug("Sampling time for this batch is %d s" % (t1-t0))
+        logging.info("Sampling time for this batch is %d s" % (t1-t0))
         
         t0 = time.time()
         num_processed = 0
@@ -290,7 +298,7 @@ def sample_beam(ev_seqs, params, report_function):
             sample.hid_seqs.append(sample_map[key])
 
         t1 = time.time()
-        logging.debug("Building counts tables took %d s" % (t1-t0))
+        logging.info("Building counts tables took %d s" % (t1-t0))
         
         if iter >= burnin and (iter-burnin) % iters == 0:
             samples.append(sample)
