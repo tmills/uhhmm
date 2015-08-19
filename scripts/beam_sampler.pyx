@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import ihmm
 import logging
 import time
@@ -41,25 +39,29 @@ class Sampler(Process):
             self.dyn_prog[:,:] = -np.inf
             (self.dyn_prog, log_prob) = self.forward_pass(self.dyn_prog, sent, self.models, self.K, sent_index)
             sent_sample = self.reverse_sample(self.dyn_prog, sent, self.models, self.K, sent_index)
+            if sent_index % 10 == 0:
+                logging.info("Processed sentence {0}".format(sent_index))
+
             t1 = time.time()
             self.in_q.task_done()
             self.out_q.put((sent_index, sent_sample,log_prob))
             
             if log_prob > 0:
-                logging.error("Sentence %d had positive log probability %f" % (sent_index, log_prob))
+                logging.error('Sentence %d had positive log probability %f' % (sent_index, log_prob))
             
             #logging.debug("Thread %d required %d s to process sentence.", self.tid, (t1-t0))
 
     def get_sample(self):
         return self.sent_sample
-
+    
+#    @profile
     def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
         g_max = ihmm.getGmax()
         ## keep track of forward probs for this sentence:
         for index,token in enumerate(sent):
             if index == 0:
                 g0_ind = ihmm.getStateIndex(0,0,0,0,0)
-                dyn_prog[g0_ind:g0_ind+g_max,0] = models.lex.dist[:,token]
+                dyn_prog[g0_ind+1:g0_ind+g_max,0] = models.lex.dist[1:,token]
                 logging.debug(dyn_prog[g0_ind:g0_ind+g_max,0])
             else:
                 for prevInd in range(0,dyn_prog.shape[0]):
@@ -114,24 +116,29 @@ class Sampler(Process):
                                 else:
                                     cumProbs[3] = cumProbs[2] + models.start.dist[prevAa,b]
                             
-                                logging.debug(cumProbs)
+                                #logging.debug(cumProbs)
                                 # Multiply all the g's in one pass:
                                 ## range gets the range of indices in the forward pass
                                 ## that are contiguous in the state space
                                 state_range = ihmm.getStateRange(f,j,a,b)
                                 
-                                logging.debug(dyn_prog[state_range, index])
+                                #logging.debug(dyn_prog[state_range, index])
                                 
-                                range_probs = cumProbs[3] + np.log10(models.pos.dist[b,:] > models.pos.u[sent_index,index]) + models.lex.dist[:,token]
-                                logging.debug(range_probs)
+                                valid_inds = np.where(models.pos.dist[b,:] > models.pos.u[sent_index,index])
+                                effective_probs = np.zeros(models.pos.dist[b,:].shape) + -np.inf
+                                effective_probs[valid_inds] = 0
+                                
+                                range_probs = cumProbs[3] + effective_probs + models.lex.dist[:,token]
+                                #logging.debug(range_probs)
                                 
                                 dyn_prog[state_range,index] = lm.log_vector_add(dyn_prog[state_range,index], range_probs)
 
         
-            if np.argwhere(np.logical_not(np.isnan(dyn_prog[:,4]))).size == 0:
+            if np.argwhere(np.logical_not(np.isnan(dyn_prog[:,index]))).size == 0:
                 logging.error("Error: Every value in the forward probability is nan!")
                 sys.exit(-1)
 
+        
         ## For the last token, multiply in the probability
         ## of transitioning to the end state. also can add up
         ## total probability of data given model here.
@@ -144,7 +151,7 @@ class Sampler(Process):
             sentence_log_prob = lm.log_add(sentence_log_prob, dyn_prog[state, last_index])
             logging.debug(dyn_prog[state,last_index])
                        
-            if (a == 0 or b == 0 or g == 0) and dyn_prog[state, last_index] != -np.inf:
+            if last_index > 0 and (a == 0 or b == 0 or g == 0) and dyn_prog[state, last_index] != -np.inf:
                 logging.error("Error: Non-zero probability at g=0 in forward pass!")
                 sys.exit(-1)
 
@@ -165,7 +172,7 @@ class Sampler(Process):
         sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,last_index]))
                 
         sample_seq.append(ihmm.State(ihmm.extractStates(sample_t, totalK)))
-        if sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0:
+        if (last_index > 0 and (sample_seq[-1].a == 0 or sample_seq[-1].b == 0)) or sample_seq[-1].g == 0:
             logging.error("Error: First sample has a|b|g = 0")
             sys.exit(-1)
   
