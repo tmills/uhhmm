@@ -4,36 +4,45 @@ import ihmm
 import logging
 import time
 import numpy as np
+cimport numpy as np
+cimport cython
 import log_math as lm
 import sys
-#import scipy.sparse
+from scipy.sparse import *
 from multiprocessing import Process,Queue,JoinableQueue
 import pyximport; pyximport.install()
 from beam_sampler import *
 
+
 #@profile
 def compile_models(totalK, models):
     logging.info("Compiling component models into mega-HMM transition and observation matrices")
+    a_max = ihmm.getAmax()
+    b_max = ihmm.getBmax()
+    g_max = ihmm.getGmax()
     t0 = time.time()
+#    pi = np.zeros((totalK, totalK))
+#    phi = np.zeros((totalK, models.lex.dist.shape[1]))
     pi = np.zeros((totalK, totalK))
     phi = np.zeros((totalK, models.lex.dist.shape[1]))
-#    pi = scipy.sparse.lil_matrix((totalK, totalK))
-#    phi = scipy.sparse.lil_matrix((totalK, models.lex.dist.shape[1]))
     
     ## Take exponent out of inner loop:
     word_dist = 10**models.lex.dist
-    
+
+    (fork,act,root,cont,start,pos) = unlog_models(models)
+
     ## For previous state i:
     for prevState in range(0,totalK):
         (prevF, prevJ, prevA, prevB, prevG) = ihmm.extractStates(prevState, totalK)
         cumProbs = np.zeros(5)
+        
         prevBG = ihmm.bg_state(prevB,prevG)
         ## Sample f & j:
         for f in (0,1):
             if prevA == 0 and prevB == 0 and f == 0:
                 continue
 
-            cumProbs[0] = (10**models.fork.dist[prevBG,f])
+            cumProbs[0] = (fork[prevBG,f])
 
             for j in (0,1):
                 ## At depth 1 -- no probability model for j
@@ -52,46 +61,56 @@ def compile_models(totalK, models):
                     cumProbs[1] = 0
                     continue    
         
-                for a in range(1,ihmm.getAmax()):
+                for a in range(1,a_max):
                     if f == 0 and j == 0:
                         ## active transition:
-                        cumProbs[2] = cumProbs[1] * (10**models.act.dist[prevA,a])
+                        cumProbs[2] = cumProbs[1] * (act[prevA,a])
                     elif f == 1 and j == 0:
                         ## root -- technically depends on prevA and prevG
                         ## but in depth 1 this case only comes up at start
                         ## of sentence and prevA will always be 0
-                        cumProbs[2] = cumProbs[1] * (10**models.root.dist[prevG,a])
+                        cumProbs[2] = cumProbs[1] * (root[prevG,a])
                     elif f == 1 and j == 1 and prevA == a:
                         cumProbs[2] = cumProbs[1]
                     else:
                         ## zero probability here
                         continue
         
-                    if cumProbs[2] == -np.inf:
+                    if cumProbs[2] == 0:
                         continue
 
                     prevAa = ihmm.aa_state(prevA, a)
         
-                    for b in range(1,ihmm.getBmax()):
+                    for b in range(1,b_max):
                         if j == 1:
-                            cumProbs[3] = cumProbs[2] * (10**models.cont.dist[prevBG,b])
+                            cumProbs[3] = cumProbs[2] * (cont[prevBG,b])
                         else:
-                            cumProbs[3] = cumProbs[2] * (10**models.start.dist[prevAa,b])
+                            cumProbs[3] = cumProbs[2] * (start[prevAa,b])
             
                         # Multiply all the g's in one pass:
                         ## range gets the range of indices in the forward pass
                         ## that are contiguous in the state space
                         state_range = ihmm.getStateRange(f,j,a,b)
                                      
-                        range_probs = cumProbs[3] * (10**models.pos.dist[b,:])
+                        range_probs = cumProbs[3] * (pos[b,:])
                         pi[prevState, state_range] = range_probs
                         phi[state_range,:] = word_dist
     
     time_spent = time.time() - t0
     logging.info("Done in %d s" % time_spent)
-    return (np.matrix(pi, copy=False), np.matrix(phi, copy=False))
-#    return (scipy.sparse.bsr_matrix(pi), scipy.sparse.bsr_matrix(phi))
-          
+#    return (np.matrix(pi, copy=False), np.matrix(phi, copy=False))
+    return (csc_matrix(pi), np.matrix(phi,copy=False))
+    
+def unlog_models(models):
+    fork = 10**models.fork.dist
+    act = 10**models.act.dist
+    root = 10**models.root.dist
+    cont = 10**models.cont.dist
+    start = 10**models.start.dist
+    pos = 10**models.pos.dist
+   
+    return (fork,act,root,cont,start,pos)
+         
 class FiniteSampler(Sampler):
     def __init__(self, pi, phi, in_q, out_q, models, totalK, maxLen, tid):
         Sampler.__init__(self, in_q, out_q, models, totalK, maxLen, tid)
