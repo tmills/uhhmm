@@ -6,7 +6,7 @@ import time
 import numpy as np
 import log_math as lm
 import sys
-import scipy.sparse
+#import scipy.sparse
 from multiprocessing import Process,Queue,JoinableQueue
 import pyximport; pyximport.install()
 from beam_sampler import *
@@ -152,7 +152,7 @@ class FiniteSampler(Sampler):
         sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,last_index]))
                 
         sample_seq.append(ihmm.State(ihmm.extractStates(sample_t, totalK)))
-        if sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0:
+        if last_index > 0 and (sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0):
             logging.error("Error: First sample has a|b|g = 0")
             sys.exit(-1)
   
