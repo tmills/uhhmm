@@ -11,6 +11,7 @@ while(<STDIN>){
   }elsif(m/^\s*$/){
 #    print "End sentence of length".$#sent."\n";
     print join(" ", @sent)."\n";
+    @sent = ();
   } 
 }
 
