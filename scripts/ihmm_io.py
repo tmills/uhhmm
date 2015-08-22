@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.4
 
 import calcV
+import pickle
 
 def read_input_file(filename):
     pos_seqs = list()
@@ -22,6 +23,10 @@ def read_input_file(filename):
         token_seqs.append(token_seq)
     
     return (pos_seqs, token_seqs)
+
+def read_serialized_sample(pickle_filename):
+    pickle_file = open(pickle_filename, 'rb')
+    return pickle.load(pickle_file)
 
 def write_output(sample, stats, config, gold_pos=None):
 #    last_sample = samples[-1]
@@ -64,6 +69,10 @@ def write_output(sample, stats, config, gold_pos=None):
     condPrefix="A+", outcomePrefix="J")
     
     write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter)
+    
+    out_file = open(output_dir + "/sample.obj", 'wb')
+    pickle.dump(sample, out_file)
+    out_file.close()
     
 def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix=""):
     f = open(out_file, 'w')

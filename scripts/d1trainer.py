@@ -12,6 +12,7 @@ import ihmm
 import numpy as np
 import pdb
 import os
+import pickle
 
 def main(argv):
     if len(argv) < 1:
@@ -24,6 +25,7 @@ def main(argv):
     
     input_file = config.get('io', 'input_file')
     out_dir = config.get('io', 'output_dir')
+    pickle_file = config.get('io', 'pickle_file') if config.has_option('io', 'pickle_file') else None
     
     if not os.path.exists(out_dir):
         sys.stderr.write("Creating non-existent output directory.")
@@ -40,7 +42,7 @@ def main(argv):
     
     params['h'] = init_emission_base(num_types)
     
-    (samples, stats) = ihmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq))
+    (samples, stats) = ihmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), pickle_file)
     
     io.write_output(samples[-1], stats, config, pos_seq)
 

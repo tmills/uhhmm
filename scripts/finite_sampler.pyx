@@ -4,8 +4,8 @@ import ihmm
 import logging
 import time
 import numpy as np
-cimport numpy as np
-cimport cython
+#cimport numpy as np
+#cimport cython
 import log_math as lm
 import sys
 from scipy.sparse import *

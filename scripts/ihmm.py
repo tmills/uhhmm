@@ -5,6 +5,7 @@ import logging
 import time
 import numpy as np
 import ihmm_sampler as sampler
+import ihmm_io
 import pdb
 import sys
 from log_math import *
@@ -102,7 +103,7 @@ class Models(list):
 # Arg 1: ev_seqs : a list of lists of integers, representing
 # the EVidence SEQuenceS seen by the user (e.g., words in a sentence
 # mapped to ints).
-def sample_beam(ev_seqs, params, report_function):    
+def sample_beam(ev_seqs, params, report_function, pickle_file=None):    
     
     global start_a, start_b, start_g
     global a_max, b_max, g_max
@@ -141,41 +142,46 @@ def sample_beam(ev_seqs, params, report_function):
     models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen))
     hid_seqs = initialize_state(ev_seqs, models)
     
-    sample = Sample()
-#    sample.hid_seqs = hid_seqs
-    sample.alpha_a = models.root.alpha ## float(params.get('alphaa'))
-    sample.alpha_b = float(params.get('alphab'))
-    sample.alpha_g = float(params.get('alphag'))
-    sample.alpha_f = float(params.get('alphaf'))
-    sample.alpha_j = float(params.get('alphaj'))
-    ## use plus 2 here (until moved later) since we need the null state (0) as well as 
-    ## the extra part of the stick for "new tables"
-    sample.beta_a = models.root.beta ## np.ones((1,start_a+2)) / start_a
-#    sample.beta_a[0][0] = 0
-    sample.beta_b = models.cont.beta
-#    sample.beta_b[0] = 0
-    sample.beta_g = models.pos.beta
-    sample.beta_f = np.ones(2) / 2
-    sample.beta_j = np.ones(2) / 2
-    sample.gamma = float(params.get('gamma'))
-    sample.discount = float(params.get('discount'))
+    if pickle_file == None:
+        sample = Sample()
+    #    sample.hid_seqs = hid_seqs
+        sample.alpha_a = models.root.alpha ## float(params.get('alphaa'))
+        sample.alpha_b = float(params.get('alphab'))
+        sample.alpha_g = float(params.get('alphag'))
+        sample.alpha_f = float(params.get('alphaf'))
+        sample.alpha_j = float(params.get('alphaj'))
+        ## use plus 2 here (until moved later) since we need the null state (0) as well as 
+        ## the extra part of the stick for "new tables"
+        sample.beta_a = models.root.beta ## np.ones((1,start_a+2)) / start_a
+    #    sample.beta_a[0][0] = 0
+        sample.beta_b = models.cont.beta
+    #    sample.beta_b[0] = 0
+        sample.beta_g = models.pos.beta
+        sample.beta_f = np.ones(2) / 2
+        sample.beta_j = np.ones(2) / 2
+        sample.gamma = float(params.get('gamma'))
+        sample.discount = float(params.get('discount'))
     
     
-    ## Sample distributions for all the model params and emissions params
-    ## TODO -- make the Models class do this in a resample_all() method
-    models.lex.sampleDirichlet(params['h'])
-    models.pos.selfSampleDirichlet()
-    if np.argwhere(np.isnan(models.pos.dist)).size > 0:
-        logging.error("Resampling the pos dist resulted in a nan")
+        ## Sample distributions for all the model params and emissions params
+        ## TODO -- make the Models class do this in a resample_all() method
+        models.lex.sampleDirichlet(params['h'])
+        models.pos.selfSampleDirichlet()
+        if np.argwhere(np.isnan(models.pos.dist)).size > 0:
+            logging.error("Resampling the pos dist resulted in a nan")
         
-    models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
-    models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
-    models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
-    models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
-    models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
-    models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+        models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
+        models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
+        models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
+        models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
+        models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
+        models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
     
-    sample.models = models
+        sample.models = models
+
+    else:
+        sample = ihmm_io.read_serialized_sample(pickle_file)
+    
     collect_trans_probs(hid_seqs, models)
     
     stats = Stats()
