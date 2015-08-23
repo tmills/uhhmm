@@ -129,8 +129,6 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
     import beam_sampler
     import finite_sampler
 
-    debug = bool(params.get('debug'))
-    
     samples = []
     
     maxLen = max(map(len, ev_seqs))
@@ -139,10 +137,15 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
     models = Models()
     
     logging.info("Initializing state")
-    models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen))
-    hid_seqs = initialize_state(ev_seqs, models)
     
     if pickle_file == None:
+        ## Add 1 to every start value for "Null/start" state
+        a_max = start_a+2
+        b_max = start_b+2
+        g_max = start_g+2
+
+        hid_seqs = initialize_state(ev_seqs, models)
+        models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen))
         sample = Sample()
     #    sample.hid_seqs = hid_seqs
         sample.alpha_a = models.root.alpha ## float(params.get('alphaa'))
@@ -178,10 +181,20 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
         models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
     
         sample.models = models
+        iter = 0
 
     else:
         sample = ihmm_io.read_serialized_sample(pickle_file)
-    
+        models = sample.models
+        hid_seqs = sample.hid_seqs
+        sample.hid_seqs = [] ## Empty out hid_seqs because we will append later.
+        
+        a_max = models.act.dist.shape[1]
+        b_max = models.cont.dist.shape[1]
+        g_max = models.pos.dist.shape[1]
+        
+        iter = sample.iter+1
+
     collect_trans_probs(hid_seqs, models)
     
     stats = Stats()
@@ -189,7 +202,6 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
     logging.debug(ev_seqs[0])
     logging.debug(list(map(lambda x: x.str(), hid_seqs[0])))
     
-    iter = 0
     
     while len(samples) < num_samples:
         sample.iter = iter
@@ -282,7 +294,7 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
         ## Close the queue
         sent_q.join()
         t1 = time.time()
-        logging.info("Sampling time for this batch is %d s" % (t1-t0))
+        logging.info("Sampling time for iteration %d is %d s" % (iter, t1-t0))
         
         t0 = time.time()
         num_processed = 0
@@ -532,10 +544,7 @@ def break_g_stick(models, sample, params):
 
 def initialize_models(models, max_output, params, corpus_shape):
     global a_max, b_max, g_max
-    ## Add 1 to every start value for "Null/start" state
-    a_max = start_a+2
-    b_max = start_b+2
-    g_max = start_g+2
+
     ## One fork model:
     models.fork = Model(((g_max)*(b_max), 2))
     ## Two join models:

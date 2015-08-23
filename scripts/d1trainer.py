@@ -16,23 +16,33 @@ import pickle
 
 def main(argv):
     if len(argv) < 1:
-        sys.stderr.write("One required argument: <Config file>\n")
+        sys.stderr.write("One required argument: <Config file|Resume directory>\n")
         sys.exit(-1)
 
-
+    path = argv[0]
+    if not os.path.exists(path):
+        sys.stderr.write("Input file/dir does not exist!")
+        sys.exit(-1)
+    
     config = configparser.ConfigParser()
-    config.read(argv[0])
+    pickle_file = None
+    
+    if os.path.isdir(path):
+        ## Resume mode
+        config.read(path + "/config.ini")
+        pickle_file = path + "/sample.obj"
+    else:
+        config.read(argv[0])
+        out_dir = config.get('io', 'output_dir')
+        if not os.path.exists(out_dir):
+            sys.stderr.write("Creating non-existent output directory.")
+            os.makedirs(out_dir)
+
+        with open(out_dir + "/config.ini", 'w') as configfile:
+            config.write(configfile)
     
     input_file = config.get('io', 'input_file')
-    out_dir = config.get('io', 'output_dir')
-    pickle_file = config.get('io', 'pickle_file') if config.has_option('io', 'pickle_file') else None
     
-    if not os.path.exists(out_dir):
-        sys.stderr.write("Creating non-existent output directory.")
-        os.makedirs(out_dir)
-
-    with open(out_dir + "/config.ini", 'w') as configfile:
-        config.write(configfile)
 
     ## Read in input file to get sequence for X
     (pos_seq, word_seq) = io.read_input_file(input_file)
