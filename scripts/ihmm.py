@@ -144,8 +144,9 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
         b_max = start_b+2
         g_max = start_g+2
 
-        hid_seqs = initialize_state(ev_seqs, models)
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen))
+        hid_seqs = initialize_state(ev_seqs, models)
+
         sample = Sample()
     #    sample.hid_seqs = hid_seqs
         sample.alpha_a = models.root.alpha ## float(params.get('alphaa'))
