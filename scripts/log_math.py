@@ -54,3 +54,12 @@ def normalize_from_log(log_dist):
     dist /= dist.sum()
     
     return dist
+
+def log_boolean(v):
+    if v.size == 1:
+        return 0 if v else -np.inf
+        
+    valid_inds = np.where(v)
+    effective_probs = np.zeros(v.shape) + -np.inf
+    effective_probs[valid_inds] = 0
+    return effective_probs

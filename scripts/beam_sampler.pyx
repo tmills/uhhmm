@@ -93,12 +93,12 @@ class Sampler(Process):
                         for a in range(1,ihmm.getAmax()):
                             if f == 0 and j == 0:
                                 ## active transition:
-                                cumProbs[2] = cumProbs[1] + np.log10(models.act.dist[prevA,a] > models.act.u[sent_index,index])
+                                cumProbs[2] = cumProbs[1] + lm.log_boolean(models.act.dist[prevA,a] > models.act.u[sent_index,index])
                             elif f == 1 and j == 0:
                                 ## root -- technically depends on prevA and prevG
                                 ## but in depth 1 this case only comes up at start
                                 ## of sentence and prevA will always be 0
-                                cumProbs[2] = cumProbs[1] +  np.log10(models.root.dist[prevG,a] > models.root.u[sent_index, index])
+                                cumProbs[2] = cumProbs[1] + lm.log_boolean(models.root.dist[prevG,a] > models.root.u[sent_index, index])
                             elif f == 1 and j == 1 and prevA == a:
                                 cumProbs[2] = cumProbs[1]
                             else:
@@ -116,7 +116,6 @@ class Sampler(Process):
                                 else:
                                     cumProbs[3] = cumProbs[2] + models.start.dist[prevAa,b]
                             
-                                #logging.debug(cumProbs)
                                 # Multiply all the g's in one pass:
                                 ## range gets the range of indices in the forward pass
                                 ## that are contiguous in the state space
@@ -124,12 +123,7 @@ class Sampler(Process):
                                 
                                 #logging.debug(dyn_prog[state_range, index])
                                 
-                                valid_inds = np.where(models.pos.dist[b,:] > models.pos.u[sent_index,index])
-                                effective_probs = np.zeros(models.pos.dist[b,:].shape) + -np.inf
-                                effective_probs[valid_inds] = 0
-                                
-                                range_probs = cumProbs[3] + effective_probs + models.lex.dist[:,token]
-                                #logging.debug(range_probs)
+                                range_probs = cumProbs[3] + lm.log_boolean(models.pos.dist[b,:] > models.pos.u[sent_index,index]) + models.lex.dist[:,token]
                                 
                                 dyn_prog[state_range,index] = lm.log_vector_add(dyn_prog[state_range,index], range_probs)
 
