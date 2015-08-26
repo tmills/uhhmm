@@ -8,7 +8,6 @@ import ihmm_sampler as sampler
 import ihmm_io
 import pdb
 import sys
-from log_math import *
 from multiprocessing import Process,Queue,JoinableQueue
 
 # The set of random variable values at one word
