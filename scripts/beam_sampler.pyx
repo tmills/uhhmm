@@ -39,7 +39,7 @@ class Sampler(Process):
             self.dyn_prog[:,:] = -np.inf
             (self.dyn_prog, log_prob) = self.forward_pass(self.dyn_prog, sent, self.models, self.K, sent_index)
             sent_sample = self.reverse_sample(self.dyn_prog, sent, self.models, self.K, sent_index)
-            if sent_index % 10 == 0:
+            if sent_index % 100 == 0:
                 logging.info("Processed sentence {0}".format(sent_index))
 
             t1 = time.time()

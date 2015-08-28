@@ -1,6 +1,5 @@
 #!/usr/bin/env python3.4
 
-import random
 import logging
 import time
 import numpy as np
@@ -120,7 +119,14 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
     debug = bool(int(params.get('debug', 0)))
     profile = bool(int(params.get('profile', 0)))
     finite = bool(int(params.get('finite', 0)))
-    
+   
+    seed = int(params.get('seed', -1))
+    if seed > 0:
+        logging.info("Using seed %d for random number generator." % (seed))
+        np.random.seed(seed)
+    else:
+        logging.info("Using default seed for random number generator.")
+ 
     if not profile:
         logging.info('profile is set to %s, importing and installing pyx' % profile)    
         import pyximport; pyximport.install()
@@ -381,6 +387,14 @@ def add_model_column(model):
     dist_end = model.dist[:,-1]
     param_a = np.tile(model.alpha * model.beta[-2], (num_conds, 1))
     param_b = model.alpha * (1 - model.beta[0:-1].sum())
+
+    if param_b < 0:
+        param_a_str = str(param_a)
+        param_b_str = str(param_b)
+        logging.error("param b is < 0! inputs are alpha=%f, beta=%s, betasum=%f" % (model.alpha, str(model.beta), model.beta[0:-1].sum()))
+        logging.info("Param a=%s and param b=%s" % (param_a_str, param_b_str))
+        param_b = 0
+
     if param_a.min() < 1e-2 or param_b < 1e-2:
         pg = np.random.binomial(1, param_a / (param_a+param_b)).flatten()
     else:
@@ -596,7 +610,7 @@ def initialize_state(ev_seqs, models):
                     state.f = 1
                     state.j = 0
                 else:
-                    if random.random() >= 0.5:
+                    if np.random.random() >= 0.5:
                         state.f = 1
                     else:
                         state.f = 0
