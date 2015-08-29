@@ -132,6 +132,8 @@ class FiniteSampler(Sampler):
         ## keep track of forward probs for this sentence:
         g_max = ihmm.getGmax()
         dyn_prog[:,:] = 0
+        sentence_log_prob = 0
+        
         ## Copy=False indicates that this matrix object is just a _view_ of the
         ## array -- we don't have to copy it into a matrix and recopy back to array
         ## to get the return value
@@ -145,12 +147,15 @@ class FiniteSampler(Sampler):
                 forward[:,index] = self.pi.transpose() * forward[:,index-1]
                 forward[:,index] = np.multiply(forward[:,index], self.phi[:,token])
 
-            forward[:,index] /= forward[:,index].sum()
+            normalizer = forward[:,index].sum()
+            forward[:,index] /= normalizer
+            
+            ## Normalizer is p(y_t)
+            sentence_log_prob += np.log10(normalizer)
         
         ## For the last token, multiply in the probability
         ## of transitioning to the end state. also can add up
-        ## total probability of data given model here.
-        sentence_log_prob = -np.inf
+        ## total probability of data given model here.      
         last_index = len(sent)-1
         for state in range(0,forward.shape[0]):
             (f,j,a,b,g) = ihmm.extractStates(state, totalK)
@@ -164,6 +169,7 @@ class FiniteSampler(Sampler):
                 logging.error("Error: Non-zero probability at g=0 in forward pass!")
                 sys.exit(-1)
 
+        
         if np.argwhere(forward.max(0)[:,0:last_index+1] == 0).size > 0:
             logging.error("Error; There is a word with no positive probabilities for its generation")
             sys.exit(-1)

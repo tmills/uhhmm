@@ -301,17 +301,17 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
         sent_q.join()
         t1 = time.time()
         logging.info("Sampling time for iteration %d is %d s" % (iter, t1-t0))
-        
+
+        ## Read the output and put it in a map -- use a map because sentences will
+        ## finish asynchronously -- keep the sentence index so we can extract counts
+        ## in whatever order we want (without aligning to sentences) but then order
+        ## the samples so that when we print them out they align for inspection.
         t0 = time.time()
         num_processed = 0
         sample_map = dict()
         while not state_q.empty():
             num_processed += 1
             (sent_index, sent_sample, log_prob) = state_q.get()
-            #logging.debug("Incrementing count for sent index %d and %d sentences left in queue" % (sent_index, len(ev_seqs)-num_processed))
-#            if sent_index % 10 == 0:
-#                logging.info("Processed sentence {0}".format(sent_index))
-            #pdb.set_trace()
             increment_counts(sent_sample, ev_seqs[sent_index], models, sent_index)
             sample_map[sent_index] = sent_sample
             sample.log_prob += log_prob
