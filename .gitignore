@@ -8,3 +8,6 @@ doc/latex/main.synctex.gz
 config/myconfig.ini
 genmodel
 target
+data/*ints.txt
+data/*morf.txt
+data/*.dict
