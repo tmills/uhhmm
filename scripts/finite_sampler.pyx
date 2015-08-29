@@ -11,10 +11,9 @@ import sys
 from scipy.sparse import *
 from multiprocessing import Process,Queue,JoinableQueue
 import pyximport; pyximport.install()
-from beam_sampler import *
+from Sampler import *
 
 
-#@profile
 def compile_models(totalK, models):
     logging.info("Compiling component models into mega-HMM transition and observation matrices")
     a_max = ihmm.getAmax()

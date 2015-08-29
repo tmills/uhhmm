@@ -131,6 +131,7 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
         logging.info('profile is set to %s, importing and installing pyx' % profile)    
         import pyximport; pyximport.install()
 
+    import Sampler
     import beam_sampler
     import finite_sampler
 
@@ -287,7 +288,7 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
             if finite:
                 inf_procs[cur_proc] = finite_sampler.FiniteSampler(trans_mat, obs_mat, sent_q, state_q, models, totalK, maxLen+1, cur_proc)
             else:
-                inf_procs[cur_proc] = beam_sampler.Sampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc)
+                inf_procs[cur_proc] = beam_sampler.InfiniteSampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc)
             if debug:
                 ## calling run instead of start just treats it like a plain object --
                 ## doesn't actually do a fork. So we'll just block here for it to finish
