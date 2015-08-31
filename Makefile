@@ -1,5 +1,5 @@
 
-all:  config/myconfig.ini
+all:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt
 	python3 scripts/d1trainer.py $<
 
 debug: config/debug.ini
