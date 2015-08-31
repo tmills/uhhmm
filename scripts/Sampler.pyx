@@ -4,9 +4,10 @@ import ihmm
 import logging
 import time
 import numpy as np
-import log_math as lm
 import sys
 from multiprocessing import Process,Queue,JoinableQueue
+import pyximport; pyximport.install()
+import log_math as lm
 
 # This class does the actual sampling. It is a Python process rather than a Thread
 # because python threads do not work well due to the global interpreter lock (GIL), 
@@ -21,7 +22,7 @@ class Sampler(Process):
         self.out_q = out_q
         self.models = models
         self.K = totalK
-        self.dyn_prog = np.zeros((totalK,maxLen))
+        self.dyn_prog = []
         self.tid = tid
     
     def set_data(self, sent):

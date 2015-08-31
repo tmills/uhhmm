@@ -125,12 +125,13 @@ class FiniteSampler(Sampler):
     def __init__(self, pi, phi, in_q, out_q, models, totalK, maxLen, tid):
         Sampler.__init__(self, in_q, out_q, models, totalK, maxLen, tid)
         self.state_size = totalK
+        self.dyn_prog = np.zeros((totalK,maxLen))
         (self.pi, self.phi) = pi, phi
 
     def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
         ## keep track of forward probs for this sentence:
         g_max = ihmm.getGmax()
-        dyn_prog[:,:] = 0
+        dyn_prog[:] = 0
         sentence_log_prob = 0
         
         ## Copy=False indicates that this matrix object is just a _view_ of the
