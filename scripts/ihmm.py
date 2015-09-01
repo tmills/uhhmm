@@ -232,20 +232,23 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
             while a_max < 20 and models.root.u.min() < max(models.root.dist[:,-1].max(),models.act.dist[:,-1].max()):
                 logging.info('Breaking a stick')
                 break_a_stick(models, sample, params)
-            
+                a_max = models.act.dist.shape[-1]
+                
             if a_max >= 20:
                 logging.warn('Stick-breaking (a) terminated due to hard limit and not gracefully.')
         
             while b_max < 20 and models.cont.u.min() < models.cont.dist[:,-1].max():
                 logging.info('Breaking b stick')
                 break_b_stick(models, sample, params)
+                b_max = models.cont.dist.shape[-1]
 
             if b_max >= 50:
                 logging.warn('Stick-breaking (b) terminated due to hard limit and not gracefully.')
 
-            while False and g_max < 50 and models.pos.u.min() < models.pos.dist[:,-1].max():
+            while g_max < 50 and models.pos.u.min() < models.pos.dist[:,-1].max():
                 logging.info('Breaking g stick')
                 break_g_stick(models, sample, params)
+                g_max = models.pos.dist.shape[-1]
                 if np.argwhere(np.isnan(models.pos.dist)).size > 0:
                     logging.error("Breaking the g stick resulted in a nan in the output distribution")
             
@@ -438,8 +441,9 @@ def break_beta_stick(model, gamma):
     model.beta[-1] = (1-new_group_fraction) * beta_end
 
 def break_a_stick(models, sample, params):
-    global a_max, b_max, g_max
-    
+
+    a_max = models.root.dist.shape[-1]
+    b_max = models.cont.dist.shape[-1]
     
     ## Break the a stick (stored in root by convention -- TODO --  move this out to its own class later)
     break_beta_stick(models.root, sample.gamma)
@@ -469,11 +473,11 @@ def break_a_stick(models, sample, params):
     models.start.dist = np.append(models.start.dist, np.zeros((1,a_max,b_max)), 0)
     models.start.dist = np.append(models.start.dist, np.zeros((a_max+1,1,b_max)), 1) 
     
-    a_max += 1
 
 def break_b_stick(models, sample, params):
-    global a_max, b_max, g_max
     
+    b_max = models.cont.dist.shape[-1]
+    g_max = models.pos.dist.shape[-1]
     
     ## Keep the stick with cont and copy it over to beta
     break_beta_stick(models.cont, sample.gamma)
@@ -491,15 +495,11 @@ def break_b_stick(models, sample, params):
     
     models.cont.pairCounts = np.append(models.cont.pairCounts, np.zeros((1,g_max,b_max+1)), 0)
     models.cont.dist = np.append(models.cont.dist, np.zeros((1,g_max,b_max+1)),0)
-            
-    b_max += 1
-    
+                
     
 def break_g_stick(models, sample, params):
-    global a_max, b_max, g_max
-    
-    g_max += 1
-    num_conds = models.pos.dist.shape[0]
+
+    b_max = models.cont.dist.shape[-1]
 
     ## Resample beta when the stick is broken:
     break_beta_stick(models.pos, sample.gamma)
@@ -516,39 +516,12 @@ def break_g_stick(models, sample, params):
     ## Add a row to the active (a) model for the new conditional value of g 
     add_model_row_simple(models.root, models.root.alpha * models.root.beta[1:])
     
-    ## The slightly trickier case of distributions which depend on g as well as
-    ## other variables (in this case, both depend on b) : Need to grab out slices of 
-    ## distributions and insert into new model with gaps in interior rows
-
-    ## Add rows to the input distributions for all the models dependent on g
-    ## at the next time step: (trans [not used yet], cont)
-    old_cont = models.cont.pairCounts
-    models.cont.pairCounts = np.zeros((b_max*g_max,b_max))
-    old_cont_dist = models.cont.dist
-    models.cont.dist = np.zeros((b_max*g_max,b_max))
+    models.fork.pairCounts = np.append(models.fork.pairCounts, np.zeros((b_max,1,2)), 1)
+    models.fork.dist = np.append(models.fork.dist, np.zeros((b_max,1,2)), 1)
     
-    old_cont_ind = 0
+    models.cont.pairCounts = np.append(models.cont.pairCounts, np.zeros((b_max,1,b_max)), 1)
+    models.cont.dist = np.append(models.cont.dist, np.zeros((b_max,1,b_max)), 1)
     
-    old_fork = models.fork.pairCounts
-    models.fork.pairCounts = np.zeros((b_max*g_max,2))
-    old_fork_dist = models.fork.dist
-    models.fork.dist = np.zeros((b_max*g_max,2))
-    
-    for b in range(0, b_max):
-        bg = b * g_max
-        models.cont.pairCounts[bg:bg+g_max-1,:] = old_cont[old_cont_ind:old_cont_ind+g_max-1,:]
-        models.cont.dist[bg:bg+g_max-1,:] = old_cont_dist[old_cont_ind:old_cont_ind+g_max-1,:]
-        models.cont.dist[bg+g_max-1,0] = -np.inf
-        models.cont.dist[bg+g_max-1,1:] = np.log10(sampler.sampleSimpleDirichlet(models.cont.alpha * models.cont.beta[1:]))
-        
-        models.fork.pairCounts[bg:bg+g_max-1,:] = old_fork[old_cont_ind:old_cont_ind+g_max-1,:]
-        models.fork.dist[bg:bg+g_max-1,:] = old_fork_dist[old_cont_ind:old_cont_ind+g_max-1,:]
-        models.fork.dist[bg+g_max-1,:] = np.log10(sampler.sampleSimpleBernoulli(sample.alpha_f * sample.beta_f))
-        
-        old_cont_ind = old_cont_ind + g_max - 1
-
-
-
 
 def initialize_models(models, max_output, params, corpus_shape, a_max, b_max, g_max):
 
