@@ -11,7 +11,7 @@ class InfiniteSampler(Sampler):
     def __init__(self, in_q, out_q, models, totalK, maxLen, tid):
         Sampler.__init__(self, in_q, out_q, models, totalK, maxLen, tid)
         self.state_size = totalK
-        self.dyn_prog = np.zeros((2,2,models.act.dist.shape[1], models.cont.dist.shape[1], models.pos.dist.shape[1],maxLen))
+        self.dyn_prog = np.zeros((2,2,models.act.dist.shape[-1], models.cont.dist.shape[-1], models.pos.dist.shape[-1],maxLen))
 
     def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
         dyn_prog[:] = -np.inf
