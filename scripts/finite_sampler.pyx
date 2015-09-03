@@ -45,13 +45,12 @@ def compile_models(totalK, models):
             pi[prevState] = cache[prevA][prevB][prevG]
         
         else:
-            prevBG = ihmm.bg_state(prevB,prevG)
             ## Sample f & j:
             for f in (0,1):
                 if prevA == 0 and prevB == 0 and f == 0:
                     continue
     
-                cumProbs[0] = (fork[prevBG,f])
+                cumProbs[0] = (fork[prevB, prevG,f])
     
                 for j in (0,1):
                     ## At depth 1 -- no probability model for j
@@ -88,13 +87,11 @@ def compile_models(totalK, models):
                         if cumProbs[2] == 0:
                             continue
 
-                        prevAa = ihmm.aa_state(prevA, a)
-        
                         for b in range(1,b_max):
                             if j == 1:
-                                cumProbs[3] = cumProbs[2] * (cont[prevBG,b])
+                                cumProbs[3] = cumProbs[2] * (cont[prevB, prevG, b])
                             else:
-                                cumProbs[3] = cumProbs[2] * (start[prevAa,b])
+                                cumProbs[3] = cumProbs[2] * (start[prevA, a, b])
             
                             # Multiply all the g's in one pass:
                             ## range gets the range of indices in the forward pass
@@ -159,11 +156,7 @@ class FiniteSampler(Sampler):
         last_index = len(sent)-1
         for state in range(0,forward.shape[0]):
             (f,j,a,b,g) = ihmm.extractStates(state, totalK)
-            curBG = ihmm.bg_state(b,g)
-            forward[state,last_index] *= ((10**models.fork.dist[curBG,0] * 10**models.reduce.dist[a,1]))
-            ## FIXME -- Need to redo this with saved logs
-#            sentence_log_prob = lm.log_add(sentence_log_prob, np.log10(dyn_prog[state, last_index]))
-            #logging.debug(dyn_prog[state,last_index])
+            forward[state,last_index] *= ((10**models.fork.dist[b,g,0] * 10**models.reduce.dist[a,1]))
                        
             if ((last_index > 0 and (a == 0 or b == 0)) or g == 0) and forward[state, last_index] != 0:
                 logging.error("Error: Non-zero probability at g=0 in forward pass!")
@@ -216,8 +209,7 @@ class FiniteSampler(Sampler):
                     dyn_prog[ind,t] = 0
                     continue
                 
-                prevBG = ihmm.bg_state(pb,pg)
-                trans_prob = 10**models.fork.dist[prevBG,nf]
+                trans_prob = 10**models.fork.dist[pb, pg, nf]
                 if nf == 0:
                     trans_prob *= (10**models.reduce.dist[pa,nj])
       
@@ -231,9 +223,9 @@ class FiniteSampler(Sampler):
       
                 if nj == 0:
                     prevAA = ihmm.aa_state(pa,na)
-                    trans_prob *= (10**models.start.dist[prevAA,nb])
+                    trans_prob *= (10**models.start.dist[pa,na,nb])
                 else:
-                    trans_prob *= (10**models.cont.dist[prevBG,nb])
+                    trans_prob *= (10**models.cont.dist[pb,pg,nb])
       
                 trans_prob *= (10**models.pos.dist[nb,ng])
                               
