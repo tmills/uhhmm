@@ -84,11 +84,11 @@ class Model:
         self.sampleDirichlet(self.alpha * self.beta)
         
     def sampleDirichlet(self, base):
-        self.dist = sampler.sampleDirichlet(self, base)
+        self.dist = sampler.sampleDirichlet(self.pairCounts, base)
         self.pairCounts[:] = 0
 
     def sampleBernoulli(self, base):
-        self.dist = sampler.sampleBernoulli(self, base)
+        self.dist = sampler.sampleBernoulli(self.pairCounts, base)
         self.pairCounts[:] = 0
 
 # This class is not currently used. Could someday be used to resample
@@ -223,13 +223,19 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
         models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
         models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
 
-        if not finite and iter > 0:
+        if iter > 0 and not finite:
         
+            ## now that we've resampled models, store the transition probabilities that
+            ## the new model assigned to all the transitions
+            models.pos.u =  models.pos.trans_prob +  np.log10(np.random.random((len(ev_seqs), maxLen)) )
+            models.root.u = models.root.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)) )
+            models.cont.u = models.cont.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)) )
+
             ## Break off the beta sticks before actual processing -- instead of determining during
             ## inference whether to create a new state we use an auxiliary variable u to do it
             ## ahead of time, but note there is no guarantee we will ever use it.
             ## TODO: Resample beta, which will allow for unused probability mass to go to the end again?
-            while a_max < 20 and models.root.u.min() < max(models.root.dist[:,-1].max(),models.act.dist[:,-1].max()):
+            while a_max < 20 and models.root.u.min() < max(models.root.dist[...,-1].max(),models.act.dist[...,-1].max()):
                 logging.info('Breaking a stick')
                 break_a_stick(models, sample, params)
                 a_max = models.act.dist.shape[-1]
@@ -237,7 +243,7 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
             if a_max >= 20:
                 logging.warn('Stick-breaking (a) terminated due to hard limit and not gracefully.')
         
-            while b_max < 20 and models.cont.u.min() < models.cont.dist[:,-1].max():
+            while b_max < 20 and models.cont.u.min() < max(models.cont.dist[...,-1].max(), models.start.dist[...,-1].max()):
                 logging.info('Breaking b stick')
                 break_b_stick(models, sample, params)
                 b_max = models.cont.dist.shape[-1]
@@ -245,7 +251,7 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
             if b_max >= 50:
                 logging.warn('Stick-breaking (b) terminated due to hard limit and not gracefully.')
 
-            while g_max < 50 and models.pos.u.min() < models.pos.dist[:,-1].max():
+            while g_max < 50 and models.pos.u.min() < models.pos.dist[...,-1].max():
                 logging.info('Breaking g stick')
                 break_g_stick(models, sample, params)
                 g_max = models.pos.dist.shape[-1]
@@ -255,22 +261,7 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
             if g_max >= 50:
                 logging.warn('Stick-breaking (g) terminated due to hard limit and not gracefully.')
 
-            ## After stick-breaking we probably need to re-sample all the models:            
-            models.lex.sampleDirichlet(params['h'])
-            models.pos.selfSampleDirichlet()
-            models.start.sampleDirichlet(models.start.alpha * models.start.beta)
-            models.cont.sampleDirichlet(models.cont.alpha * models.cont.beta)
-            models.act.sampleDirichlet(models.act.alpha * models.act.beta)
-            models.root.sampleDirichlet(models.root.alpha * models.root.beta)
-            models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
-            models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
 
-            ## now that we've resampled models, store the transition probabilities that
-            ## the new model assigned to all the transitions
-            collect_trans_probs(sample.hid_seqs, models)
-            models.pos.u =  models.pos.trans_prob +  np.log10(np.random.random((len(ev_seqs), maxLen)) )
-            models.root.u = models.root.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)) )
-            models.cont.u = models.cont.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)) )
 
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
@@ -314,7 +305,7 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
             if finite:
                 inf_procs[cur_proc] = finite_sampler.FiniteSampler(trans_mat, obs_mat, sent_q, state_q, models, totalK, maxLen+1, cur_proc)
             else:
-                inf_procs[cur_proc] = beam_sampler.InfiniteSampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc)
+                inf_procs[cur_proc] = beam_sampler.InfiniteSampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc, out_freq=10)
             if debug:
                 ## calling run instead of start just treats it like a plain object --
                 ## doesn't actually do a fork. So we'll just block here for it to finish
@@ -356,12 +347,10 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
             report_function(sample)
             logging.info(".\n")
         
-#        t0 = time.time()
+        t0 = time.time()
 
         next_sample = Sample()
-        
-
-        
+                
         ## Sample hyper-parameters
         ## This is, e.g., where we might add categories to the a,b,g variables with
         ## stick-breaking. Without that, the values will stay what they were 
@@ -383,9 +372,19 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
         prev_sample = sample
         sample = next_sample
 
+
         ## Sample distributions for all the model params and emissions params
         ## TODO -- make the Models class do this in a resample_all() method
-#        t1 = time.time()
+        ## After stick-breaking we probably need to re-sample all the models:            
+        models.lex.sampleDirichlet(params['h'])
+        models.pos.selfSampleDirichlet()
+        models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
+        models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
+        models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
+        models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
+        models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
+        models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+        t1 = time.time()
         
         logging.debug("Resampling models took %d s" % (t1-t0))
         
@@ -464,15 +463,15 @@ def break_a_stick(models, sample, params):
     
     ## Add a row to both dimensions of the model input
     ## need to modify shape to do appends so we'll make it a list from a tuple:
-    start_shape_list = list(models.start.pairCounts.shape)
-    models.start.pairCounts = np.append(models.start.pairCounts, np.zeros((1,a_max,b_max)), 0)
-    models.start.pairCounts = np.append(models.start.pairCounts, np.zeros((a_max+1,1,b_max)), 1)
-
-    ## Now resize the distributions in the same way but we'll also need to initialize 
+    ## Resize the distributions in the same way but we'll also need to initialize 
     ## them to non-zero values
+    models.start.pairCounts = np.append(models.start.pairCounts, np.zeros((1,a_max,b_max)), 0)
     models.start.dist = np.append(models.start.dist, np.zeros((1,a_max,b_max)), 0)
+    models.start.dist[a_max,...] = sampler.sampleDirichlet(models.start.pairCounts[a_max,...], sample.alpha_b * sample.beta_b)
+
+    models.start.pairCounts = np.append(models.start.pairCounts, np.zeros((a_max+1,1,b_max)), 1)  
     models.start.dist = np.append(models.start.dist, np.zeros((a_max+1,1,b_max)), 1) 
-    
+    models.start.dist[:,a_max,:] = sampler.sampleDirichlet(models.start.pairCounts[:,a_max,:], sample.alpha_b * sample.beta_b)
 
 def break_b_stick(models, sample, params):
     
@@ -492,10 +491,11 @@ def break_b_stick(models, sample, params):
 
     models.fork.pairCounts = np.append(models.fork.pairCounts, np.zeros((1,g_max,2)), 0)
     models.fork.dist = np.append(models.fork.dist, np.zeros((1,g_max,2)), 0)
+    models.fork.dist[b_max,...] = sampler.sampleBernoulli(models.fork.pairCounts[b_max,...], sample.alpha_f * sample.beta_f)
     
     models.cont.pairCounts = np.append(models.cont.pairCounts, np.zeros((1,g_max,b_max+1)), 0)
     models.cont.dist = np.append(models.cont.dist, np.zeros((1,g_max,b_max+1)),0)
-                
+    models.cont.dist[b_max,...] = sampler.sampleDirichlet(models.cont.pairCounts[b_max,...], models.cont.alpha * models.cont.beta)
     
 def break_g_stick(models, sample, params):
 
@@ -518,10 +518,11 @@ def break_g_stick(models, sample, params):
     
     models.fork.pairCounts = np.append(models.fork.pairCounts, np.zeros((b_max,1,2)), 1)
     models.fork.dist = np.append(models.fork.dist, np.zeros((b_max,1,2)), 1)
+    models.fork.dist[:,g_max,:] = sampler.sampleBernoulli(models.fork.pairCounts[:,g_max,:], sample.alpha_f * sample.beta_f)
     
     models.cont.pairCounts = np.append(models.cont.pairCounts, np.zeros((b_max,1,b_max)), 1)
     models.cont.dist = np.append(models.cont.dist, np.zeros((b_max,1,b_max)), 1)
-    
+    models.cont.dist[:,g_max,:] = sampler.sampleDirichlet(models.cont.pairCounts[:,g_max,:], models.cont.alpha * models.cont.beta)
 
 def initialize_models(models, max_output, params, corpus_shape, a_max, b_max, g_max):
 

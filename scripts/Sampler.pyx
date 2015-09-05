@@ -16,7 +16,7 @@ import log_math as lm
 # different sampler instances
 
 class Sampler(Process):
-    def __init__(self, in_q, out_q, models, totalK, maxLen, tid):
+    def __init__(self, in_q, out_q, models, totalK, maxLen, tid, out_freq=100):
         Process.__init__(self)
         self.in_q = in_q
         self.out_q = out_q
@@ -24,6 +24,7 @@ class Sampler(Process):
         self.K = totalK
         self.dyn_prog = []
         self.tid = tid
+        self.out_freq = out_freq
     
     def set_data(self, sent):
         self.sent = sent
@@ -43,7 +44,7 @@ class Sampler(Process):
             self.dyn_prog[:,:] = -np.inf
             (self.dyn_prog, log_prob) = self.forward_pass(self.dyn_prog, sent, self.models, self.K, sent_index)
             sent_sample = self.reverse_sample(self.dyn_prog, sent, self.models, self.K, sent_index)
-            if sent_index % 100 == 0:
+            if sent_index % self.out_freq == 0:
                 logging.info("Processed sentence {0}".format(sent_index))
 
             t1 = time.time()

@@ -8,8 +8,8 @@ from Sampler import Sampler
 import log_math as lm
 
 class InfiniteSampler(Sampler):
-    def __init__(self, in_q, out_q, models, totalK, maxLen, tid):
-        Sampler.__init__(self, in_q, out_q, models, totalK, maxLen, tid)
+    def __init__(self, in_q, out_q, models, totalK, maxLen, tid, out_freq=25):
+        Sampler.__init__(self, in_q, out_q, models, totalK, maxLen, tid, out_freq)
         self.state_size = totalK
         self.dyn_prog = np.zeros((2,2,models.act.dist.shape[-1], models.cont.dist.shape[-1], models.pos.dist.shape[-1],maxLen))
 
