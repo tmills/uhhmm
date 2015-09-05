@@ -16,9 +16,8 @@ from Sampler import *
 
 def compile_models(totalK, models):
     logging.info("Compiling component models into mega-HMM transition and observation matrices")
-    a_max = ihmm.getAmax()
-    b_max = ihmm.getBmax()
-    g_max = ihmm.getGmax()
+    (a_max, b_max, g_max) = getVariableMaxes(models)
+    
     t0 = time.time()
 #    pi = np.zeros((totalK, totalK))
 #    phi = np.zeros((totalK, models.lex.dist.shape[1]))
@@ -33,12 +32,12 @@ def compile_models(totalK, models):
 
     ## Build the observation matrix first:
     for state in range(0,totalK):
-        (f,j,a,b,g) = ihmm.extractStates(state, totalK)
+        (f,j,a,b,g) = extractStates(state, totalK, getVariableMaxes(models))
         phi[state] = word_dist[g,:]
 
     ## For previous state i:
     for prevState in range(0,totalK):
-        (prevF, prevJ, prevA, prevB, prevG) = ihmm.extractStates(prevState, totalK)
+        (prevF, prevJ, prevA, prevB, prevG) = extractStates(prevState, totalK, getVariableMaxes(models))
         cumProbs = np.zeros(5)
         
         if cache[prevA][prevB][prevG].sum() > 0:
@@ -96,7 +95,7 @@ def compile_models(totalK, models):
                             # Multiply all the g's in one pass:
                             ## range gets the range of indices in the forward pass
                             ## that are contiguous in the state space
-                            state_range = ihmm.getStateRange(f,j,a,b)
+                            state_range = getStateRange(f,j,a,b, getVariableMaxes(models))
                                      
                             range_probs = cumProbs[3] * (pos[b,:])
                             pi[prevState, state_range] = range_probs
@@ -117,7 +116,49 @@ def unlog_models(models):
     pos = 10**models.pos.dist
    
     return (fork,act,root,cont,start,pos)
-         
+
+def extractStates(index, totalK, maxes):
+    (a_max, b_max, g_max) = maxes
+    ## First -- we only care about a,b,g for computing next state so factor
+    ## out the a,b,g
+    f_ind = 0
+    f_split = totalK / 2
+    if index > f_split:
+        index = index - f_split
+        f_ind = 1
+    
+    j_ind = 0
+    j_split = f_split / 2
+    if index > j_split:
+        index = index - j_split
+        j_ind = 1
+    
+    g_ind = index % g_max
+    index = (index-g_ind) / g_max
+    
+    b_ind = index % b_max
+    index = (index-b_ind) / b_max
+    
+    a_ind = index % a_max
+    
+    ## Make sure all returned values are ints:
+    return map(int, (f_ind,j_ind,a_ind, b_ind, g_ind))
+
+def getStateIndex(f,j,a,b,g, maxes):
+    (a_max, b_max, g_max) = maxes
+    return (((f*2 + j)*a_max + a) * b_max + b)*g_max + g
+
+def getStateRange(f,j,a,b, maxes):
+    (a_max, b_max, g_max) = maxes
+    start = getStateIndex(f,j,a,b,0,maxes)
+    return range(start,start+g_max)
+
+def getVariableMaxes(models):
+    a_max = models.act.dist.shape[-1]
+    b_max = models.start.dist.shape[-1]
+    g_max = models.pos.dist.shape[-1]
+    return (a_max, b_max, g_max)
+
 class FiniteSampler(Sampler):
     def __init__(self, pi, phi, in_q, out_q, models, totalK, maxLen, tid):
         Sampler.__init__(self, in_q, out_q, models, totalK, maxLen, tid)
@@ -127,7 +168,9 @@ class FiniteSampler(Sampler):
 
     def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
         ## keep track of forward probs for this sentence:
-        g_max = ihmm.getGmax()
+        maxes = getVariableMaxes(models)
+        (a_max,b_max,g_max) = maxes
+        
         dyn_prog[:] = 0
         sentence_log_prob = 0
         
@@ -138,7 +181,7 @@ class FiniteSampler(Sampler):
         for index,token in enumerate(sent):     
             ## Still use special case for 0
             if index == 0:
-                g0_ind = ihmm.getStateIndex(0,0,0,0,0)
+                g0_ind = getStateIndex(0,0,0,0,0,maxes)
                 forward[g0_ind+1:g0_ind+g_max,0] = np.matrix(10**models.lex.dist[1:,token]).transpose()
             else:
                 forward[:,index] = self.pi.transpose() * forward[:,index-1]
@@ -155,7 +198,7 @@ class FiniteSampler(Sampler):
         ## total probability of data given model here.      
         last_index = len(sent)-1
         for state in range(0,forward.shape[0]):
-            (f,j,a,b,g) = ihmm.extractStates(state, totalK)
+            (f,j,a,b,g) = extractStates(state, totalK, maxes)
             forward[state,last_index] *= ((10**models.fork.dist[b,g,0] * 10**models.reduce.dist[a,1]))
                        
             if ((last_index > 0 and (a == 0 or b == 0)) or g == 0) and forward[state, last_index] != 0:
@@ -172,6 +215,7 @@ class FiniteSampler(Sampler):
     def reverse_sample(self, dyn_prog, sent, models, totalK, sent_index):            
         sample_seq = []
         sample_log_prob = 0
+        maxes = getVariableMaxes(models)
         
         ## Normalize and grab the sample from the forward probs at the end of the sentence
         last_index = len(sent)-1
@@ -180,7 +224,7 @@ class FiniteSampler(Sampler):
         dyn_prog[:,last_index] /= dyn_prog[:,last_index].sum()
         sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,last_index]))
                 
-        sample_seq.append(ihmm.State(ihmm.extractStates(sample_t, totalK)))
+        sample_seq.append(ihmm.State(extractStates(sample_t, totalK, maxes)))
         if last_index > 0 and (sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0):
             logging.error("Error: First sample has a|b|g = 0")
             sys.exit(-1)
@@ -190,7 +234,7 @@ class FiniteSampler(Sampler):
                 if dyn_prog[ind,t] == 0:
                     continue
 
-                (pf,pj,pa,pb,pg) = ihmm.extractStates(ind,totalK)
+                (pf,pj,pa,pb,pg) = extractStates(ind,totalK, getVariableMaxes(models))
                 (nf,nj,na,nb,ng) = sample_seq[-1].to_list()
                 
                 ## shouldn't be necessary, put in debugs:
@@ -222,7 +266,6 @@ class FiniteSampler(Sampler):
                         trans_prob = 0
       
                 if nj == 0:
-                    prevAA = ihmm.aa_state(pa,na)
                     trans_prob *= (10**models.start.dist[pa,na,nb])
                 else:
                     trans_prob *= (10**models.cont.dist[pb,pg,nb])
@@ -233,7 +276,7 @@ class FiniteSampler(Sampler):
 
             dyn_prog[:,t] /= dyn_prog[:,t].sum()
             sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,t]))
-            state_list = ihmm.extractStates(sample_t, totalK)
+            state_list = extractStates(sample_t, totalK, getVariableMaxes(models))
             
             sample_state = ihmm.State(state_list)
             if t > 0 and sample_state.g == 0:
