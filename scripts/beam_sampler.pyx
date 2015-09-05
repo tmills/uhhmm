@@ -2,38 +2,41 @@ import ihmm
 import logging
 import time
 import numpy as np
-import log_math as lm
 import sys
 import pyximport; pyximport.install()
 from Sampler import Sampler
+import log_math as lm
 
 class InfiniteSampler(Sampler):
+    def __init__(self, in_q, out_q, models, totalK, maxLen, tid, out_freq=25):
+        Sampler.__init__(self, in_q, out_q, models, totalK, maxLen, tid, out_freq)
+        self.state_size = totalK
+        self.dyn_prog = np.zeros((2,2,models.act.dist.shape[-1], models.cont.dist.shape[-1], models.pos.dist.shape[-1],maxLen))
+
     def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
+        dyn_prog[:] = -np.inf
         g_max = ihmm.getGmax()
         ## keep track of forward probs for this sentence:
         for index,token in enumerate(sent):
             if index == 0:
-                g0_ind = ihmm.getStateIndex(0,0,0,0,0)
-                dyn_prog[g0_ind+1:g0_ind+g_max,0] = models.lex.dist[1:,token]
-                logging.debug(dyn_prog[g0_ind:g0_ind+g_max,0])
+                dyn_prog[0,0,0,0,1:g_max,0] = models.lex.dist[1:,token]
             else:
-                for prevInd in range(0,dyn_prog.shape[0]):
-                    if dyn_prog[prevInd,index-1] == -np.inf:
+                for (ind,val) in np.ndenumerate(dyn_prog[...,index-1]):
+                    if val == -np.inf:
                         continue
 
-                    (prevF, prevJ, prevA, prevB, prevG) = ihmm.extractStates(prevInd, totalK)
+                    (prevF, prevJ, prevA, prevB, prevG) = ind
 
-                    assert index == 1 or (prevA != 0 and prevB != 0 and prevG != 0), 'Unexpected values in sentence {0} with non-zero probabilities: {1}, {2}, {3} at index {4}, and f={5} and j={6}, ind={7}'.format(sent_index,prevA, prevB, prevG, index, prevF, prevJ, prevInd)
+                    assert index == 1 or (prevA != 0 and prevB != 0 and prevG != 0), 'Unexpected values in sentence {0} with non-zero probabilities: {1}, {2}, {3} at index {4}, and f={5} and j={6}'.format(sent_index,prevA, prevB, prevG, index, prevF, prevJ)
                 
                     cumProbs = np.zeros(5)
-                    prevBG = ihmm.bg_state(prevB,prevG)
                 
                     ## Sample f & j:
                     for f in (0,1):
                         if index == 1 and f == 0:
                             continue
 
-                        cumProbs[0] = dyn_prog[prevInd,index-1] + models.fork.dist[prevBG,f]
+                        cumProbs[0] = dyn_prog[prevF,prevJ,prevA,prevB,prevG,index-1] + models.fork.dist[prevB,prevG,f]
                         if index == 1:
                             j = 0
                         else:
@@ -60,28 +63,26 @@ class InfiniteSampler(Sampler):
                         
                             if cumProbs[2] == -np.inf:
                                 continue
-
-                            prevAa = ihmm.aa_state(prevA, a)
-                        
+                      
                             for b in range(1,ihmm.getBmax()):
                                 if j == 1:
-                                    cumProbs[3] = cumProbs[2] + models.cont.dist[prevBG,b]
+                                    cumProbs[3] = cumProbs[2] + models.cont.dist[prevB,prevG,b]
                                 else:
-                                    cumProbs[3] = cumProbs[2] + models.start.dist[prevAa,b]
+                                    cumProbs[3] = cumProbs[2] + models.start.dist[prevA, a, b]
                             
                                 # Multiply all the g's in one pass:
                                 ## range gets the range of indices in the forward pass
                                 ## that are contiguous in the state space
-                                state_range = ihmm.getStateRange(f,j,a,b)
+#                                state_range = ihmm.getStateRange(f,j,a,b)
                                 
                                 #logging.debug(dyn_prog[state_range, index])
                                 
                                 range_probs = cumProbs[3] + lm.log_boolean(models.pos.dist[b,:] > models.pos.u[sent_index,index]) + models.lex.dist[:,token]
                                 
-                                dyn_prog[state_range,index] = lm.log_vector_add(dyn_prog[state_range,index], range_probs)
+                                dyn_prog[f,j,a,b,:,index] = lm.log_vector_add(dyn_prog[f,j,a,b,:,index], range_probs)
 
         
-            if np.argwhere(np.logical_not(np.isnan(dyn_prog[:,index]))).size == 0:
+            if np.argwhere(np.logical_not(np.isnan(dyn_prog[...,index]))).size == 0:
                 logging.error("Error: Every value in the forward probability is nan!")
                 sys.exit(-1)
 
@@ -91,18 +92,17 @@ class InfiniteSampler(Sampler):
         ## total probability of data given model here.
         sentence_log_prob = -np.inf
         last_index = len(sent)-1
-        for state in range(0,dyn_prog.shape[0]):
-            (f,j,a,b,g) = ihmm.extractStates(state, totalK)
-            curBG = ihmm.bg_state(b,g)
-            dyn_prog[state,last_index] += ((models.fork.dist[curBG,0] + models.reduce.dist[a,1]))
-            sentence_log_prob = lm.log_add(sentence_log_prob, dyn_prog[state, last_index])
-            logging.debug(dyn_prog[state,last_index])
+        for (ind,val) in np.ndenumerate(dyn_prog[...,0]):
+            (f,j,a,b,g) = ind
+            dyn_prog[ind][last_index] += ((models.fork.dist[b,g,0] + models.reduce.dist[a,1]))
+            sentence_log_prob = lm.log_add(sentence_log_prob, dyn_prog[f,j,a,b,g, last_index])
+#            logging.debug(dyn_prog[state,last_index])
                        
-            if last_index > 0 and (a == 0 or b == 0 or g == 0) and dyn_prog[state, last_index] != -np.inf:
+            if last_index > 0 and (a == 0 or b == 0 or g == 0) and dyn_prog[f,j,a,b,g, last_index] != -np.inf:
                 logging.error("Error: Non-zero probability at g=0 in forward pass!")
                 sys.exit(-1)
 
-        if np.argwhere(dyn_prog.max(0)[0:last_index+1] == -np.inf).size > 0:
+        if dyn_prog[...,last_index].max() == -np.inf:
             logging.error("Error; There is a word with no positive probabilities for its generation")
             sys.exit(-1)
 
@@ -115,23 +115,24 @@ class InfiniteSampler(Sampler):
         ## Normalize and grab the sample from the forward probs at the end of the sentence
         last_index = len(sent)-1
         
-        dyn_prog[:,last_index] = lm.normalize_from_log(dyn_prog[:,last_index])
-        sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,last_index]))
-                
-        sample_seq.append(ihmm.State(ihmm.extractStates(sample_t, totalK)))
+        dyn_prog[...,last_index] = lm.normalize_from_log(dyn_prog[...,last_index])
+#        sample_t = sum(np.random.random() > np.cumsum(dyn_prog[...,last_index]))
+        sample_t = sample_from_ndarray(dyn_prog[...,last_index])
+                       
+        sample_seq.append(ihmm.State(sample_t))
         if (last_index > 0 and (sample_seq[-1].a == 0 or sample_seq[-1].b == 0)) or sample_seq[-1].g == 0:
             logging.error("Error: First sample has a|b|g = 0")
             sys.exit(-1)
   
         for t in range(len(sent)-2,-1,-1):
-            for ind in range(0,dyn_prog.shape[0]):
-                if dyn_prog[ind,t] == -np.inf:
+            for (ind,val) in np.ndenumerate(dyn_prog[...,t]):
+                if val == -np.inf:
                     continue
 
-                (pf,pj,pa,pb,pg) = ihmm.extractStates(ind,totalK)
+                (pf,pj,pa,pb,pg) = ind
                 (nf,nj,na,nb,ng) = sample_seq[-1].to_list()
-                prevBG = ihmm.bg_state(pb,pg)
-                trans_prob = models.fork.dist[prevBG,nf]
+
+                trans_prob = models.fork.dist[pb,pg,nf]
                 if nf == 0:
                     trans_prob += models.reduce.dist[pa,nj]
       
@@ -144,27 +145,35 @@ class InfiniteSampler(Sampler):
                         trans_prob = -np.inf
       
                 if nj == 0:
-                    prevAA = ihmm.aa_state(pa,na)
-                    trans_prob += models.start.dist[prevAA,nb]
+                    trans_prob += models.start.dist[pa,na,nb]
                 else:
-                    trans_prob += models.cont.dist[prevBG,nb]
+                    trans_prob += models.cont.dist[pb,pg,nb]
       
                 trans_prob += models.pos.dist[nb,ng]
                 if np.isnan(trans_prob):
                     logging.error("pos model is nan!")
                     
-                dyn_prog[ind,t] += trans_prob
+                dyn_prog[ind][t] += trans_prob
 
-            normalized_dist = lm.normalize_from_log(dyn_prog[:,t])
-            sample_t = sum(np.random.random() > np.cumsum(normalized_dist))
-            state_list = ihmm.extractStates(sample_t, totalK)
+            ### TODO step-through this to verify expected behavior (copy not reference)
+            normalized_dist = lm.normalize_from_log(dyn_prog[...,t])
+            sample_t = sample_from_ndarray(normalized_dist)            
+            sample_state = ihmm.State(sample_t)
             
-            sample_state = ihmm.State(state_list)
             if t > 0 and sample_state.g == 0:
                 logging.error("Error: Sampled a g=0 state in backwards pass! {0}".format(sample_state.str()))
+                
             sample_seq.append(sample_state)
-            dyn_prog[:,t] = normalized_dist
+            dyn_prog[...,t] = normalized_dist
             
         sample_seq.reverse()
         logging.debug("Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
         return sample_seq
+
+def sample_from_ndarray(a):
+    dart = np.random.random()
+    sum = 0
+    for ind,val in np.ndenumerate(a):
+        sum += val
+        if dart < sum:
+            return ind

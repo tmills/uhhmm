@@ -4,9 +4,10 @@ import ihmm
 import logging
 import time
 import numpy as np
-import log_math as lm
 import sys
 from multiprocessing import Process,Queue,JoinableQueue
+import pyximport; pyximport.install()
+import log_math as lm
 
 # This class does the actual sampling. It is a Python process rather than a Thread
 # because python threads do not work well due to the global interpreter lock (GIL), 
@@ -15,14 +16,15 @@ from multiprocessing import Process,Queue,JoinableQueue
 # different sampler instances
 
 class Sampler(Process):
-    def __init__(self, in_q, out_q, models, totalK, maxLen, tid):
+    def __init__(self, in_q, out_q, models, totalK, maxLen, tid, out_freq=100):
         Process.__init__(self)
         self.in_q = in_q
         self.out_q = out_q
         self.models = models
         self.K = totalK
-        self.dyn_prog = np.zeros((totalK,maxLen))
+        self.dyn_prog = []
         self.tid = tid
+        self.out_freq = out_freq
     
     def set_data(self, sent):
         self.sent = sent
@@ -42,7 +44,7 @@ class Sampler(Process):
             self.dyn_prog[:,:] = -np.inf
             (self.dyn_prog, log_prob) = self.forward_pass(self.dyn_prog, sent, self.models, self.K, sent_index)
             sent_sample = self.reverse_sample(self.dyn_prog, sent, self.models, self.K, sent_index)
-            if sent_index % 100 == 0:
+            if sent_index % self.out_freq == 0:
                 logging.info("Processed sentence {0}".format(sent_index))
 
             t1 = time.time()

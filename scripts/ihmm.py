@@ -74,7 +74,8 @@ class Model:
         self.beta = beta
 
     def count(self, cond, out):
-        self.pairCounts[cond, out] += 1
+        out_counts = self.pairCounts[...,out]
+        out_counts[cond] += 1
 
     def dec(self, cond, out):
         self.pairCounts[cond,out] -= 1
@@ -83,12 +84,12 @@ class Model:
         self.sampleDirichlet(self.alpha * self.beta)
         
     def sampleDirichlet(self, base):
-        self.dist = sampler.sampleDirichlet(self, base)
-        self.pairCounts[:,:] = 0
+        self.dist = sampler.sampleDirichlet(self.pairCounts, base)
+        self.pairCounts[:] = 0
 
     def sampleBernoulli(self, base):
-        self.dist = sampler.sampleBernoulli(self, base)
-        self.pairCounts[:,:] = 0
+        self.dist = sampler.sampleBernoulli(self.pairCounts, base)
+        self.pairCounts[:] = 0
 
 # This class is not currently used. Could someday be used to resample
 # all models if we give Model s more information about themselves.
@@ -150,7 +151,7 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
         b_max = start_b+2
         g_max = start_g+2
 
-        models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen))
+        models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), a_max, b_max, g_max)
         hid_seqs = initialize_state(ev_seqs, models)
 
         sample = Sample()
@@ -175,17 +176,17 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
     
         ## Sample distributions for all the model params and emissions params
         ## TODO -- make the Models class do this in a resample_all() method
-        models.lex.sampleDirichlet(params['h'])
-        models.pos.selfSampleDirichlet()
-        if np.argwhere(np.isnan(models.pos.dist)).size > 0:
-            logging.error("Resampling the pos dist resulted in a nan")
+#        models.lex.sampleDirichlet(params['h'])
+#        models.pos.selfSampleDirichlet()
+#        if np.argwhere(np.isnan(models.pos.dist)).size > 0:
+#            logging.error("Resampling the pos dist resulted in a nan")
         
-        models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
-        models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
-        models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
-        models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
-        models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
-        models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+#        models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
+#        models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
+#        models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
+#        models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
+#        models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
+#        models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
     
         sample.models = models
         iter = 0
@@ -196,9 +197,9 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
         hid_seqs = sample.hid_seqs
         sample.hid_seqs = [] ## Empty out hid_seqs because we will append later.
         
-        a_max = models.act.dist.shape[1]
-        b_max = models.cont.dist.shape[1]
-        g_max = models.pos.dist.shape[1]
+        a_max = models.act.dist.shape[-1]
+        b_max = models.cont.dist.shape[-1]
+        g_max = models.pos.dist.shape[-1]
         
         iter = sample.iter+1
 
@@ -213,44 +214,60 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
     while len(samples) < num_samples:
         sample.iter = iter
 
+        models.lex.sampleDirichlet(params['h'])
+        models.pos.selfSampleDirichlet()
+        models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
+        models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
+        models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
+        models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
+        models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
+        models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+
+        if iter > 0 and not finite:
         
-        if not finite:
+            ## now that we've resampled models, store the transition probabilities that
+            ## the new model assigned to all the transitions
             models.pos.u =  models.pos.trans_prob +  np.log10(np.random.random((len(ev_seqs), maxLen)) )
             models.root.u = models.root.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)) )
             models.cont.u = models.cont.trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)) )
-        
+
             ## Break off the beta sticks before actual processing -- instead of determining during
             ## inference whether to create a new state we use an auxiliary variable u to do it
             ## ahead of time, but note there is no guarantee we will ever use it.
             ## TODO: Resample beta, which will allow for unused probability mass to go to the end again?
-            while a_max < 20 and models.root.u.min() < max(models.root.dist[:,-1].max(),models.act.dist[:,-1].max()):
+            while a_max < 20 and models.root.u.min() < max(models.root.dist[...,-1].max(),models.act.dist[...,-1].max()):
                 logging.info('Breaking a stick')
                 break_a_stick(models, sample, params)
-            
+                a_max = models.act.dist.shape[-1]
+                
             if a_max >= 20:
                 logging.warn('Stick-breaking (a) terminated due to hard limit and not gracefully.')
         
-            while b_max < 50 and models.cont.u.min() < models.cont.dist[:,-1].max():
+            while b_max < 20 and models.cont.u.min() < max(models.cont.dist[...,-1].max(), models.start.dist[...,-1].max()):
                 logging.info('Breaking b stick')
                 break_b_stick(models, sample, params)
+                b_max = models.cont.dist.shape[-1]
 
             if b_max >= 50:
                 logging.warn('Stick-breaking (b) terminated due to hard limit and not gracefully.')
 
-            while g_max < 50 and models.pos.u.min() < models.pos.dist[:,-1].max():
+            while g_max < 50 and models.pos.u.min() < models.pos.dist[...,-1].max():
                 logging.info('Breaking g stick')
                 break_g_stick(models, sample, params)
+                g_max = models.pos.dist.shape[-1]
                 if np.argwhere(np.isnan(models.pos.dist)).size > 0:
                     logging.error("Breaking the g stick resulted in a nan in the output distribution")
             
             if g_max >= 50:
                 logging.warn('Stick-breaking (g) terminated due to hard limit and not gracefully.')
-            
+
+
+
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
-        a_max = models.act.dist.shape[1]
-        b_max = models.cont.dist.shape[1]
-        g_max = models.pos.dist.shape[1]
+        a_max = models.act.dist.shape[-1]
+        b_max = models.cont.dist.shape[-1]
+        g_max = models.pos.dist.shape[-1]
         
         ## How many total states are there?
         ## 2*2*|Act|*|Awa|*|G|
@@ -288,7 +305,7 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
             if finite:
                 inf_procs[cur_proc] = finite_sampler.FiniteSampler(trans_mat, obs_mat, sent_q, state_q, models, totalK, maxLen+1, cur_proc)
             else:
-                inf_procs[cur_proc] = beam_sampler.InfiniteSampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc)
+                inf_procs[cur_proc] = beam_sampler.InfiniteSampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc, out_freq=10)
             if debug:
                 ## calling run instead of start just treats it like a plain object --
                 ## doesn't actually do a fork. So we'll just block here for it to finish
@@ -333,9 +350,7 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
         t0 = time.time()
 
         next_sample = Sample()
-        
-
-        
+                
         ## Sample hyper-parameters
         ## This is, e.g., where we might add categories to the a,b,g variables with
         ## stick-breaking. Without that, the values will stay what they were 
@@ -357,8 +372,10 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
         prev_sample = sample
         sample = next_sample
 
+
         ## Sample distributions for all the model params and emissions params
         ## TODO -- make the Models class do this in a resample_all() method
+        ## After stick-breaking we probably need to re-sample all the models:            
         models.lex.sampleDirichlet(params['h'])
         models.pos.selfSampleDirichlet()
         models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
@@ -371,9 +388,6 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
         
         logging.debug("Resampling models took %d s" % (t1-t0))
         
-        ## now that we've resampled models, store the transition probabilities that
-        ## the new model assigned to all the transitions
-        collect_trans_probs(prev_sample.hid_seqs, models)
         
         sample.models = models
         
@@ -383,10 +397,10 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
     return (samples, stats)
 
 def add_model_column(model):
-    num_conds = model.dist.shape[0]
-    model.pairCounts = np.append(model.pairCounts, np.zeros((num_conds, 1)), 1)
-    dist_end = model.dist[:,-1]
-    param_a = np.tile(model.alpha * model.beta[-2], (num_conds, 1))
+
+    model.pairCounts = np.insert(model.pairCounts, model.pairCounts.shape[-1], np.zeros(model.pairCounts.shape[0:-1]), model.pairCounts.ndim-1)
+    
+    param_a = np.tile(model.alpha * model.beta[-2], model.dist.shape[0:-1])
     param_b = model.alpha * (1 - model.beta[0:-1].sum())
 
     if param_b < 0:
@@ -397,12 +411,15 @@ def add_model_column(model):
         param_b = 0
 
     if param_a.min() < 1e-2 or param_b < 1e-2:
-        pg = np.random.binomial(1, param_a / (param_a+param_b)).flatten()
+        pg = np.random.binomial(1, param_a / (param_a+param_b))
     else:
-        pg = np.random.beta(param_a, param_b).flatten()
-
-    model.dist[:,-1] = np.log10(pg)
-    model.dist = np.append(model.dist, np.tile(np.log10(1-pg) + dist_end, (1,1)).transpose(), 1)
+        pg = np.random.beta(param_a, param_b)
+    
+    ## Copy the last dimension into the new dimension:
+    model.dist = np.insert(model.dist, model.dist.shape[-1], model.dist[...,-1], model.dist.ndim-1)
+    model.dist[...,-2] += np.log10(pg)
+    model.dist[...,-1] += np.log10(1-pg)
+    
     if np.argwhere(np.isnan(model.dist)).size > 0:
         logging.error("Addition of column resulted in nan!")
 
@@ -423,9 +440,9 @@ def break_beta_stick(model, gamma):
     model.beta[-1] = (1-new_group_fraction) * beta_end
 
 def break_a_stick(models, sample, params):
-    global a_max, b_max, g_max
-    
-    a_max += 1
+
+    a_max = models.root.dist.shape[-1]
+    b_max = models.cont.dist.shape[-1]
     
     ## Break the a stick (stored in root by convention -- TODO --  move this out to its own class later)
     break_beta_stick(models.root, sample.gamma)
@@ -444,34 +461,22 @@ def break_a_stick(models, sample, params):
     new_dist = np.log10([[0.5, 0.5]])
     models.reduce.dist = np.append(models.reduce.dist, new_dist, 0)
     
-    old_start = models.start.pairCounts
-    models.start.pairCounts = np.zeros((a_max*a_max,b_max))
-    old_start_dist = models.start.dist
-    models.start.dist = np.zeros((a_max*a_max,b_max))
-    old_start_ind = 0
-    
-    ## Add intermittent rows to the start distribution (depends on a_{t-1}, a_t)
-    ## Special case -- because both variables are 'a', we can't go all the way to a_max in the
-    ## range variable -- that will take us too far. The last case we will handle just below
-    ## this loop and do all at once.
-    for a in range(0,a_max-1):
-        aa = a * a_max
-        models.start.pairCounts[aa:aa+a_max-1,:] = old_start[old_start_ind:old_start_ind+a_max-1,:]
-        models.start.dist[aa:aa+a_max-1,:] = old_start_dist[old_start_ind:old_start_ind+a_max-1,:]
-        models.start.dist[aa+a_max-1,0] = -np.inf
-        models.start.dist[aa+a_max-1,1:] = np.log10(sampler.sampleSimpleDirichlet(sample.alpha_b * sample.beta_b[1:]))
-        old_start_ind += a_max - 1
+    ## Add a row to both dimensions of the model input
+    ## need to modify shape to do appends so we'll make it a list from a tuple:
+    ## Resize the distributions in the same way but we'll also need to initialize 
+    ## them to non-zero values
+    models.start.pairCounts = np.append(models.start.pairCounts, np.zeros((1,a_max,b_max)), 0)
+    models.start.dist = np.append(models.start.dist, np.zeros((1,a_max,b_max)), 0)
+    models.start.dist[a_max,...] = sampler.sampleDirichlet(models.start.pairCounts[a_max,...], sample.alpha_b * sample.beta_b)
 
-    ## Also need to add a whole block at the end
-    aa = a_max * (a_max - 1)
-    for a in range(0,a_max):
-        models.start.dist[aa+a,0] = -np.inf
-        models.start.dist[aa+a,1:] = np.log10(sampler.sampleSimpleDirichlet(sample.alpha_b * sample.beta_b[1:]))
+    models.start.pairCounts = np.append(models.start.pairCounts, np.zeros((a_max+1,1,b_max)), 1)  
+    models.start.dist = np.append(models.start.dist, np.zeros((a_max+1,1,b_max)), 1) 
+    models.start.dist[:,a_max,:] = sampler.sampleDirichlet(models.start.pairCounts[:,a_max,:], sample.alpha_b * sample.beta_b)
 
 def break_b_stick(models, sample, params):
-    global a_max, b_max, g_max
     
-    b_max += 1
+    b_max = models.cont.dist.shape[-1]
+    g_max = models.pos.dist.shape[-1]
     
     ## Keep the stick with cont and copy it over to beta
     break_beta_stick(models.cont, sample.gamma)
@@ -482,31 +487,19 @@ def break_b_stick(models, sample, params):
     add_model_column(models.start)
     
     ## Add a row to the POS output distribution which depends only on b:
-    add_model_row_simple(models.pos, sample.alpha_g * sample.beta_g[1:])
+    add_model_row_simple(models.pos, models.pos.alpha * models.pos.beta[1:])
+
+    models.fork.pairCounts = np.append(models.fork.pairCounts, np.zeros((1,g_max,2)), 0)
+    models.fork.dist = np.append(models.fork.dist, np.zeros((1,g_max,2)), 0)
+    models.fork.dist[b_max,...] = sampler.sampleBernoulli(models.fork.pairCounts[b_max,...], sample.alpha_f * sample.beta_f)
     
-    ## Several models depend on both b & g: Fork (boolean), Trans (boolean), Cont (awaited).
-    ## Since g is the "inside" variable, when we increase b we just add a block of distributions
-    ## the size of g to the end (in contrast, when we break the g stick [just below] 
-    ## we intermittently add rows)
-    models.cont.dist = np.append(models.cont.dist, np.zeros((g_max, models.cont.dist.shape[1])), 0)
-    models.cont.pairCounts = np.append(models.cont.pairCounts, np.zeros((g_max, models.cont.pairCounts.shape[1])), 0)
-    models.fork.dist = np.append(models.fork.dist, np.zeros((g_max, 2)), 0)
-    models.fork.pairCounts = np.append(models.fork.pairCounts, np.zeros((g_max,2)), 0)
-    
-    bg = (b_max-1) * g_max
-    for g in range(0, g_max):
-        new_cont = np.log10(sampler.sampleSimpleDirichlet(models.cont.alpha * models.cont.beta[1:]))
-        models.cont.dist[bg + g,0] = -np.inf
-        models.cont.dist[bg + g,1:] = new_cont
-    
-        models.fork.dist[bg + g,:] = np.log10(sampler.sampleSimpleBernoulli(sample.alpha_f * sample.beta_f))
-    
+    models.cont.pairCounts = np.append(models.cont.pairCounts, np.zeros((1,g_max,b_max+1)), 0)
+    models.cont.dist = np.append(models.cont.dist, np.zeros((1,g_max,b_max+1)),0)
+    models.cont.dist[b_max,...] = sampler.sampleDirichlet(models.cont.pairCounts[b_max,...], models.cont.alpha * models.cont.beta)
     
 def break_g_stick(models, sample, params):
-    global a_max, b_max, g_max
-    
-    g_max += 1
-    num_conds = models.pos.dist.shape[0]
+
+    b_max = models.cont.dist.shape[-1]
 
     ## Resample beta when the stick is broken:
     break_beta_stick(models.pos, sample.gamma)
@@ -523,47 +516,21 @@ def break_g_stick(models, sample, params):
     ## Add a row to the active (a) model for the new conditional value of g 
     add_model_row_simple(models.root, models.root.alpha * models.root.beta[1:])
     
-    ## The slightly trickier case of distributions which depend on g as well as
-    ## other variables (in this case, both depend on b) : Need to grab out slices of 
-    ## distributions and insert into new model with gaps in interior rows
-
-    ## Add rows to the input distributions for all the models dependent on g
-    ## at the next time step: (trans [not used yet], cont)
-    old_cont = models.cont.pairCounts
-    models.cont.pairCounts = np.zeros((b_max*g_max,b_max))
-    old_cont_dist = models.cont.dist
-    models.cont.dist = np.zeros((b_max*g_max,b_max))
+    models.fork.pairCounts = np.append(models.fork.pairCounts, np.zeros((b_max,1,2)), 1)
+    models.fork.dist = np.append(models.fork.dist, np.zeros((b_max,1,2)), 1)
+    models.fork.dist[:,g_max,:] = sampler.sampleBernoulli(models.fork.pairCounts[:,g_max,:], sample.alpha_f * sample.beta_f)
     
-    old_cont_ind = 0
-    
-    old_fork = models.fork.pairCounts
-    models.fork.pairCounts = np.zeros((b_max*g_max,2))
-    old_fork_dist = models.fork.dist
-    models.fork.dist = np.zeros((b_max*g_max,2))
-    
-    for b in range(0, b_max):
-        bg = b * g_max
-        models.cont.pairCounts[bg:bg+g_max-1,:] = old_cont[old_cont_ind:old_cont_ind+g_max-1,:]
-        models.cont.dist[bg:bg+g_max-1,:] = old_cont_dist[old_cont_ind:old_cont_ind+g_max-1,:]
-        models.cont.dist[bg+g_max-1,0] = -np.inf
-        models.cont.dist[bg+g_max-1,1:] = np.log10(sampler.sampleSimpleDirichlet(models.cont.alpha * models.cont.beta[1:]))
-        
-        models.fork.pairCounts[bg:bg+g_max-1,:] = old_fork[old_cont_ind:old_cont_ind+g_max-1,:]
-        models.fork.dist[bg:bg+g_max-1,:] = old_fork_dist[old_cont_ind:old_cont_ind+g_max-1,:]
-        models.fork.dist[bg+g_max-1,:] = np.log10(sampler.sampleSimpleBernoulli(sample.alpha_f * sample.beta_f))
-        
-        old_cont_ind = old_cont_ind + g_max - 1
+    models.cont.pairCounts = np.append(models.cont.pairCounts, np.zeros((b_max,1,b_max)), 1)
+    models.cont.dist = np.append(models.cont.dist, np.zeros((b_max,1,b_max)), 1)
+    models.cont.dist[:,g_max,:] = sampler.sampleDirichlet(models.cont.pairCounts[:,g_max,:], models.cont.alpha * models.cont.beta)
 
-
-
-
-def initialize_models(models, max_output, params, corpus_shape):
-    global a_max, b_max, g_max
+def initialize_models(models, max_output, params, corpus_shape, a_max, b_max, g_max):
 
     ## One fork model:
-    models.fork = Model(((g_max)*(b_max), 2))
+    models.fork = Model((b_max, g_max, 2))
+    
     ## Two join models:
-#    models.trans = Model((g_max*b_max, 2))
+#    models.trans = Model((b_max, g_max, 2))
     models.reduce = Model((a_max, 2))
     
     ## One active model:
@@ -573,8 +540,8 @@ def initialize_models(models, max_output, params, corpus_shape):
     models.root.beta[1:] = np.ones(a_max-1) / (a_max-1)
     
     ## two awaited models:
-    models.cont = Model(((g_max)*(b_max),b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
-    models.start = Model(((a_max)*(a_max), b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
+    models.cont = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
+    models.start = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
     models.cont.beta = np.zeros(b_max)
     models.cont.beta[1:] = np.ones(b_max-1) / (b_max-1)
     
@@ -642,7 +609,6 @@ def collect_trans_probs(hid_seqs, models):
         ## for the condition and for the output
         for index, state in enumerate(hid_seq):
             if index != 0:
-                prevBG = bg_state(prevState.b, prevState.g)
                 ## Count F & J
                 if index == 1:
                     models.root.trans_prob[sent_index,index] = models.root.dist[prevState.g, state.a]
@@ -652,10 +618,9 @@ def collect_trans_probs(hid_seqs, models):
                         models.root.trans_prob[sent_index,index] = models.act.trans_prob[sent_index,index] = models.act.dist[prevState.a, state.a]
 
                 if state.j == 0:
-                    aa = aa_state(prevState.a, state.a)
-                    models.cont.trans_prob[sent_index,index] = models.start.trans_prob[sent_index,index] = models.start.dist[aa, state.b]
+                    models.cont.trans_prob[sent_index,index] = models.start.trans_prob[sent_index,index] = models.start.dist[prevState.a, state.a, state.b]
                 else:
-                    models.cont.trans_prob[sent_index,index] = models.cont.dist[prevBG, state.b]
+                    models.cont.trans_prob[sent_index,index] = models.cont.dist[prevState.b, prevState.g, state.b]
 
             
             ## Count G
@@ -669,12 +634,11 @@ def increment_counts(hid_seq, sent, models, sent_index):
     for index,word in enumerate(sent):
         state = hid_seq[index]
         if index != 0:
-            prevBG = bg_state(prevState.b, prevState.g)
             ## Count F & J
             if index == 1:
                 models.root.count(prevState.g, state.a)
             else:
-                models.fork.count(prevBG, state.f)
+                models.fork.count((prevState.b, prevState.g), state.f)
 
                 ## Count A & B
                 if state.f == 0 and state.j == 0:
@@ -684,10 +648,9 @@ def increment_counts(hid_seq, sent, models, sent_index):
                 models.reduce.count(prevState.a, state.j)
                                 
             if state.j == 0:
-                aa = aa_state(prevState.a, state.a)
-                models.start.count(aa, state.b)
+                models.start.count((prevState.a, state.a), state.b)
             else:
-                models.cont.count(prevBG, state.b)
+                models.cont.count((prevState.b, prevState.g), state.b)
 
             
         ## Count G
@@ -698,55 +661,10 @@ def increment_counts(hid_seq, sent, models, sent_index):
         
         prevState = state
     
-    prevBG = bg_state(hid_seq[-1].b, hid_seq[-1].g)
+#    prevBG = bg_state(hid_seq[-1].b, hid_seq[-1].g)
 ## WS: REMOVED THESE: WAS DISTORTING OUTPUTS BC F MODEL NOT REALLY CONSULTED AT END (MODEL ACTUALLY KNOWS ITS AT END)
 #    models.fork.count(prevBG, 0)
 #    models.reduce.count(hid_seq[-1].a, 1)
-
-def bg_state(b, g):
-    global g_max
-    return b*(g_max) + g
-
-def aa_state(prevA, a):
-    global a_max
-    return prevA * (a_max) + a
-    
-def extractStates(index, totalK):
-    global a_max, b_max, g_max
-    
-    ## First -- we only care about a,b,g for computing next state so factor
-    ## out the a,b,g
-    f_ind = 0
-    f_split = totalK / 2
-    if index > f_split:
-        index = index - f_split
-        f_ind = 1
-    
-    j_ind = 0
-    j_split = f_split / 2
-    if index > j_split:
-        index = index - j_split
-        j_ind = 1
-    
-    g_ind = index % g_max
-    index = (index-g_ind) / g_max
-    
-    b_ind = index % b_max
-    index = (index-b_ind) / b_max
-    
-    a_ind = index % a_max
-    
-    ## Make sure all returned values are ints:
-    return map(int, (f_ind,j_ind,a_ind, b_ind, g_ind))
-
-def getStateIndex(f,j,a,b,g):
-    global a_max, b_max, g_max
-    return (((f*2 + j)*a_max + a) * b_max + b)*g_max + g
-
-def getStateRange(f,j,a,b):
-    global g_max
-    start = getStateIndex(f,j,a,b,0)
-    return range(start,start+g_max)
 
 def getGmax():
     global g_max

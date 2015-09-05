@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.4
 
 import calcV
+import numpy as np
 import pickle
 
 def read_input_file(filename):
@@ -77,12 +78,16 @@ def write_output(sample, stats, config, gold_pos=None):
 def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix=""):
     f = open(out_file, 'w')
     
-    for lhs in range(0,dist.shape[0]):
-        for rhs in range(1,dist.shape[1]):
-            if word_dict == None:
-                f.write("P( %s%d | %s%d ) = %f \n" % (outcomePrefix, rhs, condPrefix, lhs, 10**dist[lhs][rhs]))
-            else:
-                f.write("P( %s | %d ) = %f \n" % (word_dict[rhs], lhs, 10**dist[lhs][rhs]))
+    for ind,val in np.ndenumerate(dist):
+        lhs = ind[0:-1]
+        rhs = ind[-1]
+        if rhs == 0:
+            continue
+
+        if word_dict == None:
+            f.write("P( %s%d | %s%s ) = %f \n" % (outcomePrefix, rhs, condPrefix, str(lhs), 10**val))
+        else:
+            f.write("P( %s | %s ) = %f \n" % (word_dict[rhs], str(lhs), 10**val))
                 
     f.close()
 
