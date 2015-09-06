@@ -176,17 +176,17 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
     
         ## Sample distributions for all the model params and emissions params
         ## TODO -- make the Models class do this in a resample_all() method
-#        models.lex.sampleDirichlet(params['h'])
-#        models.pos.selfSampleDirichlet()
-#        if np.argwhere(np.isnan(models.pos.dist)).size > 0:
-#            logging.error("Resampling the pos dist resulted in a nan")
+        models.lex.sampleDirichlet(params['h'])
+        models.pos.selfSampleDirichlet()
+        if np.argwhere(np.isnan(models.pos.dist)).size > 0:
+            logging.error("Resampling the pos dist resulted in a nan")
         
-#        models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
-#        models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
-#        models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
-#        models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
-#        models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
-#        models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+        models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
+        models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
+        models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
+        models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
+        models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
+        models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
     
         sample.models = models
         iter = 0
@@ -213,15 +213,6 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
     
     while len(samples) < num_samples:
         sample.iter = iter
-
-        models.lex.sampleDirichlet(params['h'])
-        models.pos.selfSampleDirichlet()
-        models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
-        models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
-        models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
-        models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
-        models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
-        models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
 
         if iter > 0 and not finite:
         
@@ -386,8 +377,7 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
         models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
         t1 = time.time()
         
-        logging.debug("Resampling models took %d s" % (t1-t0))
-        
+        logging.debug("Resampling models took %d s" % (t1-t0))       
         
         sample.models = models
         
