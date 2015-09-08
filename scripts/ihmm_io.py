@@ -46,8 +46,13 @@ def write_output(sample, stats, config, gold_pos=None):
     if gold_pos != None:
         sys_pos = extract_pos(sample)
         v = calcV.get_v(gold_pos, sys_pos)
-        f = open(output_dir + "/v_%d.txt" % sample.iter, 'w')
-        f.write('%f\n' % v)
+        f = open(output_dir + "/v_measure.txt", 'a')
+        f.write('%d\t%f\n' % (sample.iter,v))
+        f.close()
+        
+        vi = calcV.get_vi(gold_pos, sys_pos)
+        f = open(output_dir + "/vi.txt", 'a')
+        f.write('%d\t%f\n' % (sample.iter,vi))
         f.close()
 
     f = open(output_dir + "/logprobs.txt", 'a')

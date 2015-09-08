@@ -51,13 +51,8 @@ def get_v(gold_pos, sys_pos, beta=1):
     p_y = get_distribution(sys_pos)
     p_xy = get_joint_distribution(gold_pos, sys_pos)
 
-    p_x_int = p_x
-    p_x_int[p_x==0] = 1
-    p_y_int = p_y
-    p_y_int[p_y==0] = 1
-        
-    H_x = sum(p_x * np.log(p_x_int))
-    H_y = sum(p_y * np.log(p_y_int))
+    H_x = entropy(p_x)
+    H_y = entropy(p_y)
     
     ## This is a bit tricky: We are dividing a 1d array by a 2d array (matrix)
     ## and x and y have to divide in different directions because the matrix is
@@ -65,30 +60,49 @@ def get_v(gold_pos, sys_pos, beta=1):
     ## and have it change the outcome. So i had to tranpose the matrix, then do the
     ## divide, then transpose the outcome.
     
-    ## This is wonky but it is necessary to avoid dividing by zero and taking the log
-    ## of zero. Just make a copy of p_xy where all the 0s are 1s for the internal
-    ## calculation. Those values will be zeroed out by the outer multiplication which
-    ## uses the original matrix with all the zeros.
-    p_xy_int = p_xy
-    p_xy_int[p_xy == 0] = 1
+    I_xy = get_mutual_information(p_x, p_y, p_xy)
+
+    H_x_given_y = H_y - I_xy
+    H_y_given_x = H_x - I_xy
     
-    H_xy = (p_xy * np.log((p_x / p_xy_int.transpose()).transpose())).sum()    
-    H_yx = (p_xy * np.log(p_y / p_xy_int)).sum()
-    
-    h = 1 - (H_xy / H_x)
-    c = 1 - (H_yx / H_y)
+    h = 1 - (H_x_given_y / H_x)
+    c = 1 - (H_y_given_x / H_y)
     
     V = ((1 + beta) * h * c ) / ((beta*h) + c)
     
     return V
 
+def get_vi(gold_pos, sys_pos):
+    p_x = get_distribution(gold_pos)
+    p_y = get_distribution(sys_pos)
+    p_xy = get_joint_distribution(gold_pos, sys_pos)
+
+    H_x = entropy(p_x)
+    H_y = entropy(p_y)
+    
+    I_xy = get_mutual_information(p_x, p_y, p_xy)    
+    
+    H_x_given_y = H_y - I_xy
+    H_y_given_x = H_x - I_xy
+    
+    vi = H_x_given_y + H_y_given_x
+    return vi
+
+## Takes in a list of lists of ints representing, e.g., a set of sentences with
+## POS tags. Computes a distribution over tags by flattening the list, counting each
+## tag and dividing by the total. Returns a list with len(out) = max(in)+1 so that
+## the array can be indexed by the highest value in the tagset.
 def get_distribution(seq_list):
     flat_seq = list(itertools.chain.from_iterable(seq_list))
     max_val = max(flat_seq)
     counts = np.bincount(flat_seq)
     
     return counts / counts.sum()
-    
+
+## Takes in 2 lists of lists, say for a gold and system tagging.
+## Each list of list represents the sentences in a corpora and the tags for each word.
+## Returns a distribution over tag pairs representing the joint distribution of each
+## pair in the gold-system output. 
 def get_joint_distribution(seqs1, seqs2):
     seq1_flat = list(itertools.chain.from_iterable(seqs1))
     seq2_flat = list(itertools.chain.from_iterable(seqs2))
@@ -102,5 +116,20 @@ def get_joint_distribution(seqs1, seqs2):
 
     return counts / counts.sum()
 
+def get_mutual_information(dist_x, dist_y, dist_xy):
+    sum = 0
+    for ind,val in np.ndenumerate(dist_xy):
+        if(dist_xy[ind] != 0.0):
+            sum += (dist_xy[ind] * np.log(dist_xy[ind] / (dist_x[ind[0]] * dist_y[ind[1]])))
+    
+    return sum
+    
+def entropy(dist):
+    sum = 0
+    for ind,val in np.ndenumerate(dist):
+        if val != 0.0:
+            sum += val * np.log(val)
+            
+    return sum
 if __name__ == "__main__":
     main(sys.argv[1:])
