@@ -62,8 +62,8 @@ def get_v(gold_pos, sys_pos, beta=1):
     
     I_xy = get_mutual_information(p_x, p_y, p_xy)
 
-    H_x_given_y = H_y - I_xy
-    H_y_given_x = H_x - I_xy
+    H_x_given_y = H_x - I_xy
+    H_y_given_x = H_y - I_xy
     
     h = 1 - (H_x_given_y / H_x)
     c = 1 - (H_y_given_x / H_y)
