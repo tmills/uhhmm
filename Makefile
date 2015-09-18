@@ -1,4 +1,5 @@
 
+
 all:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt
 	python3 scripts/d1trainer.py $<
 
@@ -28,6 +29,25 @@ data/%.ints.txt: data/%.txt
 data/%.small.txt: data/%.txt
 	head -100 $< > $@
 
+user-lorelei-location.txt:
+	echo '/home/corpora/original/various/lorelei' > $@
+	@echo ''
+	@echo 'ATTENTION: I had to create "$@" for you, which may be wrong'
+	@echo 'edit it to point at your lorelei language pack repository, and re-run make to continue!'
+	@echo ''
+
+
+data/hungltf_tagwords.txt: user-lorelei-location.txt
+	python3 scripts/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Hungarian_LDC2015E82_V1.1/data/annotation/pos_tagged/ltf > $@
+
+data/urdu_tagwords.txt: user-lorelei-location.txt
+	python3 scripts/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Urdu_LDC2015E14_V1.1/data/annotation/pos_tagged > $@
+
+data/thailtf_tagwords.txt: user-lorelei-location.txt
+	python3 scripts/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Thai_LDC2015E84_V1.1/data/annotation/pos_tagged/ltf > $@
+
+data/tamiltf_tagwords.txt: user-lorelei-location.txt
+	python3 scripts/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Tamil_LDC2015E83_V1.1/data/annotation/pos_tagged/ltf > $@
 ############################
 # Targets for building input files for morphologically-rich languages (tested on Korean wikipedia)
 ############################
