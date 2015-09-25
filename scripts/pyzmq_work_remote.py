@@ -16,11 +16,11 @@ context = zmq.Context()
 
 # Socket to receive messages on
 receiver = context.socket(zmq.PULL)
-receiver.connect("tcp://localhost:5557")
+receiver.connect("tcp://qenu.linguistics.illinois.edu:5557")
 
 # Socket to send messages to
 sender = context.socket(zmq.PUSH)
-sender.connect("tcp://localhost:5558")
+sender.connect("tcp://qenu.linguistics.illinois.edu:5558")
 
 # Process tasks forever
 while True:
@@ -32,7 +32,7 @@ while True:
 
     # Do the work
     time.sleep(len(dummy_list)*0.001)
-    dummy_list.append('(Q1)')
+    dummy_list.append('(V1)')
 
     # Send results to sink
     sender.send_pyobj(dummy_list)
