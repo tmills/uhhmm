@@ -24,14 +24,15 @@ sender.connect("tcp://localhost:5558")
 
 # Process tasks forever
 while True:
-    s = receiver.recv()
+    dummy_list = receiver.recv_pyobj()
 
     # Simple progress indicator for the viewer
-    sys.stdout.write('(1)')
-    sys.stdout.flush()
+#    sys.stdout.write('(1)')
+#    sys.stdout.flush()
 
     # Do the work
-    time.sleep(int(s)*0.001)
+    time.sleep(len(dummy_list)*0.001)
+    dummy_list.append('(Q1)')
 
     # Send results to sink
-    sender.send(b'(Q1)')
+    sender.send_pyobj(dummy_list)

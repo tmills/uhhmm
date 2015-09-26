@@ -25,11 +25,8 @@ tstart = time.time()
 # Process 100 confirmations
 total_msec = 0
 for task_nbr in range(100):
-    s = receiver.recv()
-    if task_nbr % 10 == 0:
-        sys.stdout.write(':'+s+':')
-    else:
-        sys.stdout.write(s)
+    dummy_list = receiver.recv_pyobj()
+    sys.stdout.write(str(dummy_list)+'\n')
     sys.stdout.flush()
 
 # Calculate and report duration of batch
