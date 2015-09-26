@@ -90,7 +90,7 @@ class Model:
     def sampleBernoulli(self, base):
         self.dist = sampler.sampleBernoulli(self.pairCounts, base)
         self.pairCounts[:] = 0
-
+        
 # This class is not currently used. Could someday be used to resample
 # all models if we give Model s more information about themselves.
 class Models(list):
@@ -366,7 +366,9 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
 
         ## Sample distributions for all the model params and emissions params
         ## TODO -- make the Models class do this in a resample_all() method
-        ## After stick-breaking we probably need to re-sample all the models:            
+        ## After stick-breaking we probably need to re-sample all the models:     
+        resample_beta_g(models, sample.gamma)
+               
         models.lex.sampleDirichlet(params['h'])
         models.pos.selfSampleDirichlet()
         models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
@@ -513,6 +515,29 @@ def break_g_stick(models, sample, params):
     models.cont.pairCounts = np.append(models.cont.pairCounts, np.zeros((b_max,1,b_max)), 1)
     models.cont.dist = np.append(models.cont.dist, np.zeros((b_max,1,b_max)), 1)
     models.cont.dist[:,g_max,:] = sampler.sampleDirichlet(models.cont.pairCounts[:,g_max,:], models.cont.alpha * models.cont.beta)
+
+def resample_beta_g(models, gamma):
+    
+    b_max = models.cont.dist.shape[-1]
+    g_max = models.pos.dist.shape[-1]
+    m = np.zeros((b_max,g_max-1))
+    
+    for b in range(0, b_max):
+        for g in range(0, g_max-1):
+            if models.pos.pairCounts[b][g] == 0:
+                m[b][g] = 0
+            
+            ## (rand() < (ialpha0 * ibeta(k)) / (ialpha0 * ibeta(k) + l - 1));
+            else:
+                for l in range(0, models.pos.pairCounts[b][g]):
+                    dart = np.random.random()
+                    alpha_beta = models.pos.alpha * models.pos.beta[g]
+                    m[b][g] += (dart < (alpha_beta / (alpha_beta + l - 1)))
+                
+    
+    params = np.append(m.sum(0)[1:], gamma)
+    models.pos.beta[1:] = 0
+    models.pos.beta[1:] += sampler.sampleSimpleDirichlet(params)
 
 def initialize_models(models, max_output, params, corpus_shape, a_max, b_max, g_max):
 

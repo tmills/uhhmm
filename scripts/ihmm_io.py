@@ -59,6 +59,10 @@ def write_output(sample, stats, config, gold_pos=None):
     f.write('%d\t%f\n' % (sample.iter,sample.log_prob) )
     f.close()
     
+    f = open(output_dir + "/beta.txt", 'a')
+    f.write('%d\t%s\n' % (sample.iter, np.array_str(models.pos.beta)))
+    f.close()
+    
     write_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
     write_model(models.pos.dist, output_dir + "/p_pos_given_b_%d.txt" % sample.iter, condPrefix="AWA", outcomePrefix="POS")
     write_model(models.cont.dist, output_dir + "/p_awa_given_b+g%d.txt" % sample.iter,
