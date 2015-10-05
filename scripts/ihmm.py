@@ -142,7 +142,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     iters = int(params.get('sample_iters'))
     max_samples = int(params.get('num_samples'))
     split_merge_iters = int(params.get('split_merge_iters', -1))
-
     num_procs = int(params.get('num_procs'))
     debug = bool(int(params.get('debug', 0)))
     profile = bool(int(params.get('profile', 0)))
@@ -313,7 +312,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         else:
             workDistributer.run_one_iteration(models)
         
-        ## Wait for server to finish distributing sentences for this iteration:
         t1 = time.time()
         
         logging.info("Sampling time for iteration %d is %d s" % (iter, t1-t0))
