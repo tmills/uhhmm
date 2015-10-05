@@ -91,12 +91,30 @@ class Model:
         self.dist = sampler.sampleBernoulli(self.pairCounts, base)
         self.pairCounts[:] = 0
         
+    def copy(self):
+        m_copy = Model(self.pairCounts.shape, self.alpha, None if self.beta == None else self.beta.copy(), self.trans_prob.shape)
+        m_copy.pairCounts = self.pairCounts.copy()
+        m_copy.dist = self.dist.copy()
+        return m_copy
+        
 # This class is not currently used. Could someday be used to resample
 # all models if we give Model s more information about themselves.
 class Models(list):
     def resample_all():
         for model in self:
             model.dist = sampleDirichlet(model)
+
+    def copy(self):
+        m_copy = Models()
+        m_copy.fork = self.fork.copy()
+        m_copy.reduce = self.reduce.copy()
+        m_copy.root = self.root.copy()
+        m_copy.act = self.act.copy()
+        m_copy.start = self.start.copy()
+        m_copy.cont = self.cont.copy()
+        m_copy.pos = self.pos.copy()
+        m_copy.lex = self.lex.copy()
+        return m_copy
 
 # This is the main entry point for this module.
 # Arg 1: ev_seqs : a list of lists of integers, representing
@@ -115,12 +133,16 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     
     burnin = int(params.get('burnin'))
     iters = int(params.get('sample_iters'))
+    split_merge_iters = int(params.get('split_merge_iters', -1))
+    
     num_samples = int(params.get('num_samples'))
     num_procs = int(params.get('num_procs'))
     debug = bool(int(params.get('debug', 0)))
     profile = bool(int(params.get('profile', 0)))
     finite = bool(int(params.get('finite', 0)))
-   
+    sm_start_state = None
+    sm_burnin = int(params.get('split_merge_burnin', 10))
+    
     seed = int(params.get('seed', -1))
     if seed > 0:
         logging.info("Using seed %d for random number generator." % (seed))
@@ -140,6 +162,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     
     maxLen = max(map(len, ev_seqs))
     max_output = max(map(max, ev_seqs))
+    num_tokens = sum(map(len, ev_seqs))
+    cum_length = np.cumsum(list(map(len, ev_seqs)))
     
     models = Models()
     
@@ -176,17 +200,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     
         ## Sample distributions for all the model params and emissions params
         ## TODO -- make the Models class do this in a resample_all() method
-        models.lex.sampleDirichlet(params['h'])
-        models.pos.selfSampleDirichlet()
-        if np.argwhere(np.isnan(models.pos.dist)).size > 0:
-            logging.error("Resampling the pos dist resulted in a nan")
-        
-        models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
-        models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
-        models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
-        models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
-        models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
-        models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+        resample_models(sample, models, params)
     
         sample.models = models
         iter = 0
@@ -213,7 +227,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     
     while len(samples) < num_samples:
         sample.iter = iter
-
+        split_merge = False
+        if sm_start_state == None and iter >= burnin and (iter-burnin) % split_merge_iters == 0:
+            split_merge = True
+            
         if iter > 0 and not finite:
         
             ## now that we've resampled models, store the transition probabilities that
@@ -277,7 +294,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         state_q = Queue() ## Output queue
         
         
-        logging.info("Placing sentences into shared queue")
+        #logging.info("Placing sentences into shared queue")
         
         ## Place all sentences into the input queue
         for sent_index,sent in enumerate(ev_seqs):
@@ -331,7 +348,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
             sample.hid_seqs.append(sample_map[key])
 
         t1 = time.time()
-        logging.info("Building counts tables took %d s" % (t1-t0))
+        #logging.info("Building counts tables took %d s" % (t1-t0))
         
         checkpoint_function(sample) 
         if iter >= burnin and (iter-burnin) % iters == 0:
@@ -340,6 +357,78 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
             logging.info(".\n")
         
         t0 = time.time()
+
+        if sm_start_state != None and (sample.iter - sm_start_state.iter) >= sm_burnin:
+            ## we are in a split-merge sampling regime and have done enough iterations to
+            ## reach a reasonable state: Now look at the probability of the sample compared
+            ## to the probability of the start state and probabilistically choose to
+            ## keep the new split or take the last checkpoint.
+            old_lp = sm_start_state.log_prob
+            new_lp = sample.log_prob
+            
+            if new_lp < old_lp:
+                ## Don't accept -- revert to old sample
+                logging.info("Reverting to saved state from before attempted split/merge")
+                models = sm_start_state.models
+                sample = sm_start_state
+            
+            sm_start_state = None
+        if split_merge:
+            ## Need to copy the models otherwise we'll just have another pointer
+            models = models.copy()
+
+            ## Split-merge for pos tags:            
+            ind1 = np.random.randint(num_tokens)
+            ind2 = np.random.randint(num_tokens)
+            
+            sent1_ind = np.where(cum_length > ind1)[0][0]
+            sent2_ind = np.where(cum_length > ind2)[0][0]
+            
+            word1_ind = ind1 if sent1_ind == 0 else ind1 - cum_length[sent1_ind-1]
+            word2_ind = ind2 if sent2_ind == 0 else ind2 - cum_length[sent2_ind-1]
+            
+            pos1 = sample.hid_seqs[sent1_ind][word1_ind].g
+            pos2 = sample.hid_seqs[sent2_ind][word2_ind].g
+            
+            if pos1 == pos2:
+                logging.info("Performing split operation of pos tag %d at iteration %d" % (pos1,iter))
+                
+                ## split operation
+                
+                ## Add new pos tag variable:
+                break_g_stick(models, sample, params)
+                
+                ## Randomly assign states from pos1/pos2 to the new state:
+                ## Jain and Neal suggest independently and with equal probability
+                for seq in sample.hid_seqs:
+                    for state in seq:
+                        if state.g == pos1:
+                            if np.random.random() > 0.5:
+                                state.g = models.pos.dist.shape[1]-2
+                                models.pos.pairCounts[state.b][pos1] -= 1
+                                models.pos.pairCounts[state.b][state.g] += 1
+                            
+            else:
+                ## merge operation
+                logging.info("Performing merge operation between pos tags %d and %d at iteration %d" % (pos1, pos2, iter))
+                if models.pos.dist.shape[1] == 3:
+                    logging.warn("Performing a merge with only 1 state left")
+
+                for seq in sample.hid_seqs:
+                    for state in seq:
+                        if state.g == pos2:
+                            state.g = pos1
+                            models.pos.pairCounts[state.b][pos1] += 1
+                
+                remove_pos_from_models(models, pos2)
+                if models.pos.dist.shape[1] == 3:
+                    logging.warn("POS now down to only 3 (1) states")
+                
+            sm_start_state = sample
+                
+            report_function(sample)
+            split_merge = False
+            
 
         next_sample = Sample()
                 
@@ -370,25 +459,42 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         ## After stick-breaking we probably need to re-sample all the models:     
         resample_beta_g(models, sample.gamma)
                
-        models.lex.sampleDirichlet(params['h'])
-        models.pos.selfSampleDirichlet()
-        models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
-        models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
-        models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
-        models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
-        models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
-        models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+        resample_models(sample, models, params)
+        
         t1 = time.time()
         
-        logging.debug("Resampling models took %d s" % (t1-t0))       
+        #logging.debug("Resampling models took %d s" % (t1-t0))       
         
         sample.models = models
         
         iter += 1
-        
 
     return (samples, stats)
 
+def resample_models(sample, models, params):
+    models.lex.sampleDirichlet(params['h'])
+    models.pos.selfSampleDirichlet()
+    models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
+    models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
+    models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
+    models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
+    models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
+    models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+
+def remove_pos_from_models(models, pos):
+    ## for the given POS index, delete the 1st (output) dimension from the
+    ## counts and distribution of p(pos | awa)
+    models.pos.pairCounts = np.delete(models.pos.pairCounts, pos, 1)
+    models.pos.dist = np.delete(models.pos.dist, pos, 1)
+    
+    ## for the given POS index, delete the 0th (input) dimension from the
+    ## counts and distribution of p(lex | pos)
+    models.lex.pairCounts = np.delete(models.lex.pairCounts, pos, 0)
+    models.lex.dist = np.delete(models.lex.dist, pos, 0)
+
+    ## Shorten the beta stick as well:
+    models.pos.beta = np.delete(models.pos.beta, pos, 0)
+    
 def add_model_column(model):
 
     model.pairCounts = np.insert(model.pairCounts, model.pairCounts.shape[-1], np.zeros(model.pairCounts.shape[0:-1]), model.pairCounts.ndim-1)
@@ -530,13 +636,17 @@ def resample_beta_g(models, gamma):
             
             ## (rand() < (ialpha0 * ibeta(k)) / (ialpha0 * ibeta(k) + l - 1));
             else:
-                for l in range(0, models.pos.pairCounts[b][g]):
+                for l in range(1, int(models.pos.pairCounts[b][g] + 1)):
                     dart = np.random.random()
                     alpha_beta = models.pos.alpha * models.pos.beta[g]
                     m[b][g] += (dart < (alpha_beta / (alpha_beta + l - 1)))
+                    if l == 0 and m[b][g] == 0:
+                        logging.warn("This should not be zero!")
                 
-    
     params = np.append(m.sum(0)[1:], gamma)
+    if 0 in params:
+        logging.warn("There is a zero in the beta param vector")
+
     models.pos.beta[1:] = 0
     models.pos.beta[1:] += sampler.sampleSimpleDirichlet(params)
 
@@ -544,20 +654,29 @@ def initialize_models(models, max_output, params, corpus_shape, a_max, b_max, g_
 
     ## One fork model:
     models.fork = Model((b_max, g_max, 2))
+    models.append(models.fork)
     
     ## Two join models:
 #    models.trans = Model((b_max, g_max, 2))
     models.reduce = Model((a_max, 2))
-    
+    models.append(models.reduce)
+        
     ## One active model:
     models.act = Model((a_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape)
+    models.append(models.act)
+    
     models.root = Model((g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape)
     models.root.beta = np.zeros(a_max)
     models.root.beta[1:] = np.ones(a_max-1) / (a_max-1)
+    models.append(models.root)
     
     ## two awaited models:
     models.cont = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
+    models.append(models.cont)
+    
     models.start = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
+    models.append(models.start)
+    
     models.cont.beta = np.zeros(b_max)
     models.cont.beta[1:] = np.ones(b_max-1) / (b_max-1)
     
@@ -565,11 +684,15 @@ def initialize_models(models, max_output, params, corpus_shape, a_max, b_max, g_
     models.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape)
     models.pos.beta = np.zeros(g_max)
     models.pos.beta[1:] = np.ones(g_max-1) / (g_max-1)
+    models.append(models.pos)
     
     ## one lex model:
     models.lex = Model((g_max, max_output+1))
+    models.append(models.lex)
     
     logging.debug("Value of amax=%d, b_max=%d, g_max=%d", a_max, b_max, g_max)
+    
+    
     return models
 
 # Randomly initialize all the values for the hidden variables in the 
