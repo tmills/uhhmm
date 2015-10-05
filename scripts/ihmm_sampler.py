@@ -32,6 +32,9 @@ def sampleDirichlet(counts, H):
     return P
 
 def sampleSimpleDirichlet(base):
+    if (base.ndim==1 and base.shape[0] == 1) or (base.ndim==2 and base.shape[1] == 1):
+        return np.array([1.0])
+
     dist = np.random.gamma(base, 1)
     dist /= dist.sum()
     return dist
