@@ -40,10 +40,13 @@ total_msec = 0
 for task_nbr in range(100):
 
     # Random workload from 1 to 100 msecs
-    workload = random.randint(1, 100)
+    workload = random.randint(1, 10)
     total_msec += workload
+    dummy_list = [None] * workload
+    for i in range(len(dummy_list)):
+	dummy_list[i] = i
 
-    sender.send_string(u'%i' % workload)
+    sender.send_pyobj(dummy_list)
 
 print("Total expected cost: %s msec" % total_msec)
 
