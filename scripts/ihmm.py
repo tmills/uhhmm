@@ -102,7 +102,7 @@ class Models(list):
 # Arg 1: ev_seqs : a list of lists of integers, representing
 # the EVidence SEQuenceS seen by the user (e.g., words in a sentence
 # mapped to ints).
-def sample_beam(ev_seqs, params, report_function, pickle_file=None):    
+def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_file=None):    
     
     global start_a, start_b, start_g
     global a_max, b_max, g_max
@@ -333,8 +333,9 @@ def sample_beam(ev_seqs, params, report_function, pickle_file=None):
         t1 = time.time()
         logging.info("Building counts tables took %d s" % (t1-t0))
         
+        checkpoint_function(sample) 
         if iter >= burnin and (iter-burnin) % iters == 0:
-            samples.append(sample)
+            #samples.append(sample)
             report_function(sample)
             logging.info(".\n")
         

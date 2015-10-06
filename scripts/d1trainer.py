@@ -52,7 +52,7 @@ def main(argv):
     
     params['h'] = init_emission_base(num_types)
     
-    (samples, stats) = ihmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), pickle_file)
+    (samples, stats) = ihmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), pickle_file)
     
     io.write_output(samples[-1], stats, config, pos_seq)
 

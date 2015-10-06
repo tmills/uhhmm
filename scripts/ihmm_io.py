@@ -75,7 +75,9 @@ def write_output(sample, stats, config, gold_pos=None):
     condPrefix="A+", outcomePrefix="J")
     
     write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter)
-    
+
+def checkpoint(sample, config):
+    output_dir = config.get('io', 'output_dir')
     out_file = open(output_dir + "/sample.obj", 'wb')
     pickle.dump(sample, out_file)
     out_file.close()
