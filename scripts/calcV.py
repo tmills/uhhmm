@@ -38,21 +38,26 @@ def main(args):
         print("This script requires Python 3")
         exit()
 
+    if len(args) < 2:
+        sys.stderr.write("Two required arguments: <Gold pos file (same as system input)> <System pos file (sample format)>\n")
+        exit()
+
     gold_pos = io.read_input_file(args[0])[1]
-    sys_pos = io.read_input_file(args[1])[1]
+    sys_pos = io.read_sample_file(args[1])
     
-    v = get_v(gold_pos, sys_pos)
+    vm = get_v(gold_pos, sys_pos)
     
-    print("Value of V is %f\n" % v)
+    print("Value of V measure is %f\n" % vm)
     
 def get_v(gold_pos, sys_pos, beta=1):
 
-    p_x = get_distribution(gold_pos)
-    p_y = get_distribution(sys_pos)
-    p_xy = get_joint_distribution(gold_pos, sys_pos)
+    p_gold = get_distribution(gold_pos)
+    p_sys = get_distribution(sys_pos)
+    p_joint = get_joint_distribution(gold_pos, sys_pos)
 
-    H_x = entropy(p_x)
-    H_y = entropy(p_y)
+    H_gold = entropy(p_gold)
+    H_sys = entropy(p_sys)
+    H_joint = entropy(p_joint)
     
     ## This is a bit tricky: We are dividing a 1d array by a 2d array (matrix)
     ## and x and y have to divide in different directions because the matrix is
@@ -60,15 +65,19 @@ def get_v(gold_pos, sys_pos, beta=1):
     ## and have it change the outcome. So i had to tranpose the matrix, then do the
     ## divide, then transpose the outcome.
     
-    I_xy = get_mutual_information(p_x, p_y, p_xy)
+#    I_xy = get_mutual_information(p_x, p_y, p_xy)
 
-    H_x_given_y = H_x - I_xy
-    H_y_given_x = H_y - I_xy
+    H_gold_given_sys = H_joint - H_sys
+    H_sys_given_gold = H_joint - H_gold
     
-    h = 1 - (H_x_given_y / H_x)
-    c = 1 - (H_y_given_x / H_y)
+    h = 1 - (H_gold_given_sys / H_gold)
+    c = 1 - (H_sys_given_gold / H_sys)
+    
     
     V = ((1 + beta) * h * c ) / ((beta*h) + c)
+
+    print("v-measure components: H_gold=%f, H_sys=%f, H_joint=%f, H(G|S)=%f, H(S|G)=%f, h=%f, c=%f, V=%f" % 
+            (H_gold, H_sys, H_joint, H_gold_given_sys, H_sys_given_gold, h, c, V))
     
     return V
 
@@ -120,7 +129,7 @@ def get_mutual_information(dist_x, dist_y, dist_xy):
     sum = 0
     for ind,val in np.ndenumerate(dist_xy):
         if(dist_xy[ind] != 0.0):
-            sum += (dist_xy[ind] * np.log(dist_xy[ind] / (dist_x[ind[0]] * dist_y[ind[1]])))
+            sum += (dist_xy[ind] * np.log2(dist_xy[ind] / (dist_x[ind[0]] * dist_y[ind[1]])))
     
     return sum
     
@@ -128,8 +137,8 @@ def entropy(dist):
     sum = 0
     for ind,val in np.ndenumerate(dist):
         if val != 0.0:
-            sum += val * np.log(val)
+            sum += val * np.log2(val)
             
-    return sum
+    return -sum
 if __name__ == "__main__":
     main(sys.argv[1:])
