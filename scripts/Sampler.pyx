@@ -30,7 +30,6 @@ class Sampler(Process):
         self.sent = sent
 
     def run(self):
-        self.dyn_prog[:,:] = -np.inf
         #logging.debug("Starting forward pass in thread %s", self.tid)
 
         while True:
@@ -41,7 +40,6 @@ class Sampler(Process):
             
             (sent_index, sent) = task
             t0 = time.time()
-            self.dyn_prog[:,:] = -np.inf
             (self.dyn_prog, log_prob) = self.forward_pass(self.dyn_prog, sent, self.models, self.K, sent_index)
             sent_sample = self.reverse_sample(self.dyn_prog, sent, self.models, self.K, sent_index)
             if sent_index % self.out_freq == 0:
