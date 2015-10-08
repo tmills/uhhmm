@@ -4,9 +4,6 @@ import ihmm
 import logging
 import time
 import numpy as np
-#cimport numpy as np
-#cimport cython
-import log_math as lm
 import sys
 from scipy.sparse import *
 from multiprocessing import Process,Queue,JoinableQueue
@@ -286,3 +283,4 @@ class FiniteSampler(Sampler):
         sample_seq.reverse()
         logging.debug("Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
         return sample_seq
+
