@@ -25,6 +25,21 @@ def read_input_file(filename):
     
     return (pos_seqs, token_seqs)
 
+def read_sample_file(filename):
+    pos_seqs = list()
+    f = open(filename, 'r')
+    for line in f:
+        pos_seq = list()
+        line = line.replace('[', '').replace(']', '').replace("'", "")
+        for token in line.split(', '):
+            (junk, pos) = token.split(':')
+            pos_seq.append(int(pos))
+        
+        pos_seqs.append(pos_seq)
+    
+    f.close()
+    return pos_seqs        
+            
 def read_serialized_sample(pickle_filename):
     pickle_file = open(pickle_filename, 'rb')
     return pickle.load(pickle_file)
@@ -85,7 +100,7 @@ def checkpoint(sample, config):
     out_file = open(output_dir + "/sample.obj", 'wb')
     pickle.dump(sample, out_file)
     out_file.close()
-    
+
 def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix=""):
     f = open(out_file, 'w')
     
