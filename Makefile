@@ -51,6 +51,11 @@ data/thailtf_tagwords.txt: user-lorelei-location.txt
 
 data/tamiltf_tagwords.txt: user-lorelei-location.txt
 	python3 scripts/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Tamil_LDC2015E83_V1.1/data/annotation/pos_tagged/ltf > $@
+
+#convert the output to bracketed trees. '.txt' is the output file, '.origSents' is the file of the original sentences
+%.brackets: data/%.txt data/%.origSents
+	cat $< | python ./scripts/uhhmm2efabp.py $(word 2,$^) | python3 ./scripts/efabpout2linetrees.py  | sed 's/\^.,.//g;s/\^g//g;s/\_[0-9]*//g;s/\([^+ ]\)+\([^+ ]\)/\1-\2/g;' | sed 's/\([^+ ]\)+\([^+ ]\)/\1-\2/g;'  |  perl ./scripts/remove-at-cats.pl  >  $@
+
 ############################
 # Targets for building input files for morphologically-rich languages (tested on Korean wikipedia)
 ############################
@@ -64,4 +69,5 @@ data/%.morf.txt: data/%.txt genmodel/%.morf.model
 genmodel/%.morf.model: data/%.txt
 	morfessor-train -s $@ $^
 
-	
+
+
