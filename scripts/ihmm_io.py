@@ -93,7 +93,7 @@ def write_output(sample, stats, config, gold_pos=None):
     write_model(models.reduce.dist, output_dir + "/p_join_given_a+f1_%d.txt" % sample.iter,
     condPrefix="A+", outcomePrefix="J")
     
-    write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter)
+    write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter, word_dict)
 
 def checkpoint(sample, config):
     output_dir = config.get('io', 'output_dir')
@@ -117,12 +117,19 @@ def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix="")
                 
     f.close()
 
-def write_last_sample(sample, out_file):
+## Sample output format -- each time step (token) is represented as the following:
+## F/J::Active/Awaited:Pos   (see str() method in the State() class)
+## Here we add the word to the end separated by a semi-colon.
+## One sentence per line, with tokens separated by spaces.
+def write_last_sample(sample, out_file, word_dict):
     f = open(out_file, 'w')
     #pdb.set_trace()
-    for sent_state in sample.hid_seqs:
-        state_str = str(list(map(lambda x: x.str(), sent_state)))
-        f.write(state_str)
+    for sent_num,sent_state in enumerate(sample.hid_seqs):
+        state_str = ""
+        for token_num,token_state in enumerate(sent_state):
+            token_str = word_dict[ sample.ev_seqs[sent_num][token_num] ]
+            state_str += token_state.str() + ';' + token_str + ' '
+        f.write(state_str.rstrip())
         f.write('\n')
 
 def extract_pos(sample):

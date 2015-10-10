@@ -26,10 +26,10 @@ class State:
         string = ''
         f_str = '+/' if self.f==1 else '-/'        
         string += f_str
-        j_str = '+ ' if self.j==1 else '- '
+        j_str = '+' if self.j==1 else '-'
         string += j_str
         
-        string += str(self.a) + '/' + str(self.b) + ':' + str(self.g)
+        string += "::" + str(self.a) + '/' + str(self.b) + ':' + str(self.g)
         
         return string
 
@@ -172,7 +172,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         sample.beta_j = np.ones(2) / 2
         sample.gamma = float(params.get('gamma'))
         sample.discount = float(params.get('discount'))
-    
+        sample.ev_seqs = ev_seqs
     
         ## Sample distributions for all the model params and emissions params
         ## TODO -- make the Models class do this in a resample_all() method
@@ -360,6 +360,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         next_sample.alpha_g = models.pos.alpha
         next_sample.beta_g = models.pos.beta
         next_sample.gamma = sample.gamma
+        next_sample.ev_seqs = ev_seqs
         
         prev_sample = sample
         sample = next_sample

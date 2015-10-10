@@ -13,13 +13,12 @@ for sentnum, line in enumerate(sys.stdin):
 	string.append(initial)
 
 	line = line.strip()
-	line = line[2:-2]
-	line = line.split("', '")
+	tokens = line.split(" ")
 
 	stack = [emptyCat]*4
-	for index, step in enumerate(line):
+	for index, step in enumerate(tokens):
 		thisStep = []
-		step = step.split(' ')
+		step = step.split('::')
 		fj = step[0].split('/')
 		thisStep.append(str(index+1))
 		if fj[0] == '+':
