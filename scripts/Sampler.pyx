@@ -8,6 +8,7 @@ import sys
 from multiprocessing import Process,Queue,JoinableQueue
 import pyximport; pyximport.install()
 import log_math as lm
+import os
 
 # This class does the actual sampling. It is a Python process rather than a Thread
 # because python threads do not work well due to the global interpreter lock (GIL), 
@@ -30,6 +31,8 @@ class Sampler(Process):
         self.sent = sent
 
     def run(self):
+        os.nice(5)
+        self.dyn_prog[:,:] = -np.inf
         #logging.debug("Starting forward pass in thread %s", self.tid)
 
         while True:
