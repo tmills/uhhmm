@@ -39,6 +39,13 @@ user-lorelei-location.txt:
 	@echo 'edit it to point at your lorelei language pack repository, and re-run make to continue!'
 	@echo ''
 
+user-modelblocks-location.txt:
+	echo '../modelblocks' > $@
+	@echo ''
+	@echo 'ATTENTION: I had to create "$@" for you, which may be wrong'
+	@echo 'edit it to point at your local modelblocks, and re-run make to continue!'
+	@echo ''
+
 
 data/hungltf_tagwords.txt: user-lorelei-location.txt
 	python3 scripts/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Hungarian_LDC2015E82_V1.1/data/annotation/pos_tagged/ltf > $@
@@ -53,8 +60,9 @@ data/tamiltf_tagwords.txt: user-lorelei-location.txt
 	python3 scripts/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Tamil_LDC2015E83_V1.1/data/annotation/pos_tagged/ltf > $@
 
 #convert the output to bracketed trees. '.txt' is the output file, '.origSents' is the file of the original sentences
-%.brackets: data/%.txt data/%.origSents
-	cat $< | python ./scripts/uhhmm2efabp.py $(word 2,$^) | python3 ./scripts/efabpout2linetrees.py  | sed 's/\^.,.//g;s/\^g//g;s/\_[0-9]*//g;s/\([^+ ]\)+\([^+ ]\)/\1-\2/g;' | sed 's/\([^+ ]\)+\([^+ ]\)/\1-\2/g;'  |  perl ./scripts/remove-at-cats.pl  >  $@
+%.brackets: MB=$(shell cat user-modelblocks-location.txt)
+%.brackets: %.txt user-modelblocks-location.txt
+	cat $< | python ./scripts/uhhmm2efabp.py | PYTHONPATH=$(MB)/gcg/scripts python3 $(MB)/lcparse/scripts/efabpout2linetrees.py  | sed 's/\^.,.//g;s/\^g//g;s/\_[0-9]*//g;s/\([^+ ]\)+\([^+ ]\)/\1-\2/g;' | sed 's/\([^+ ]\)+\([^+ ]\)/\1-\2/g;'  |  perl $(MB)/lcparse/scripts/remove-at-cats.pl  >  $@
 
 ############################
 # Targets for building input files for morphologically-rich languages (tested on Korean wikipedia)
