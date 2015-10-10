@@ -361,7 +361,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
                 logging.info("Reverting to saved state from before attempted split/merge")
                 models = sm_start_state.models
                 sample = sm_start_state
-            
+            else:
+                logging.info("Split/merge proposal was accepted.")
+
             sm_start_state = None
         if split_merge:
             ## Need to copy the models otherwise we'll just have another pointer
