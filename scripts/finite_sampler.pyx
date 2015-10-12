@@ -6,9 +6,8 @@ import time
 import numpy as np
 import sys
 from scipy.sparse import *
-from multiprocessing import Process,Queue,JoinableQueue
 import pyximport; pyximport.install()
-from Sampler import *
+from PyzmqSampler import *
 
 
 def compile_models(totalK, models):
@@ -156,9 +155,9 @@ def getVariableMaxes(models):
     g_max = models.pos.dist.shape[-1]
     return (a_max, b_max, g_max)
 
-class FiniteSampler(Sampler):
-    def __init__(self, pi, phi, in_q, out_q, models, totalK, maxLen, tid):
-        Sampler.__init__(self, in_q, out_q, models, totalK, maxLen, tid)
+class FiniteSampler(PyzmqSampler):
+    def __init__(self, models, pi, phi, host, jobs_port, results_port, totalK, maxLen, tid):
+        PyzmqSampler.__init__(self, models, host, jobs_port, results_port, totalK, maxLen, tid)
         self.state_size = totalK
         self.dyn_prog = np.zeros((totalK,maxLen))
         (self.pi, self.phi) = pi, phi

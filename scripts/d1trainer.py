@@ -13,6 +13,7 @@ import numpy as np
 import pdb
 import os
 import pickle
+import logging
 
 def main(argv):
     if len(argv) < 1:
@@ -23,6 +24,8 @@ def main(argv):
     if not os.path.exists(path):
         sys.stderr.write("Input file/dir does not exist!")
         sys.exit(-1)
+    
+    logging.basicConfig(level=logging.DEBUG)
     
     config = configparser.ConfigParser()
     pickle_file = None

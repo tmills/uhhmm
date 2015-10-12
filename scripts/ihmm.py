@@ -8,6 +8,10 @@ import ihmm_io
 import pdb
 import sys
 from multiprocessing import Process,Queue,JoinableQueue
+import zmq
+from PyzmqSentenceDistributerServer import *
+from PyzmqMessage import *
+from PyzmqSampler import *
 
 # The set of random variable values at one word
 # There will be one of these for every word in the training set
@@ -109,6 +113,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     start_a = int(params.get('starta'))
     start_b = int(params.get('startb'))
     start_g = int(params.get('startg'))
+    jobs_port = -1
+    results_port = -1
 
     logging.basicConfig(level=logging.INFO)
     logging.info("Starting beam sampling")
@@ -273,43 +279,29 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         inf_procs = dict()
         cur_proc = 0
 
-        sent_q = JoinableQueue() ## Input queue
-        state_q = Queue() ## Output queue
+        workDistributer = PyzmqSentenceDistributerServer(models, ev_seqs, num_procs, jobs_port=jobs_port, results_port=results_port)
+        jobs_port = workDistributer.jobs_port
+        results_port = workDistributer.results_port
         
-        
-        logging.info("Placing sentences into shared queue")
-        
-        ## Place all sentences into the input queue
-        for sent_index,sent in enumerate(ev_seqs):
-            sent_q.put((sent_index,sent))
-            
+        workDistributer.start()
+                                
         ## Initialize all the sub-processes with their input-output queues,
         ## read-only models, and dimensions of matrix they'll need
         t0 = time.time()
             
         for cur_proc in range(0,num_procs):
-            ## For each sub-process add a "None" element to the queue that tells it that
-            ## we are out of sentences (we've added them all above)
-            sent_q.put(None)
-            
             ## Initialize and start the sub-process
             if finite:
-                inf_procs[cur_proc] = finite_sampler.FiniteSampler(trans_mat, obs_mat, sent_q, state_q, models, totalK, maxLen+1, cur_proc)
+                inf_procs[cur_proc] = finite_sampler.FiniteSampler(models, trans_mat, obs_mat, workDistributer.host, jobs_port, results_port, totalK, maxLen+1, cur_proc)
             else:
                 inf_procs[cur_proc] = beam_sampler.InfiniteSampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc, out_freq=10)
-            if debug:
-                ## calling run instead of start just treats it like a plain object --
-                ## doesn't actually do a fork. So we'll just block here for it to finish
-                ## rather than needing to join later.
-                ## Then we can use pdb() for debugging inside the thread.
-                inf_procs[cur_proc].run()
-            else:
-                inf_procs[cur_proc].start()
 
-        ## Close the queue
-        sent_q.join()
-        t1 = time.time()
-        logging.info("Sampling time for iteration %d is %d s" % (iter, t1-t0))
+            inf_procs[cur_proc].start()
+
+        ## Wait for server to finish distributing sentences for this iteration:
+        workDistributer.join()
+        
+        #logging.info("Sampling time for iteration %d is %d s" % (iter, t1-t0))
 
         ## Read the output and put it in a map -- use a map because sentences will
         ## finish asynchronously -- keep the sentence index so we can extract counts
@@ -317,13 +309,14 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         ## the samples so that when we print them out they align for inspection.
         t0 = time.time()
         num_processed = 0
+        parses = workDistributer.get_parses()
         sample_map = dict()
-        while not state_q.empty():
+        
+        for parse in parses:
             num_processed += 1
-            (sent_index, sent_sample, log_prob) = state_q.get()
-            increment_counts(sent_sample, ev_seqs[sent_index], models, sent_index)
-            sample_map[sent_index] = sent_sample
-            sample.log_prob += log_prob
+            increment_counts(parse.state_list, ev_seqs[ parse.index ], models, parse.index)
+            sample_map[parse.index] = parse.state_list
+            sample.log_prob += parse.log_prob
 
         ## samples got unsorted by queueing them so resort them just for the purpose 
         ## of debugging.
