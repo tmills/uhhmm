@@ -25,7 +25,7 @@ def main(argv):
         sys.stderr.write("Input file/dir does not exist!")
         sys.exit(-1)
     
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     
     config = configparser.ConfigParser()
     pickle_file = None

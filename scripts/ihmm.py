@@ -119,9 +119,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     logging.basicConfig(level=logging.INFO)
     logging.info("Starting beam sampling")
     
+    num_samples = 0
     burnin = int(params.get('burnin'))
     iters = int(params.get('sample_iters'))
-    num_samples = int(params.get('num_samples'))
+    max_samples = int(params.get('num_samples'))
     num_procs = int(params.get('num_procs'))
     debug = bool(int(params.get('debug', 0)))
     profile = bool(int(params.get('profile', 0)))
@@ -217,7 +218,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     logging.debug(list(map(lambda x: x.str(), hid_seqs[0])))
     
     
-    while len(samples) < num_samples:
+    while num_samples < max_samples:
         sample.iter = iter
 
         if iter > 0 and not finite:
@@ -283,11 +284,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         jobs_port = workDistributer.jobs_port
         results_port = workDistributer.results_port
         
-        workDistributer.start()
                                 
         ## Initialize all the sub-processes with their input-output queues,
         ## read-only models, and dimensions of matrix they'll need
-        t0 = time.time()
             
         for cur_proc in range(0,num_procs):
             ## Initialize and start the sub-process
@@ -299,9 +298,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
             inf_procs[cur_proc].start()
 
         ## Wait for server to finish distributing sentences for this iteration:
+        time.sleep(2)
+        t0 = time.time()
+        workDistributer.start()
         workDistributer.join()
+        t1 = time.time()
         
-        #logging.info("Sampling time for iteration %d is %d s" % (iter, t1-t0))
+        logging.info("Sampling time for iteration %d is %d s" % (iter, t1-t0))
 
         ## Read the output and put it in a map -- use a map because sentences will
         ## finish asynchronously -- keep the sentence index so we can extract counts
@@ -331,6 +334,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
             #samples.append(sample)
             report_function(sample)
             logging.info(".\n")
+            num_samples += 1
         
         t0 = time.time()
 

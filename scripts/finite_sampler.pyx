@@ -280,6 +280,6 @@ class FiniteSampler(PyzmqSampler):
             sample_seq.append(sample_state)
             
         sample_seq.reverse()
-        logging.debug("Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
+        logging.log(logging.DEBUG-1, "Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
         return sample_seq
 

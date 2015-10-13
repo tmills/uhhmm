@@ -26,16 +26,16 @@ class Ventilator(Thread):
         
     def run(self):        
         for ind,sent in enumerate(self.sent_list):
-            logging.debug("Ventilator pushing job %d" % ind)
+            logging.log(logging.DEBUG-1, "Ventilator pushing job %d" % ind)
             self.socket.send_pyobj(PyzmqJob(ind, sent))
-            logging.debug("Ventilator has pushed job %d" % ind)
+            logging.log(logging.DEBUG-1, "Ventilator has pushed job %d" % ind)
             
         for i in range(0, self.num_workers):
             self.socket.send_pyobj(PyzmqJob(-1, None))
 
         time.sleep(1)
         logging.debug("Ventilator run() finishing")
-        #self.socket.disconnect()
+        self.socket.close()
         
 class Sink(Thread):
     def __init__(self, host, port, num_workers):
@@ -61,6 +61,7 @@ class Sink(Thread):
         
         while num_done < self.num_workers:
             parse = self.socket.recv_pyobj()
+            logging.log(logging.DEBUG-1, "Sink received parse %d" % parse.index)
             if parse.index == -1:
                 num_done += 1
             else:
@@ -68,7 +69,7 @@ class Sink(Thread):
     
         time.sleep(1)
         logging.debug("Sink run() finishing")
-        #self.socket.disconnect()
+        self.socket.close()
 
     def get_parses(self):
         return self.outputs

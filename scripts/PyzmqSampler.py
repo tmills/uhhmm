@@ -21,29 +21,29 @@ class PyzmqSampler(Process):
         self.out_freq = out_freq
         
     def run(self):
-        logging.debug("Starting forward pass in thread %s", self.tid)
+        logging.debug("Starting forward pass in thread %d", self.tid)
 
         context = zmq.Context()
 
         #  Socket to talk to server
-        logging.debug("Connecting to work distribution server…")
+        logging.debug("Worker %d connecting to work distribution server..." % self.tid)
         jobs_socket = context.socket(zmq.PULL)        
         jobs_socket.connect("tcp://%s:%s" % (self.host, self.jobs_port))
 
         results_socket = context.socket(zmq.PUSH)
         results_socket.connect("tcp://%s:%s" % (self.host, self.results_port))
         
-        logging.debug("Worker connected to both endpoints")
+        logging.debug("Worker %d connected to both endpoints" % self.tid)
         
         while True: 
-            logging.debug("Worker waiting for job")
+            logging.log(logging.DEBUG-1, "Worker %d waiting for job" % self.tid)
             job = jobs_socket.recv_pyobj();
             sent_index = job.index
             sent = job.ev_seq
-            logging.debug("Worker has received sentence %d" % sent_index)
+            logging.log(logging.DEBUG-1, "Worker %d has received sentence %d" % (self.tid, sent_index))
             
             if sent_index == -1:
-                logging.info('Received done signal from job server')
+                logging.debug('Worker %d received done signal from job server' % self.tid)
                 break
 
             t0 = time.time()
@@ -62,7 +62,9 @@ class PyzmqSampler(Process):
                 logging.error('Sentence %d had positive log probability %f' % (sent_index, log_prob))
         
         ## Tell the sink that i'm quitting:
-        results_socket.send_pyobj(PyzmqParse(-1, None, 0))
-        logging.debug("Worker disconnecting sockets and finishing up")
-#        jobs_socket.disconnect()
-#        results_socket.disconnect()
+        results_socket.send_pyobj(PyzmqParse(-1,None,0))
+        #time.sleep(1)
+        
+        logging.debug("Worker %d disconnecting sockets and finishing up" % self.tid)
+        jobs_socket.close()
+        results_socket.close()
