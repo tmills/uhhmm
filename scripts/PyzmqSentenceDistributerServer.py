@@ -57,6 +57,7 @@ class Sink(Thread):
         
     def run(self):
         start_bit = self.socket.recv()
+        logging.debug("Sink received start bit")
         num_done = 0
         
         while num_done < self.num_workers:
@@ -91,12 +92,13 @@ class PyzmqSentenceDistributerServer(Thread):
         num_done = 0
                 
         self.sink.start()
-        self.vent.start()
-        
         context = zmq.Context()
         socket = context.socket(zmq.PUSH)
         socket.connect("tcp://%s:%s" % (self.sink.host, self.sink.port))
         socket.send(b'0')
+
+        self.vent.start()
+        
         
         logging.debug("Waiting for ventilator to finish")
         self.vent.join()

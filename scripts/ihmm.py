@@ -298,7 +298,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
             inf_procs[cur_proc].start()
 
         ## Wait for server to finish distributing sentences for this iteration:
-        time.sleep(2)
+        time.sleep(1)
         t0 = time.time()
         workDistributer.start()
         workDistributer.join()
