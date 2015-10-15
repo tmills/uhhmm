@@ -65,7 +65,7 @@ class PyzmqSampler(Process):
             (self.dyn_prog, log_prob) = self.forward_pass(self.dyn_prog, sent, self.models, self.K, sent_index)
             sent_sample = self.reverse_sample(self.dyn_prog, sent, self.models, self.K, sent_index)
             if sent_index % self.out_freq == 0:
-                logging.info("Processed sentence {0}".format(sent_index))
+                logging.info("Processed sentence {0} (Worker {1})".format(sent_index, self.tid))
 
             t1 = time.time()
 

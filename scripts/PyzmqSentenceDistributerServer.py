@@ -95,7 +95,10 @@ class PyzmqSentenceDistributerServer(Thread):
         context = zmq.Context()
         socket = context.socket(zmq.PUSH)
         socket.connect("tcp://%s:%s" % (self.sink.host, self.sink.port))
-        socket.send(b'0')
+        tracker = socket.send(b'0', copy=False, track=True)
+        
+        while not tracker.done:
+            time.sleep(1)
 
         self.vent.start()
         
