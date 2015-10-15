@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import ihmm
+import ihmm_io
 import logging
 import time
 import numpy as np
@@ -156,7 +157,8 @@ def getVariableMaxes(models):
     return (a_max, b_max, g_max)
 
 class FiniteSampler(PyzmqSampler):
-    def __init__(self, models, pi, phi, host, jobs_port, results_port, totalK, maxLen, tid):
+    def __init__(self, models_location, host, jobs_port, results_port, totalK, maxLen, tid):
+        (models, pi, phi) = ihmm_io.read_serialized_models(models_location)
         PyzmqSampler.__init__(self, models, host, jobs_port, results_port, totalK, maxLen, tid)
         self.state_size = totalK
         self.dyn_prog = np.zeros((totalK,maxLen))

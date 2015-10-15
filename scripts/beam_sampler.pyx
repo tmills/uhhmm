@@ -1,15 +1,18 @@
+#!/usr/bin/env python3
 import ihmm
+import ihmm_io
 import logging
 import time
 import numpy as np
 import sys
 import pyximport; pyximport.install()
-from Sampler import Sampler
 import log_math as lm
+from PyzmqSampler import PyzmqSampler
 
-class InfiniteSampler(Sampler):
-    def __init__(self, in_q, out_q, models, totalK, maxLen, tid, out_freq=25):
-        Sampler.__init__(self, in_q, out_q, models, totalK, maxLen, tid, out_freq)
+class InfiniteSampler(PyzmqSampler):
+    def __init__(self, models_location, host, jobs_port, results_port, totalK, maxLen, tid, out_freq=25):
+        models = ihmm_io.read_serialized_models(models_location)
+        PyzmqSampler.__init__(self, models, host, jobs_port, results_port, totalK, maxLen, tid)
         self.state_size = totalK
         self.dyn_prog = np.zeros((2,2,models.act.dist.shape[-1], models.cont.dist.shape[-1], models.pos.dist.shape[-1],maxLen))
 

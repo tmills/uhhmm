@@ -39,11 +39,18 @@ def read_sample_file(filename):
     
     f.close()
     return pos_seqs        
-            
+
 def read_serialized_sample(pickle_filename):
     pickle_file = open(pickle_filename, 'rb')
     return pickle.load(pickle_file)
 
+def write_serialized_models(model_list, pickle_file):
+    pickle.dump(model_list, pickle_file)
+    
+def read_serialized_models(pickle_filename):
+    pickle_file = open(pickle_filename, 'rb')
+    return pickle.load(pickle_file)
+    
 def write_output(sample, stats, config, gold_pos=None):
 #    last_sample = samples[-1]
     models = sample.models

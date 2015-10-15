@@ -7,6 +7,7 @@ import ihmm_sampler as sampler
 import ihmm_io
 import pdb
 import sys
+import tempfile
 from multiprocessing import Process,Queue,JoinableQueue
 import zmq
 from PyzmqSentenceDistributerServer import *
@@ -139,7 +140,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         logging.info('profile is set to %s, importing and installing pyx' % profile)    
         import pyximport; pyximport.install()
 
-    import Sampler
     import beam_sampler
     import finite_sampler
 
@@ -274,9 +274,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         logging.info("Number of a states=%d, b states=%d, g states=%d, total=%d" % (a_max-2, b_max-2, g_max-2, totalK))
         
         
+        temp_model_file = tempfile.NamedTemporaryFile()
         if finite:
             (trans_mat, obs_mat) = finite_sampler.compile_models(totalK, models)
-        
+            ihmm_io.write_serialized_models((models, trans_mat, obs_mat), temp_model_file)  
+        else:
+            ihmm_io.write_serialized_models(models, temp_model_file)
+            
         inf_procs = dict()
         cur_proc = 0
 
@@ -284,16 +288,17 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         jobs_port = workDistributer.jobs_port
         results_port = workDistributer.results_port
         
+        
                                 
         ## Initialize all the sub-processes with their input-output queues,
         ## read-only models, and dimensions of matrix they'll need
-            
+        
         for cur_proc in range(0,num_procs):
             ## Initialize and start the sub-process
             if finite:
-                inf_procs[cur_proc] = finite_sampler.FiniteSampler(models, trans_mat, obs_mat, workDistributer.host, jobs_port, results_port, totalK, maxLen+1, cur_proc)
+                inf_procs[cur_proc] = finite_sampler.FiniteSampler(temp_model_file.name, workDistributer.host, jobs_port, results_port, totalK, maxLen+1, cur_proc)
             else:
-                inf_procs[cur_proc] = beam_sampler.InfiniteSampler(sent_q, state_q, models, totalK, maxLen+1, cur_proc, out_freq=10)
+                inf_procs[cur_proc] = beam_sampler.InfiniteSampler(temp_model_file.name, workDistributer.host, jobs_port, results_port, totalK, maxLen+1, cur_proc, out_freq=10)
 
             inf_procs[cur_proc].start()
 
