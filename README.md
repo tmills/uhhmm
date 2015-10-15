@@ -15,3 +15,5 @@ The dictionary file should contain a mapping between words and their index. Each
 
 There are scripts in the scripts/ sub-directory to convert token files into int files, creating a dictionary as well.
 
+## Cluster usage
+This software has been written to be highly parallelizable, either on a single node with multiple cores or in a cluster environment with multiple nodes. We use Pyzmq inter-process messaging to pass sentences to workers and receive parses from workers. The main job collects the sampled sentences, recomputes UHHMM model parameters, and then iterates. For cluster environments where there is no shared disk space in the standard places (/tmp), please make sure you have a environment variable TMP, TEMP, or TMPDIR set  -- pythons temp file libraries will use these.
