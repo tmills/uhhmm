@@ -6,6 +6,7 @@ import numpy as np
 import ihmm_sampler as sampler
 import ihmm_io
 import pdb
+import socket
 import sys
 import tempfile
 from multiprocessing import Process,Queue,JoinableQueue
@@ -285,7 +286,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         inf_procs = dict()
         cur_proc = 0
 
-        workDistributer = PyzmqSentenceDistributerServer(models, ev_seqs, num_procs, jobs_port=jobs_port, results_port=results_port)
+        host_name = socket.gethostbyname(socket.gethostname())
+        workDistributer = PyzmqSentenceDistributerServer(models, ev_seqs, num_procs, host=host_name, jobs_port=jobs_port, results_port=results_port)
         jobs_port = workDistributer.jobs_port
         results_port = workDistributer.results_port
         
