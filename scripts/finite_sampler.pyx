@@ -9,7 +9,7 @@ import sys
 from scipy.sparse import *
 import pyximport; pyximport.install()
 from PyzmqSampler import *
-
+import subprocess
 
 def compile_models(totalK, models):
     logging.info("Compiling component models into mega-HMM transition and observation matrices")
@@ -150,20 +150,22 @@ def getStateRange(f,j,a,b, maxes):
     start = getStateIndex(f,j,a,b,0,maxes)
     return range(start,start+g_max)
 
-def getVariableMaxes(models):
-    a_max = models.act.dist.shape[-1]
-    b_max = models.start.dist.shape[-1]
-    g_max = models.pos.dist.shape[-1]
-    return (a_max, b_max, g_max)
 
 class FiniteSampler(PyzmqSampler):
-    def __init__(self, models_location, host, jobs_port, results_port, totalK, maxLen, tid):
-        (models, pi, phi) = ihmm_io.read_serialized_models(models_location)
-        PyzmqSampler.__init__(self, models, host, jobs_port, results_port, totalK, maxLen, tid)
-        self.state_size = totalK
-        self.dyn_prog = np.zeros((totalK,maxLen))
-        (self.pi, self.phi) = pi, phi
-
+    def __init__(self, models_location, host, jobs_port, results_port, totalK, maxLen, tid, cluster_cmd=None):
+        if cluster_cmd == None:
+            (models, pi, phi) = ihmm_io.read_serialized_models(models_location)
+            PyzmqSampler.__init__(self, models, host, jobs_port, results_port, totalK, maxLen, tid)
+            self.state_size = totalK
+            self.dyn_prog = np.zeros((totalK,maxLen))
+            (self.pi, self.phi) = pi, phi
+            self.start()
+        else:
+            cmd = cluster_cmd.split() + ['python3', 'scripts/finite_sampler.pyx', models_location, host, jobs_port, results_port, totalK, maxLen, tid]
+            cmd = list(map(str, cmd))
+            logging.debug("Making call with the following command: %s" % cmd)
+            subprocess.Popen(cmd)
+        
     def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
         ## keep track of forward probs for this sentence:
         maxes = getVariableMaxes(models)
@@ -285,3 +287,9 @@ class FiniteSampler(PyzmqSampler):
         logging.log(logging.DEBUG-1, "Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
         return sample_seq
 
+def main(args):
+    logging.basicConfig(level=logging.INFO)
+    fs = FiniteSampler(args[0], args[1], int(args[2]), int(args[3]), int(args[4]), int(args[5]), int(args[6]))
+    
+if __name__ == "__main__":
+    main(sys.argv[1:])

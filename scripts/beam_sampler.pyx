@@ -5,20 +5,28 @@ import logging
 import time
 import numpy as np
 import sys
+import subprocess
+from PyzmqSampler import *
 import pyximport; pyximport.install()
 import log_math as lm
-from PyzmqSampler import PyzmqSampler
 
 class InfiniteSampler(PyzmqSampler):
-    def __init__(self, models_location, host, jobs_port, results_port, totalK, maxLen, tid, out_freq=25):
-        models = ihmm_io.read_serialized_models(models_location)
-        PyzmqSampler.__init__(self, models, host, jobs_port, results_port, totalK, maxLen, tid)
-        self.state_size = totalK
-        self.dyn_prog = np.zeros((2,2,models.act.dist.shape[-1], models.cont.dist.shape[-1], models.pos.dist.shape[-1],maxLen))
+    def __init__(self, models_location, host, jobs_port, results_port, totalK, maxLen, tid, out_freq=25, cluster_cmd=None):
+        if cluster_cmd == None:
+            models = ihmm_io.read_serialized_models(models_location)
+            PyzmqSampler.__init__(self, models, host, jobs_port, results_port, totalK, maxLen, tid)
+            self.state_size = totalK
+            self.dyn_prog = np.zeros((2,2,models.act.dist.shape[-1], models.cont.dist.shape[-1], models.pos.dist.shape[-1],maxLen))
+            self.start()
+        else:
+            cmd = cluster_cmd.split() + ['python3', 'scripts/beam_sampler.pyx', models_location, host, jobs_port, results_port, totalK, maxLen, tid]
+            cmd = list(map(str, cmd))
+            logging.debug("Making call with the following command: %s" % cmd)
+            subprocess.Popen(cmd)
 
     def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
         dyn_prog[:] = -np.inf
-        g_max = ihmm.getGmax()
+        (a_max,b_max,g_max) = getVariableMaxes(models)
         ## keep track of forward probs for this sentence:
         for index,token in enumerate(sent):
             if index == 0:
@@ -49,7 +57,7 @@ class InfiniteSampler(PyzmqSampler):
                         cumProbs[1] = cumProbs[0]
                         
                         
-                        for a in range(1,ihmm.getAmax()):
+                        for a in range(1,a_max):
                             if f == 0 and j == 0:
                                 ## active transition:
                                 cumProbs[2] = cumProbs[1] + lm.log_boolean(models.act.dist[prevA,a] > models.act.u[sent_index,index])
@@ -67,7 +75,7 @@ class InfiniteSampler(PyzmqSampler):
                             if cumProbs[2] == -np.inf:
                                 continue
                       
-                            for b in range(1,ihmm.getBmax()):
+                            for b in range(1,b_max):
                                 if j == 1:
                                     cumProbs[3] = cumProbs[2] + models.cont.dist[prevB,prevG,b]
                                 else:
@@ -180,3 +188,10 @@ def sample_from_ndarray(a):
         sum += val
         if dart < sum:
             return ind
+
+def main(args):
+    logging.basicConfig(level=logging.INFO)
+    fs = InfiniteSampler(args[0], args[1], int(args[2]), int(args[3]), int(args[4]), int(args[5]), int(args[6]))
+    
+if __name__ == "__main__":
+    main(sys.argv[1:])

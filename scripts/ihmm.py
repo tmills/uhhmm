@@ -128,7 +128,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     debug = bool(int(params.get('debug', 0)))
     profile = bool(int(params.get('profile', 0)))
     finite = bool(int(params.get('finite', 0)))
-   
+    cluster_cmd = params.get('cluster_cmd', None)
+    
     seed = int(params.get('seed', -1))
     if seed > 0:
         logging.info("Using seed %d for random number generator." % (seed))
@@ -296,11 +297,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         for cur_proc in range(0,num_procs):
             ## Initialize and start the sub-process
             if finite:
-                inf_procs[cur_proc] = finite_sampler.FiniteSampler(temp_model_file.name, workDistributer.host, jobs_port, results_port, totalK, maxLen+1, cur_proc)
+                inf_procs[cur_proc] = finite_sampler.FiniteSampler(temp_model_file.name, workDistributer.host, jobs_port, results_port, totalK, maxLen+1, cur_proc, cluster_cmd=cluster_cmd)
             else:
-                inf_procs[cur_proc] = beam_sampler.InfiniteSampler(temp_model_file.name, workDistributer.host, jobs_port, results_port, totalK, maxLen+1, cur_proc, out_freq=10)
-
-            inf_procs[cur_proc].start()
+                inf_procs[cur_proc] = beam_sampler.InfiniteSampler(temp_model_file.name, workDistributer.host, jobs_port, results_port, totalK, maxLen+1, cur_proc, out_freq=10, cluster_cmd=cluster_cmd)
 
         ## Wait for server to finish distributing sentences for this iteration:
         time.sleep(1)

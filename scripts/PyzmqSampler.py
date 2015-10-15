@@ -7,6 +7,12 @@ import logging
 import time
 
 
+def getVariableMaxes(models):
+    a_max = models.act.dist.shape[-1]
+    b_max = models.start.dist.shape[-1]
+    g_max = models.pos.dist.shape[-1]
+    return (a_max, b_max, g_max)
+
 class PyzmqSampler(Process):
     def __init__(self, models, host, jobs_port, results_port, totalK, maxLen, tid, out_freq=100):
         Process.__init__(self)
