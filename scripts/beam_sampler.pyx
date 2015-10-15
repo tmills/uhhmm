@@ -12,17 +12,15 @@ import log_math as lm
 
 class InfiniteSampler(PyzmqSampler):
     def __init__(self, models_location, host, jobs_port, results_port, totalK, maxLen, tid, out_freq=25, cluster_cmd=None):
+        self.cluster_cmd = None
         if cluster_cmd == None:
             models = ihmm_io.read_serialized_models(models_location)
             PyzmqSampler.__init__(self, models, host, jobs_port, results_port, totalK, maxLen, tid)
             self.state_size = totalK
             self.dyn_prog = np.zeros((2,2,models.act.dist.shape[-1], models.cont.dist.shape[-1], models.pos.dist.shape[-1],maxLen))
-            self.start()
         else:
             cmd = cluster_cmd.split() + ['python3', 'scripts/beam_sampler.pyx', models_location, host, jobs_port, results_port, totalK, maxLen, tid]
-            cmd = list(map(str, cmd))
-            logging.debug("Making call with the following command: %s" % cmd)
-            subprocess.Popen(cmd)
+            self.cluster_cmd = list(map(str, cmd))
 
     def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
         dyn_prog[:] = -np.inf
@@ -178,7 +176,7 @@ class InfiniteSampler(PyzmqSampler):
             dyn_prog[...,t] = normalized_dist
             
         sample_seq.reverse()
-        logging.debug("Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
+        logging.log(logging.DEBUG-1, "Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
         return sample_seq
 
 def sample_from_ndarray(a):
@@ -191,7 +189,8 @@ def sample_from_ndarray(a):
 
 def main(args):
     logging.basicConfig(level=logging.INFO)
-    fs = InfiniteSampler(args[0], args[1], int(args[2]), int(args[3]), int(args[4]), int(args[5]), int(args[6]))
-    
+    sampler = InfiniteSampler(args[0], args[1], int(args[2]), int(args[3]), int(args[4]), int(args[5]), int(args[6]))
+    sampler.run()
+
 if __name__ == "__main__":
     main(sys.argv[1:])

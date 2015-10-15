@@ -300,6 +300,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
                 inf_procs[cur_proc] = finite_sampler.FiniteSampler(temp_model_file.name, workDistributer.host, jobs_port, results_port, totalK, maxLen+1, cur_proc, cluster_cmd=cluster_cmd)
             else:
                 inf_procs[cur_proc] = beam_sampler.InfiniteSampler(temp_model_file.name, workDistributer.host, jobs_port, results_port, totalK, maxLen+1, cur_proc, out_freq=10, cluster_cmd=cluster_cmd)
+            
+            inf_procs[cur_proc].start()
 
         ## Wait for server to finish distributing sentences for this iteration:
         time.sleep(1)

@@ -5,7 +5,7 @@ from PyzmqMessage import *
 from multiprocessing import Process
 import logging
 import time
-
+import subprocess
 
 def getVariableMaxes(models):
     a_max = models.act.dist.shape[-1]
@@ -25,6 +25,15 @@ class PyzmqSampler(Process):
         self.maxLen = maxLen
         self.tid = tid
         self.out_freq = out_freq
+    
+    def start(self):
+        if self.cluster_cmd == None:
+            ## continue up the call chain
+            Process.start(self)
+        else:
+            logging.debug("Making cluster submit call with the following command: %s" % self.cluster_cmd)
+            ## call the cluster submission command
+            subprocess.Popen(self.cluster_cmd)
         
     def run(self):
         logging.debug("Starting forward pass in thread %d", self.tid)
