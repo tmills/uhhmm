@@ -115,8 +115,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     start_a = int(params.get('starta'))
     start_b = int(params.get('startb'))
     start_g = int(params.get('startg'))
-    jobs_port = -1
-    results_port = -1
 
     logging.basicConfig(level=logging.INFO)
     logging.info("Starting beam sampling")
@@ -215,11 +213,25 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     collect_trans_probs(hid_seqs, models)
     
     stats = Stats()
+    inf_procs = dict()
     
     logging.debug(ev_seqs[0])
     logging.debug(list(map(lambda x: x.str(), hid_seqs[0])))
+
+    workDistributer = PyzmqSentenceDistributerServer(ev_seqs, num_procs)
     
+    ## Initialize all the sub-processes with their input-output queues
+    ## and dimensions of matrix they'll need    
+    for cur_proc in range(0,num_procs):
+        ## Initialize and start the sub-process
+        if finite:
+            inf_procs[cur_proc] = finite_sampler.FiniteSampler(workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, cur_proc, cluster_cmd=cluster_cmd)
+        else:
+            inf_procs[cur_proc] = beam_sampler.InfiniteSampler(workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, cur_proc, out_freq=10, cluster_cmd=cluster_cmd)
     
+        inf_procs[cur_proc].start()
+
+    ### Start doing actual sampling:
     while num_samples < max_samples:
         sample.iter = iter
 
@@ -275,41 +287,17 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
 
         logging.info("Number of a states=%d, b states=%d, g states=%d, total=%d" % (a_max-2, b_max-2, g_max-2, totalK))
         
-        
-        temp_model_file = tempfile.NamedTemporaryFile()
+        ## Give the models to the model server. (Note: We used to pass them to workers via temp files which works when you create new
+        ## workers but is harder when you need to coordinate timing of reading new models in every pass)
         if finite:
             (trans_mat, obs_mat) = finite_sampler.compile_models(totalK, models)
-            ihmm_io.write_serialized_models((models, trans_mat, obs_mat), temp_model_file)  
+            workDistributer.resync_models((models, trans_mat, obs_mat))
         else:
-            ihmm_io.write_serialized_models(models, temp_model_file)
-            
-        inf_procs = dict()
-        cur_proc = 0
-
-        host_name = socket.gethostbyname(socket.gethostname())
-        workDistributer = PyzmqSentenceDistributerServer(models, ev_seqs, num_procs, host=host_name, jobs_port=jobs_port, results_port=results_port)
-        jobs_port = workDistributer.jobs_port
-        results_port = workDistributer.results_port
+            workDistributer.resync_models(models)
         
-        
-                                
-        ## Initialize all the sub-processes with their input-output queues,
-        ## read-only models, and dimensions of matrix they'll need
-        
-        for cur_proc in range(0,num_procs):
-            ## Initialize and start the sub-process
-            if finite:
-                inf_procs[cur_proc] = finite_sampler.FiniteSampler(temp_model_file.name, workDistributer.host, jobs_port, results_port, totalK, maxLen+1, cur_proc, cluster_cmd=cluster_cmd)
-            else:
-                inf_procs[cur_proc] = beam_sampler.InfiniteSampler(temp_model_file.name, workDistributer.host, jobs_port, results_port, totalK, maxLen+1, cur_proc, out_freq=10, cluster_cmd=cluster_cmd)
-            
-            inf_procs[cur_proc].start()
-
         ## Wait for server to finish distributing sentences for this iteration:
-        time.sleep(1)
         t0 = time.time()
-        workDistributer.start()
-        workDistributer.join()
+        workDistributer.run_one_iteration()
         t1 = time.time()
         
         logging.info("Sampling time for iteration %d is %d s" % (iter, t1-t0))
@@ -392,6 +380,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         
         iter += 1
         
+    samples.append(sample)
+    workDistributer.stop()
 
     return (samples, stats)
 

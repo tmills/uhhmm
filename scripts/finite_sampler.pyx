@@ -6,7 +6,8 @@ import logging
 import time
 import numpy as np
 import sys
-from scipy.sparse import *
+import zmq
+#from scipy.sparse import *
 import pyximport; pyximport.install()
 from PyzmqSampler import *
 import subprocess
@@ -102,7 +103,7 @@ def compile_models(totalK, models):
     time_spent = time.time() - t0
     logging.info("Done in %d s" % time_spent)
 #    return (np.matrix(pi, copy=False), np.matrix(phi, copy=False))
-    return (csc_matrix(pi), np.matrix(phi,copy=False))
+    return (np.matrix(pi,copy=False), np.matrix(phi,copy=False))
     
 def unlog_models(models):
     fork = 10**models.fork.dist
@@ -152,18 +153,21 @@ def getStateRange(f,j,a,b, maxes):
 
 
 class FiniteSampler(PyzmqSampler):
-    def __init__(self, models_location, host, jobs_port, results_port, totalK, maxLen, tid, cluster_cmd=None):
+    def __init__(self, host, jobs_port, results_port, models_port, maxLen, tid, cluster_cmd=None):
         self.cluster_cmd = None
         if cluster_cmd == None:
-            (models, pi, phi) = ihmm_io.read_serialized_models(models_location)
-            PyzmqSampler.__init__(self, models, host, jobs_port, results_port, totalK, maxLen, tid)
-            self.state_size = totalK
-            self.dyn_prog = np.zeros((totalK,maxLen))
-            (self.pi, self.phi) = pi, phi
+            PyzmqSampler.__init__(self, host, jobs_port, results_port, models_port, maxLen, tid)
+            self.dyn_prog = []
         else:
-            cmd = cluster_cmd.split() + ['python3', 'scripts/finite_sampler.pyx', models_location, host, jobs_port, results_port, totalK, maxLen, tid]
+            cmd = cluster_cmd.split() + ['python3', 'scripts/finite_sampler.pyx', host, jobs_port, results_port, models_port, maxLen, tid]
             self.cluster_cmd = list(map(str, cmd))
                     
+    def read_models(self, models_socket):
+        (self.models, self.pi, self.phi) = models_socket.recv_pyobj()
+    
+    def initialize_dynprog(self):
+        self.dyn_prog = np.zeros((self.K, self.maxLen))
+        
     def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
         ## keep track of forward probs for this sentence:
         maxes = getVariableMaxes(models)
@@ -286,8 +290,8 @@ class FiniteSampler(PyzmqSampler):
         return sample_seq
 
 def main(args):
-    logging.basicConfig(level=logging.INFO)
-    fs = FiniteSampler(args[0], args[1], int(args[2]), int(args[3]), int(args[4]), int(args[5]), int(args[6]))
+    logging.basicConfig(level=logging.DEBUG)
+    fs = FiniteSampler(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), int(args[5]))
     ## Call run directly instead of start otherwise we'll have 2n workers
     fs.run()
     

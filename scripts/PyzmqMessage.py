@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 
 class PyzmqJob:
-    def __init__(self, index, ev_seq):
+    SENTENCE=0
+    QUIT=1
+    
+    def __init__(self, msg_type, index, ev_seq):
+        self.type = msg_type
         self.index = index
         self.ev_seq = ev_seq
 
