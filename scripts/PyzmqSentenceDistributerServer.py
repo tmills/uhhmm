@@ -109,9 +109,8 @@ class Sink(Thread):
     def get_parses(self):
         return self.outputs
 
-class ModelDistributer(Thread):
+class ModelDistributer():
     def __init__(self, host, sync_port, num_workers):
-        Thread.__init__(self)
         self.host = host
         self.num_workers = num_workers
         context = zmq.Context()
@@ -124,25 +123,14 @@ class ModelDistributer(Thread):
         self.sync_socket.connect("tcp://%s:%s" % (self.host, sync_port))
         logging.debug("Model server connected to sync socket")        
         
-    def run(self):
-    
-        while(True):
-            sync = self.sync_socket.recv()
-            logging.debug("Model server received start bit from sync server")
-            if sync == '0':
-                break
-                
-            for i in range(0, self.num_workers):         
-                self.socket.send_pyobj(self.models)
+    def send_models(self, models):
+        for i in range(0, self.num_workers):
+            logging.log(logging.DEBUG-1, 'Sending worker a model')
+            self.socket.send_pyobj(models)
 
-            logging.debug("Model distributer finishing iteration")
+        logging.debug("Model distributer finishing iteration")
 
         logging.info("Model distributer thread finishing")
-        self.socket.close()
-        self.sync_socket.close()
-        
-    def set_models(self, models):    
-        self.models = models
 
 class PyzmqSentenceDistributerServer():
     def __init__(self, sent_list, num_workers):
@@ -165,7 +153,7 @@ class PyzmqSentenceDistributerServer():
         self.results_port = self.sink.port
         self.models_port = self.model_server.port
 
-        self.model_server.start()
+#        self.model_server.start()
         self.sink.start()
         self.vent.start()
         
@@ -174,14 +162,17 @@ class PyzmqSentenceDistributerServer():
 
         self.models = None
         
-    def run_one_iteration(self):
-        ind = 0   
+    def run_one_iteration(self, models):
+        ind = 0
         num_workers = 0
         num_done = 0
         
+#        self.model_server.set_models(models)
+        self.model_server.send_models(models)
+               
         ## Wait for the sink to be ready before we start sending sentences out:
         logging.debug("Sending start bits to threads:")
-        self.sync_socket.send(b'1')
+#        self.sync_socket.send(b'1')
         self.sync_socket.send(b'1')
         self.sync_socket.send(b'1')
         ## Wait a bit for sink to process signal and set processing to true for the first time
@@ -194,13 +185,9 @@ class PyzmqSentenceDistributerServer():
 
     def stop(self):
         ## Send two stop signals to sink and ventilator
-        self.sync_socket.send(b'0')
+#        self.sync_socket.send(b'0')
         self.sync_socket.send(b'0')
         self.sync_socket.send(b'0')
         
     def get_parses(self):
         return self.sink.get_parses()
-
-    def resync_models(self, models):
-        self.model_server.set_models(models)
-

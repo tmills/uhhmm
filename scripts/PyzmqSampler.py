@@ -60,6 +60,7 @@ class PyzmqSampler(Process):
 
             self.initialize_dynprog()        
             
+            sents_processed = 0
             while True: 
                 logging.log(logging.DEBUG-1, "Worker %d waiting for job" % self.tid)
                 job = jobs_socket.recv_pyobj();
@@ -81,6 +82,7 @@ class PyzmqSampler(Process):
 
                 t1 = time.time()
 
+                sents_processed +=1 
                 parse = PyzmqParse(sent_index, sent_sample, log_prob)
                 
                 results_socket.send_pyobj(parse)
@@ -90,7 +92,8 @@ class PyzmqSampler(Process):
             
             ## Tell the sink that i'm done:
             results_socket.send_pyobj(PyzmqParse(-1,None,0))
-            
+            logging.debug("Worker %d processed %d sentences this iteration" % (self.tid, sents_processed))
+
         logging.debug("Worker %d disconnecting sockets and finishing up" % self.tid)
         jobs_socket.close()
         results_socket.close()

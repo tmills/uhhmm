@@ -289,15 +289,14 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         
         ## Give the models to the model server. (Note: We used to pass them to workers via temp files which works when you create new
         ## workers but is harder when you need to coordinate timing of reading new models in every pass)
+        t0 = time.time()
         if finite:
             (trans_mat, obs_mat) = finite_sampler.compile_models(totalK, models)
-            workDistributer.resync_models((models, trans_mat, obs_mat))
+            workDistributer.run_one_iteration((models, trans_mat, obs_mat))
         else:
-            workDistributer.resync_models(models)
+            workDistributer.run_one_iteration(models)
         
         ## Wait for server to finish distributing sentences for this iteration:
-        t0 = time.time()
-        workDistributer.run_one_iteration()
         t1 = time.time()
         
         logging.info("Sampling time for iteration %d is %d s" % (iter, t1-t0))
