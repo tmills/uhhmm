@@ -163,7 +163,13 @@ class FiniteSampler(PyzmqSampler):
             self.cluster_cmd = list(map(str, cmd))
                     
     def read_models(self, models_socket):
-        (self.models, self.pi, self.phi) = models_socket.recv_pyobj()
+        models_socket.send(b'0')
+        msg = models_socket.recv_pyobj()
+        if msg == None:
+            return False
+        else:
+            (self.models, self.pi, self.phi) = msg
+            return True
     
     def initialize_dynprog(self):
         self.dyn_prog = np.zeros((self.K, self.maxLen))

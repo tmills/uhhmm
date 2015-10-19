@@ -38,7 +38,7 @@ class PyzmqSampler(Process):
         logging.debug("Starting forward pass in thread %d", self.tid)
 
         context = zmq.Context()
-        models_socket = context.socket(zmq.PULL)
+        models_socket = context.socket(zmq.REQ)
         models_socket.connect("tcp://%s:%s" % (self.host, self.models_port))
 
         logging.debug("Worker %d connecting to work distribution server..." % self.tid)
@@ -52,8 +52,10 @@ class PyzmqSampler(Process):
         while True:
             #  Socket to talk to server
             logging.debug("Thread %d waiting for new models..." % self.tid)
-            self.read_models(models_socket)
-
+            valid_models = self.read_models(models_socket)
+            if not valid_models:
+                break
+            
             logging.debug("Thread %d received new models..." % self.tid)
             (a_max, b_max, g_max) = getVariableMaxes(self.models)
             self.K = 2 * 2 * a_max * b_max * g_max            

@@ -379,7 +379,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         
         iter += 1
         
-    samples.append(sample)
+    logging.debug("Ending sampling")
     workDistributer.stop()
 
     return (samples, stats)

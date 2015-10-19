@@ -20,18 +20,20 @@ class Ventilator(Thread):
 
         logging.debug("Ventilator successfully bound to PUSH socket.")
             
-        self.sync_socket = context.socket(zmq.PULL)
+        self.sync_socket = context.socket(zmq.REQ)
         self.sync_socket.connect("tcp://%s:%s" % (self.host, sync_port))
         logging.debug("Ventilator connected to sync socket.")
         
     def run(self):
         while True:
             ## Wait for signal to start:
+            logging.debug("Ventilator waiting for permission to start")
+            self.sync_socket.send(b'0')
             sync = self.sync_socket.recv()
-            if sync == '0':
+            if sync == b'0':
                 break
 
-            logging.debug("Ventilator received start bit from sync server")
+            logging.debug("Ventilator received sync signal %s and starting" % sync)
 
             for ind,sent in enumerate(self.sent_list):
                 logging.log(logging.DEBUG-1, "Ventilator pushing job %d" % ind)
@@ -62,7 +64,7 @@ class Sink(Thread):
         
         logging.debug("Parse accumulator successfully bound to PULL socket.")
         
-        self.sync_socket = context.socket(zmq.PULL)
+        self.sync_socket = context.socket(zmq.REQ)
         self.sync_socket.connect("tcp://%s:%s" % (self.host, sync_port))
         logging.debug("Sink connected to sync socket.")
         
@@ -72,13 +74,13 @@ class Sink(Thread):
     def run(self):
     
         while True:
-            logging.debug("Sink waiting for start bit")
+            logging.debug("Sink waiting for permission to start...")
+            self.sync_socket.send(b'0')
             sync = self.sync_socket.recv()
-            if sync == '0':
+            if sync == b'0':
                 break
 
-            self.setProcessing(True)
-            logging.debug("Sink received start bit")
+            logging.debug("Sink received start bit %s" % sync)
             num_done = 0
             
             while num_done < self.num_workers:
@@ -114,7 +116,7 @@ class ModelDistributer():
         self.host = host
         self.num_workers = num_workers
         context = zmq.Context()
-        self.socket = context.socket(zmq.PUSH)
+        self.socket = context.socket(zmq.REP)
         self.port = self.socket.bind_to_random_port("tcp://"+self.host)
 
         logging.debug("Model server successfully bound to PUSH socket")
@@ -125,13 +127,17 @@ class ModelDistributer():
         
     def send_models(self, models):
         for i in range(0, self.num_workers):
-            logging.log(logging.DEBUG-1, 'Sending worker a model')
+            logging.log(logging.DEBUG, 'Sending worker a model')
+            self.socket.recv()
             self.socket.send_pyobj(models)
 
-        logging.debug("Model distributer finishing iteration")
+        logging.debug("Model distributer finished sending models.")
 
-        logging.info("Model distributer thread finishing")
-
+    def send_quit(self):
+        for i in range(0, self.num_workers):
+            self.socket.recv()
+            self.socket.send_pyobj(None)
+            
 class PyzmqSentenceDistributerServer():
     def __init__(self, sent_list, num_workers):
         Thread.__init__(self)
@@ -142,7 +148,7 @@ class PyzmqSentenceDistributerServer():
 
         context = zmq.Context()
 
-        self.sync_socket = context.socket(zmq.PUSH)
+        self.sync_socket = context.socket(zmq.REP)
         sync_port = self.sync_socket.bind_to_random_port("tcp://"+self.host)
 
         self.vent = Ventilator(self.host, sync_port, sent_list, num_workers)
@@ -153,7 +159,6 @@ class PyzmqSentenceDistributerServer():
         self.results_port = self.sink.port
         self.models_port = self.model_server.port
 
-#        self.model_server.start()
         self.sink.start()
         self.vent.start()
         
@@ -167,16 +172,18 @@ class PyzmqSentenceDistributerServer():
         num_workers = 0
         num_done = 0
         
-#        self.model_server.set_models(models)
         self.model_server.send_models(models)
-               
-        ## Wait for the sink to be ready before we start sending sentences out:
-        logging.debug("Sending start bits to threads:")
-#        self.sync_socket.send(b'1')
-        self.sync_socket.send(b'1')
-        self.sync_socket.send(b'1')
+        self.sink.setProcessing(True)
+        
         ## Wait a bit for sink to process signal and set processing to true for the first time
         time.sleep(3)
+
+        ## Wait for the sink to be ready before we start sending sentences out:
+        logging.debug("Sending start bits to threads:")
+        self.sync_socket.recv()
+        self.sync_socket.send(b'1')
+        self.sync_socket.recv()
+        self.sync_socket.send(b'1')
         
         while self.sink.getProcessing():
             time.sleep(1)
@@ -185,9 +192,13 @@ class PyzmqSentenceDistributerServer():
 
     def stop(self):
         ## Send two stop signals to sink and ventilator
-#        self.sync_socket.send(b'0')
+        self.sync_socket.recv()
         self.sync_socket.send(b'0')
+        self.sync_socket.recv()
         self.sync_socket.send(b'0')
+        
+        self.model_server.send_quit()
         
     def get_parses(self):
         return self.sink.get_parses()
+

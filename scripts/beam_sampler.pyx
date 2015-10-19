@@ -21,7 +21,13 @@ class InfiniteSampler(PyzmqSampler):
             self.cluster_cmd = list(map(str, cmd))
 
     def read_models(self, models_socket):
-        self.models = models_socket.recv_pyobj()
+        models_socket.send(b'0')
+        msg = models_socket.recv_pyobj()
+        if msg == None:
+            return False
+        else:
+            self.models = msg
+            return True
         
     def initialize_dynprog(self):
         self.dyn_prog = np.zeros((2,2,self.models.act.dist.shape[-1], self.models.cont.dist.shape[-1], self.models.pos.dist.shape[-1], self.maxLen))

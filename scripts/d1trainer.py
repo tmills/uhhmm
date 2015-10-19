@@ -25,7 +25,7 @@ def main(argv):
         sys.stderr.write("Input file/dir does not exist!")
         sys.exit(-1)
     
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
     
     config = configparser.ConfigParser()
     pickle_file = None
@@ -57,7 +57,8 @@ def main(argv):
     
     (samples, stats) = ihmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), pickle_file)
     
-    io.write_output(samples[-1], stats, config, pos_seq)
+    if len(samples) > 0:
+        io.write_output(samples[-1], stats, config, pos_seq)
 
 def read_params(config):
     params = {}
