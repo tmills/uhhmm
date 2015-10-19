@@ -42,7 +42,7 @@ class PyzmqSampler(Process):
         models_socket.connect("tcp://%s:%s" % (self.host, self.models_port))
 
         logging.debug("Worker %d connecting to work distribution server..." % self.tid)
-        jobs_socket = context.socket(zmq.PULL)        
+        jobs_socket = context.socket(zmq.REQ)        
         jobs_socket.connect("tcp://%s:%s" % (self.host, self.jobs_port))
         results_socket = context.socket(zmq.PUSH)
         results_socket.connect("tcp://%s:%s" % (self.host, self.results_port))
@@ -65,6 +65,7 @@ class PyzmqSampler(Process):
             sents_processed = 0
             while True: 
                 logging.log(logging.DEBUG-1, "Worker %d waiting for job" % self.tid)
+                jobs_socket.send(b'0')
                 job = jobs_socket.recv_pyobj();
                 
                 if job.type == PyzmqJob.SENTENCE:

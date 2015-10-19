@@ -15,7 +15,7 @@ class Ventilator(Thread):
         self.num_workers = num_workers
         logging.debug("Job distributer attempting to bind to PUSH socket...")
         context = zmq.Context()
-        self.socket = context.socket(zmq.PUSH)
+        self.socket = context.socket(zmq.REP)
         self.port = self.socket.bind_to_random_port("tcp://"+self.host)
 
         logging.debug("Ventilator successfully bound to PUSH socket.")
@@ -37,10 +37,12 @@ class Ventilator(Thread):
 
             for ind,sent in enumerate(self.sent_list):
                 logging.log(logging.DEBUG-1, "Ventilator pushing job %d" % ind)
+                self.socket.recv()
                 self.socket.send_pyobj(PyzmqJob(PyzmqJob.SENTENCE, ind, sent))
                 logging.log(logging.DEBUG-1, "Ventilator has pushed job %d" % ind)
                 
             for i in range(0, self.num_workers):
+                self.socket.recv()
                 self.socket.send_pyobj(PyzmqJob(PyzmqJob.QUIT, -1, None))
 
             time.sleep(1)
@@ -82,7 +84,8 @@ class Sink(Thread):
 
             logging.debug("Sink received start bit %s" % sync)
             num_done = 0
-            
+            self.outputs = list()
+                        
             while num_done < self.num_workers:
                 parse = self.socket.recv_pyobj()
                 logging.log(logging.DEBUG-1, "Sink received parse %d" % parse.index)
@@ -118,12 +121,7 @@ class ModelDistributer():
         context = zmq.Context()
         self.socket = context.socket(zmq.REP)
         self.port = self.socket.bind_to_random_port("tcp://"+self.host)
-
-        logging.debug("Model server successfully bound to PUSH socket")
-            
-        self.sync_socket = context.socket(zmq.PULL)
-        self.sync_socket.connect("tcp://%s:%s" % (self.host, sync_port))
-        logging.debug("Model server connected to sync socket")        
+        logging.debug("Model server successfully bound to REP socket")
         
     def send_models(self, models):
         for i in range(0, self.num_workers):
