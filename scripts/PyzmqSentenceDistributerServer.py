@@ -138,8 +138,7 @@ class ModelDistributer():
             
 class PyzmqSentenceDistributerServer():
     def __init__(self, sent_list, num_workers):
-        Thread.__init__(self)
-        
+
         ## Set up job distribution servers:
         self.host = socket.gethostbyname(socket.gethostname())
         self.sent_list = sent_list
