@@ -7,6 +7,7 @@ import ihmm_sampler as sampler
 import ihmm_io
 import pdb
 import socket
+from sm import *
 import sys
 import tempfile
 from multiprocessing import Process,Queue,JoinableQueue
@@ -147,7 +148,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     profile = bool(int(params.get('profile', 0)))
     finite = bool(int(params.get('finite', 0)))
     cluster_cmd = params.get('cluster_cmd', None)
-    sm_start_state = None
+    sm_proposal = None
     sm_burnin = int(params.get('split_merge_burnin', 10))
     
     seed = int(params.get('seed', -1))
@@ -348,23 +349,23 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         
         t0 = time.time()
 
-        if sm_start_state != None and (sample.iter - sm_start_state.iter) >= sm_burnin:
+        if sm_proposal != None and (sample.iter - sm_proposal.iter) >= sm_burnin:
             ## we are in a split-merge sampling regime and have done enough iterations to
             ## reach a reasonable state: Now look at the probability of the sample compared
             ## to the probability of the start state and probabilistically choose to
             ## keep the new split or take the last checkpoint.
-            old_lp = sm_start_state.log_prob
-            new_lp = sample.log_prob
-            
-            if new_lp < old_lp:
+            accept_prob = min(1.0, sm_proposal.getAcceptanceProbability())
+                        
+            if np.random.random() > accept_prob:
                 ## Don't accept -- revert to old sample
                 logging.info("Reverting to saved state from before attempted split/merge")
-                models = sm_start_state.models
-                sample = sm_start_state
+                models = sm_proposal.models
+                sample = sm_proposal.sample
             else:
                 logging.info("Split/merge proposal was accepted.")
 
-            sm_start_state = None
+            sm_proposal = None
+
         if split_merge:
             ## Need to copy the models otherwise we'll just have another pointer
             models = models.copy()
@@ -386,6 +387,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
                 logging.info("Performing split operation of pos tag %d at iteration %d" % (pos1,iter))
                 
                 ## split operation
+                sm_proposal = Split(pos1, pos2, sample, models, iter)
                 
                 ## Add new pos tag variable:
                 break_g_stick(models, sample, params)
@@ -402,7 +404,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
                             
             else:
                 ## merge operation
+                (pos1, pos2) = (min(pos1, pos2), max(pos1, pos2))
                 logging.info("Performing merge operation between pos tags %d and %d at iteration %d" % (pos1, pos2, iter))
+                
+                sm_proposal = Merge(pos1, pos2, sample, models, iter)
                 if models.pos.dist.shape[1] == 3:
                     logging.warn("Performing a merge with only 1 state left")
 
@@ -415,9 +420,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
                 remove_pos_from_models(models, pos2)
                 if models.pos.dist.shape[1] == 3:
                     logging.warn("POS now down to only 3 (1) states")
-                
-            sm_start_state = sample
-                
+                               
             report_function(sample)
             split_merge = False
             
