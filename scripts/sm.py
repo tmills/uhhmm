@@ -47,4 +47,6 @@ class Split(Proposal):
         
         ll_ratio = new_sample.log_prob - self.backup_sample.log_prob
         
+        total = log_prior + ll_ratio
+        
         return np.exp(ll_ratio)
