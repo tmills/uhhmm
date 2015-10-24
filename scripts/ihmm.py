@@ -193,6 +193,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
         models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
         models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
+        models.trans.sampleBernoulli(sample.alpha_j * sample.beta_j)
         models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
     
         sample.models = models
@@ -371,6 +372,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
         models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
         models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
+        models.trans.sampleBernoulli(sample.alpha_j * sample.beta_j)
         models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
         t1 = time.time()
         
@@ -462,6 +464,7 @@ def break_a_stick(models, sample, params):
     
     ## Add a row to the j distribution (TODO)
     ## Add a row to the ACT distributions (which depends on a_{t-1})
+    add_model_row_simple(models.reduce, models.reduce.alpha * models.reduce.beta)
     add_model_row_simple(models.act, models.act.alpha * models.act.beta[1:])
     
     ## For boolean variables can't do the simple row add:
@@ -501,6 +504,10 @@ def break_b_stick(models, sample, params):
     models.fork.dist = np.append(models.fork.dist, np.zeros((1,g_max,2)), 0)
     models.fork.dist[b_max,...] = sampler.sampleBernoulli(models.fork.pairCounts[b_max,...], sample.alpha_f * sample.beta_f)
     
+    models.trans.pairCounts = np.append(models.trans.pairCounts, np.zeros((1,g_max,2)), 0)
+    models.trans.dist = np.append(models.trans.dist, np.zeros((1,g_max,2)), 0)
+    models.trans.dist[b_max,...] = sampler.sampleBernoulli(models.trans.pairCounts[b_max,...], sample.alpha_j * sample.beta_j)
+    
     models.cont.pairCounts = np.append(models.cont.pairCounts, np.zeros((1,g_max,b_max+1)), 0)
     models.cont.dist = np.append(models.cont.dist, np.zeros((1,g_max,b_max+1)),0)
     models.cont.dist[b_max,...] = sampler.sampleDirichlet(models.cont.pairCounts[b_max,...], models.cont.alpha * models.cont.beta)
@@ -527,6 +534,10 @@ def break_g_stick(models, sample, params):
     models.fork.pairCounts = np.append(models.fork.pairCounts, np.zeros((b_max,1,2)), 1)
     models.fork.dist = np.append(models.fork.dist, np.zeros((b_max,1,2)), 1)
     models.fork.dist[:,g_max,:] = sampler.sampleBernoulli(models.fork.pairCounts[:,g_max,:], sample.alpha_f * sample.beta_f)
+
+    models.trans.pairCounts = np.append(models.trans.pairCounts, np.zeros((b_max,1,2)), 1)
+    models.trans.dist = np.append(models.trans.dist, np.zeros((b_max,1,2)), 1)
+    models.trans.dist[:,g_max,:] = sampler.sampleBernoulli(models.trans.pairCounts[:,g_max,:], sample.alpha_j * sample.beta_j)
     
     models.cont.pairCounts = np.append(models.cont.pairCounts, np.zeros((b_max,1,b_max)), 1)
     models.cont.dist = np.append(models.cont.dist, np.zeros((b_max,1,b_max)), 1)
@@ -563,7 +574,7 @@ def initialize_models(models, max_output, params, corpus_shape, a_max, b_max, g_
     models.fork = Model((b_max, g_max, 2))
     
     ## Two join models:
-#    models.trans = Model((b_max, g_max, 2))
+    models.trans = Model((b_max, g_max, 2))
     models.reduce = Model((a_max, 2))
     
     ## One active model:
@@ -615,8 +626,9 @@ def initialize_state(ev_seqs, models):
                         state.f = 1
                     else:
                         state.f = 0
+                        
                     ## j is deterministic in the middle of the sentence
-                    state.j = state.f
+                    state.j = 1 if np.random.random() > 0.5 else 0
                     
                 if state.f == 1 and state.j == 1:
                     state.a = prev_state.a
@@ -673,12 +685,14 @@ def increment_counts(hid_seq, sent, models, sent_index):
             else:
                 models.fork.count((prevState.b, prevState.g), state.f)
 
+                if state.f == 0:
+                    models.trans.count((prevState.b, prevState.g), state.j)
+                else:
+                    models.reduce.count(prevState.a, state.j)
+                    
                 ## Count A & B
                 if state.f == 0 and state.j == 0:
                     models.act.count(prevState.a, state.a)
-
-            if state.f == 0 and state.j == 0:
-                models.reduce.count(prevState.a, state.j)
                                 
             if state.j == 0:
                 models.start.count((prevState.a, state.a), state.b)
@@ -696,8 +710,8 @@ def increment_counts(hid_seq, sent, models, sent_index):
     
 #    prevBG = bg_state(hid_seq[-1].b, hid_seq[-1].g)
 ## WS: REMOVED THESE: WAS DISTORTING OUTPUTS BC F MODEL NOT REALLY CONSULTED AT END (MODEL ACTUALLY KNOWS ITS AT END)
-#    models.fork.count(prevBG, 0)
-#    models.reduce.count(hid_seq[-1].a, 1)
+    models.fork.count((prevState.b, prevState.g), 0)
+    models.reduce.count(prevState.a, 1)
 
 def getGmax():
     global g_max
