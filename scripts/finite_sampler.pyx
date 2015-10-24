@@ -26,7 +26,7 @@ def compile_models(totalK, models):
     ## Take exponent out of inner loop:
     word_dist = 10**models.lex.dist
     
-    (fork,act,root,cont,start,pos) = unlog_models(models)
+    (fork,trans,reduce,act,root,cont,start,pos) = unlog_models(models)
 
     ## Build the observation matrix first:
     for state in range(0,totalK):
@@ -60,11 +60,12 @@ def compile_models(totalK, models):
                             ## No point in continuing -- matrix is zero'd to start
                             continue
                 
-                    elif f == j:
+#                    elif f == j:
+#                        cumProbs[1] = cumProbs[0]
+                    elif f == 0:
                         cumProbs[1] = cumProbs[0]
-                    else:
-                        cumProbs[1] = 0
-                        continue    
+                    elif f == 1:
+                        cumProbs[1] = cumProbs[0] * reduce[prevA,j]
         
                     for a in range(1,a_max-1):
                         if f == 0 and j == 0:
@@ -107,13 +108,15 @@ def compile_models(totalK, models):
     
 def unlog_models(models):
     fork = 10**models.fork.dist
+    trans = 10**models.trans.dist
+    reduce = 10**models.reduce.dist
     act = 10**models.act.dist
     root = 10**models.root.dist
     cont = 10**models.cont.dist
     start = 10**models.start.dist
     pos = 10**models.pos.dist
    
-    return (fork,act,root,cont,start,pos)
+    return (fork,trans,reduce,act,root,cont,start,pos)
 
 def extractStates(index, totalK, maxes):
     (a_max, b_max, g_max) = maxes
@@ -258,20 +261,15 @@ class FiniteSampler(PyzmqSampler):
                     logging.warn("Found a positive probability where there shouldn't be one -- pj == 1 and t == 1")
                     dyn_prog[ind,t] = 0
                     continue
-                    
-                if t != 1 and pf != pj:
-                    logging.warn("Found a positive probability where there shouldn't be one -- pf != pj")
-                    dyn_prog[ind,t] = 0
-                    continue
                 
                 trans_prob = 1.0
                 
                 if t > 0:
                     trans_prob *= 10**models.fork.dist[pb, pg, nf]
 
-#                if nf == 0:
-#                    trans_prob *= (10**models.reduce.dist[pa,nj])
-      
+                if nf == 0:
+                    trans_prob *= (10**models.reduce.dist[pa,nj])
+
                 if nf == 0 and nj == 0:
                     trans_prob *= (10**models.act.dist[pa,na])
                 elif nf == 1 and nj == 0:
