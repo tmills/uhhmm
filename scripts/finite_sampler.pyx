@@ -217,6 +217,8 @@ class FiniteSampler(PyzmqSampler):
         if np.argwhere(forward.max(0)[:,0:last_index+1] == 0).size > 0:
             logging.error("Error; There is a word with no positive probabilities for its generation")
             sys.exit(-1)
+
+        sentence_log_prob += np.log10( forward[:,last_index].sum() )
         
         return dyn_prog, sentence_log_prob
 
