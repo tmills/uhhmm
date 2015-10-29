@@ -606,7 +606,10 @@ def initialize_state(ev_seqs, models):
                         state.f = 0
                         
                     ## j is deterministic in the middle of the sentence
-                    state.j = 1 if np.random.random() > 0.5 else 0
+                    if state.f == 0:
+                        state.j = 0
+                    else:
+                        state.j = 1 if np.random.random() > 0.5 else 0
                     
                 if state.f == 1 and state.j == 1:
                     state.a = prev_state.a
@@ -627,23 +630,28 @@ def initialize_state(ev_seqs, models):
     return state_seqs
 
 def collect_trans_probs(hid_seqs, models):
+    ## FIXME This is in pretty rough shape after the attempt to add the join models
+    raise NotImplementedError()
     for sent_index,hid_seq in enumerate(hid_seqs):
         ## for every state transition in the sentence increment the count
         ## for the condition and for the output
         for index, state in enumerate(hid_seq):
             if index != 0:
-                ## Count F & J
                 if index == 1:
                     models.root.trans_prob[sent_index,index] = models.root.dist[prevState.g, state.a]
-
-                    ## Count A & B
+                    models.cont.trans_prob[sent_index,index] = models.cont.dist[prevState.b,prevState.g,state.b]
+                else:    
                     if state.f == 0 and state.j == 0:
                         models.root.trans_prob[sent_index,index] = models.act.trans_prob[sent_index,index] = models.act.dist[prevState.a, state.a]
+                    elif state.f == 1 and state.j == 0:
+                        models.root.trans_prob[sent_index,index] = models.act.trans_prob[sent_index,index] = models.root.dist[prevState.g, state.a]
+                    elif state.f == 1 and state.j == 1:
+                        models.root.trans_prob[sent_index,index] = models.act.trans_prob[sent_index,index] = 1.0
 
-                if state.j == 0:
-                    models.cont.trans_prob[sent_index,index] = models.start.trans_prob[sent_index,index] = models.start.dist[prevState.a, state.a, state.b]
-                else:
-                    models.cont.trans_prob[sent_index,index] = models.cont.dist[prevState.b, prevState.g, state.b]
+                    if state.j == 0:
+                        models.cont.trans_prob[sent_index,index] = models.start.trans_prob[sent_index,index] = models.start.dist[prevState.a, state.a, state.b]
+                    else:
+                        models.cont.trans_prob[sent_index,index] = models.cont.dist[prevState.b, prevState.g, state.b]
 
             
             ## Count G
@@ -663,9 +671,12 @@ def increment_counts(hid_seq, sent, models, sent_index):
             else:
                 models.fork.count((prevState.b, prevState.g), state.f)
 
-                if state.f == 0:
+                if state.f == 1:
                     models.trans.count((prevState.b, prevState.g), state.j)
                 else:
+                    ## If we are here then f==0 -- count this which should almost always
+                    ## be 0 unless we are at the end of the sentence -- so the model will
+                    ## be biased in the correct way.
                     models.reduce.count(prevState.a, state.j)
                     
                 ## Count A & B
