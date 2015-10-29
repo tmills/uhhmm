@@ -671,7 +671,8 @@ def initialize_state(ev_seqs, models):
 
 def collect_trans_probs(hid_seqs, models):
     ## FIXME This is in pretty rough shape after the attempt to add the join models
-    raise NotImplementedError()
+    logging.warn("Skipping collect_trans_probs because it's not fixed for the new trans/reduce models")
+    return
     for sent_index,hid_seq in enumerate(hid_seqs):
         ## for every state transition in the sentence increment the count
         ## for the condition and for the output
