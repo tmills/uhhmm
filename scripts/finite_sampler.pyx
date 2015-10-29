@@ -59,14 +59,13 @@ def compile_models(totalK, models):
                             cumProbs[1] = 0
                             ## No point in continuing -- matrix is zero'd to start
                             continue
-                
 #                    elif f == j:
 #                        cumProbs[1] = cumProbs[0]
                     elif f == 0:
-                        cumProbs[1] = cumProbs[0]
+                        cumProbs[1] = 0 if j == 1 else cumProbs[0]
                     elif f == 1:
-                        cumProbs[1] = cumProbs[0] * reduce[prevA,j]
-        
+                        cumProbs[1] = cumProbs[0] * trans[prevB,prevG,j]
+
                     for a in range(1,a_max-1):
                         if f == 0 and j == 0:
                             ## active transition:
@@ -261,14 +260,24 @@ class FiniteSampler(PyzmqSampler):
                     logging.warn("Found a positive probability where there shouldn't be one -- pj == 1 and t == 1")
                     dyn_prog[ind,t] = 0
                     continue
-                
-                trans_prob = 1.0
-                
-                if t > 0:
-                    trans_prob *= 10**models.fork.dist[pb, pg, nf]
+                                
+                if pf == 0 and pj == 1:
+                    logging.warn("Found a positive probability where there shouldn't be one -- pf == 0 and pj == 1")
+                    dyn_prog[ind,t] = 0
+                    continue
 
-                if nf == 0:
-                    trans_prob *= (10**models.reduce.dist[pa,nj])
+                trans_prob = 1.0
+
+                if t > 0:
+                    trans_prob = 10**models.fork.dist[pb, pg, nf]
+
+                if nf == 0 and nj == 1:
+                    # nj=1 only allowed at last time step,
+                    # otherwise nj=0 deterministically so we don't multiply 
+                    # it by anything
+                    trans_prob = 0
+                elif nf == 1:
+                    trans_prob *= (10**models.trans.dist[pb,pg,nj])
 
                 if nf == 0 and nj == 0:
                     trans_prob *= (10**models.act.dist[pa,na])
