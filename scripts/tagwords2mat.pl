@@ -17,7 +17,8 @@ while(<STDIN>){
   push @word, 1;
 }
 
-my $numRows = $#word;
+## Add row at start for 1 1
+my $numRows = $#word + 1;
 
 print "# name: X\n";
 print "# type: matrix\n";
@@ -25,6 +26,8 @@ print "# rows: $numRows\n";
 print "# columns: 2\n";
 
 ($#word == $#pos) or die("Word vector is different length than POS vector!");
+
+print " 1 1\n";
 
 for my $i (0..@pos){
     print " $pos[$i] $word[$i]\n";
