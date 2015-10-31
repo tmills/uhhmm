@@ -25,7 +25,8 @@ class Merge(Proposal):
         
         alpha = 1      ## Not sure where this comes from
         
-        prior = np.log((1. / alpha) * math.factorial(nc - 1) / (math.factorial(nc_ind1 - 1) * math.factorial(nc_ind2 - 1)))
+        ## Eqn. 3.5 in Jain and Neal (Does it apply to our case w/o integrated out models?)
+        log_prior = np.log((1. / alpha) * math.factorial(nc - 1) / (math.factorial(nc_ind1 - 1) * math.factorial(nc_ind2 - 1)))
         
         ll_ratio = new_sample.log_prob - self.backup_sample.log_prob
         
@@ -43,6 +44,7 @@ class Split(Proposal):
         
         alpha = 1      ## Not sure where this comes from
         
+        ## Eqn 3.4 in Jain and Neal (see above -- may not apply)
         log_prior = np.log(alpha * (math.factorial(nc_ind1 - 1) * math.factorial(nc_ind2 - 1)) / math.factorial(nc - 1))
         
         ll_ratio = new_sample.log_prob - self.backup_sample.log_prob
