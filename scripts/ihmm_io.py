@@ -76,10 +76,6 @@ def write_output(sample, stats, config, gold_pos=None):
         f = open(output_dir + "/vi.txt", 'a')
         f.write('%d\t%f\n' % (sample.iter,vi))
         f.close()
-
-    f = open(output_dir + "/logprobs.txt", 'a')
-    f.write('%d\t%f\n' % (sample.iter,sample.log_prob) )
-    f.close()
     
     f = open(output_dir + "/beta.txt", 'a')
     f.write('%d\t%s\n' % (sample.iter, np.array_str(models.pos.beta)))
@@ -107,6 +103,11 @@ def checkpoint(sample, config):
     out_file = open(output_dir + "/sample.obj", 'wb')
     pickle.dump(sample, out_file)
     out_file.close()
+    
+    f = open(output_dir + "/logprobs.txt", 'a')
+    f.write('%d\t%f\n' % (sample.iter,sample.log_prob) )
+    f.close()
+    
 
 def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix=""):
     f = open(out_file, 'w')
