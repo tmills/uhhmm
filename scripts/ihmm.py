@@ -531,7 +531,7 @@ def resample_beta_g(models, gamma):
                     m[b][g] += (dart < (alpha_beta / (alpha_beta + l - 1)))
                 
     
-    params = np.append(m.sum(0)[1:], gamma)
+    params = np.append(m.sum(0)[1:]+0.1, gamma)
     models.pos.beta[1:] = 0
     models.pos.beta[1:] += sampler.sampleSimpleDirichlet(params)
 
