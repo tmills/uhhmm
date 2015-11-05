@@ -32,7 +32,7 @@ class PyzmqSampler(Process):
         else:
             logging.debug("Making cluster submit call with the following command: %s" % self.cluster_cmd)
             ## call the cluster submission command
-            subprocess.Popen(self.cluster_cmd)
+            subprocess.call(self.cluster_cmd)
         
     def run(self):
         logging.debug("Starting forward pass in thread %d", self.tid)

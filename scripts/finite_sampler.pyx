@@ -159,8 +159,9 @@ class FiniteSampler(PyzmqSampler):
             PyzmqSampler.__init__(self, host, jobs_port, results_port, models_port, maxLen, tid)
             self.dyn_prog = []
         else:
-            cmd = cluster_cmd.split() + ['python3', 'scripts/finite_sampler.pyx', host, jobs_port, results_port, models_port, maxLen, tid]
-            self.cluster_cmd = list(map(str, cmd))
+            cmd_str = 'python3 scripts/finite_sampler.pyx %s %d %d %d %d %d' % (host, jobs_port, results_port, models_port, maxLen, tid)
+            self.cluster_cmd = [ cmd_arg.replace("%c", cmd_str) for cmd_arg in cluster_cmd.split()]
+            #logging.debug("Cluster command is " + str(self.cluster_cmd))
                     
     def read_models(self, models_socket):
         models_socket.send(b'0')
