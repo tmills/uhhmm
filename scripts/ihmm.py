@@ -360,7 +360,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
 
         ## Sample distributions for all the model params and emissions params
         ## TODO -- make the Models class do this in a resample_all() method
-        ## After stick-breaking we probably need to re-sample all the models:     
+        ## After stick-breaking we probably need to re-sample all the models:
+        remove_unused_variables(models)
         resample_beta_g(models, sample.gamma)
                
         models.lex.sampleDirichlet(params['h'])
@@ -383,6 +384,25 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     workDistributer.stop()
 
     return (samples, stats)
+
+def remove_unused_variables(models):
+    ## Have to check if it's greater than 2 -- empty state (0) and final state (-1) are not supposed to have any counts:
+    while sum(models.pos.pairCounts.sum(0)==0) > 2:
+        remove_pos_from_models(models, np.where(models.pos.pairCounts.sum(0)==0)[0][1])
+
+def remove_pos_from_models(models, pos):
+    ## for the given POS index, delete the 1st (output) dimension from the
+    ## counts and distribution of p(pos | awa)
+    models.pos.pairCounts = np.delete(models.pos.pairCounts, pos, 1)
+    models.pos.dist = np.delete(models.pos.dist, pos, 1)
+    
+    ## for the given POS index, delete the 0th (input) dimension from the
+    ## counts and distribution of p(lex | pos)
+    models.lex.pairCounts = np.delete(models.lex.pairCounts, pos, 0)
+    models.lex.dist = np.delete(models.lex.dist, pos, 0)
+
+    ## Shorten the beta stick as well:
+    models.pos.beta = np.delete(models.pos.beta, pos, 0)
 
 def add_model_column(model):
 
@@ -525,12 +545,14 @@ def resample_beta_g(models, gamma):
             
             ## (rand() < (ialpha0 * ibeta(k)) / (ialpha0 * ibeta(k) + l - 1));
             else:
-                for l in range(0, models.pos.pairCounts[b][g]):
+                for l in range(1, int(models.pos.pairCounts[b][g])+1):
                     dart = np.random.random()
                     alpha_beta = models.pos.alpha * models.pos.beta[g]
                     m[b][g] += (dart < (alpha_beta / (alpha_beta + l - 1)))
                 
-    
+    if 0 in m.sum(0)[1:]:
+        logging.warn("There seems to be an illegal value here:")
+        
     params = np.append(m.sum(0)[1:], gamma)
     models.pos.beta[1:] = 0
     models.pos.beta[1:] += sampler.sampleSimpleDirichlet(params)

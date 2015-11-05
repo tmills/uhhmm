@@ -95,7 +95,7 @@ def compile_models(totalK, models):
                             ## that are contiguous in the state space
                             state_range = getStateRange(f,j,a,b, getVariableMaxes(models))
                                      
-                            range_probs = cumProbs[3] * (pos[b,:])
+                            range_probs = cumProbs[3] * (pos[b,:-1])
                             pi[prevState, state_range] = range_probs
 
             cache[prevA][prevB][prevG] = pi[prevState,:]
@@ -149,7 +149,7 @@ def getStateIndex(f,j,a,b,g, maxes):
 def getStateRange(f,j,a,b, maxes):
     (a_max, b_max, g_max) = maxes
     start = getStateIndex(f,j,a,b,0,maxes)
-    return range(start,start+g_max)
+    return range(start,start+g_max-1)
 
 
 class FiniteSampler(PyzmqSampler):
@@ -190,7 +190,7 @@ class FiniteSampler(PyzmqSampler):
             ## Still use special case for 0
             if index == 0:
                 g0_ind = getStateIndex(0,0,0,0,0,maxes)
-                forward[g0_ind+1:g0_ind+g_max,0] = np.matrix(10**models.lex.dist[1:,token]).transpose()
+                forward[g0_ind+1:g0_ind+g_max-1,0] = np.matrix(10**models.lex.dist[1:-1,token]).transpose()
             else:
                 forward[:,index] = self.pi.transpose() * forward[:,index-1]
                 forward[:,index] = np.multiply(forward[:,index], self.phi[:,token])
