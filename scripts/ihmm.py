@@ -72,7 +72,7 @@ class Model:
     def __init__(self, shape, alpha=0.0, beta=None, corpus_shape=(0,0)):
         self.pairCounts = np.zeros(shape, dtype=np.uint)
         self.dist = np.random.random(shape)
-        self.dist /= self.dist.sum(1, keepdims=True)
+        self.dist /= self.dist.sum(self.dist.ndim-1, keepdims=True)
         self.dist = np.log10(self.dist)
         self.u = np.zeros(corpus_shape) + -np.inf
         self.trans_prob = np.zeros(corpus_shape)
@@ -722,8 +722,8 @@ def increment_counts(hid_seq, sent, models, sent_index):
     
 #    prevBG = bg_state(hid_seq[-1].b, hid_seq[-1].g)
 ## WS: REMOVED THESE: WAS DISTORTING OUTPUTS BC F MODEL NOT REALLY CONSULTED AT END (MODEL ACTUALLY KNOWS ITS AT END)
-    models.fork.count((prevState.b, prevState.g), 0)
-    models.reduce.count(prevState.a, 1)
+#    models.fork.count((prevState.b, prevState.g), 0)
+#    models.reduce.count(prevState.a, 1)
 
 def getGmax():
     global g_max
