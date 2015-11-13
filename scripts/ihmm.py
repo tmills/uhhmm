@@ -391,6 +391,16 @@ def remove_unused_variables(models):
         remove_pos_from_models(models, np.where(models.pos.pairCounts.sum(0)==0)[0][1])
 
 def remove_pos_from_models(models, pos):
+    ## delete the 1st dimension from the fork distribution:
+    models.fork.pairCounts = np.delete(models.fork.pairCounts, pos, 1)
+    models.fork.dist = np.delete(models.fork.dist, pos, 1)
+    
+    models.root.pairCounts = np.delete(models.root.pairCounts, pos, 0)
+    models.root.dist = np.delete(models.root.dist, pos, 0)
+    
+    models.cont.pairCounts = np.delete(models.cont.pairCounts, pos, 1)
+    models.cont.dist = np.delete(models.cont.dist, pos, 1)
+    
     ## for the given POS index, delete the 1st (output) dimension from the
     ## counts and distribution of p(pos | awa)
     models.pos.pairCounts = np.delete(models.pos.pairCounts, pos, 1)
@@ -442,10 +452,16 @@ def add_model_row_simple(model, base):
 
 def break_beta_stick(model, gamma):
     beta_end = model.beta[-1]
-    new_group_fraction = np.random.beta(1, gamma)
     model.beta = np.append(model.beta, np.zeros(1))
-    model.beta[-2] = new_group_fraction * beta_end
-    model.beta[-1] = (1-new_group_fraction) * beta_end
+    old_portion = new_portion = 0
+    
+    while old_portion == 0 or new_portion == 0:
+        old_group_fraction = np.random.beta(1, gamma)
+        old_portion = old_group_fraction * beta_end
+        new_portion = (1-old_group_fraction) * beta_end
+    
+    model.beta[-2] = old_portion
+    model.beta[-1] = new_portion
 
 def break_a_stick(models, sample, params):
 
@@ -508,7 +524,8 @@ def break_b_stick(models, sample, params):
 def break_g_stick(models, sample, params):
 
     b_max = models.cont.dist.shape[-1]
-
+    g_max = models.pos.dist.shape[-1]
+    
     ## Resample beta when the stick is broken:
     break_beta_stick(models.pos, sample.gamma)
     

@@ -39,7 +39,7 @@ class InfiniteSampler(PyzmqSampler):
         ## keep track of forward probs for this sentence:
         for index,token in enumerate(sent):
             if index == 0:
-                dyn_prog[0,0,0,0,1:g_max,0] = models.lex.dist[1:,token]
+                dyn_prog[0,0,0,0,1:g_max-1,0] = models.lex.dist[1:-1,token]
             else:
                 for (ind,val) in np.ndenumerate(dyn_prog[...,index-1]):
                     if val == -np.inf:

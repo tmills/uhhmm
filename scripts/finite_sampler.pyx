@@ -66,7 +66,7 @@ def compile_models(totalK, models):
                         cumProbs[1] = 0
                         continue    
         
-                    for a in range(1,a_max):
+                    for a in range(1,a_max-1):
                         if f == 0 and j == 0:
                             ## active transition:
                             cumProbs[2] = cumProbs[1] * (act[prevA,a])
@@ -84,7 +84,7 @@ def compile_models(totalK, models):
                         if cumProbs[2] == 0:
                             continue
 
-                        for b in range(1,b_max):
+                        for b in range(1,b_max-1):
                             if j == 1:
                                 cumProbs[3] = cumProbs[2] * (cont[prevB, prevG, b])
                             else:
