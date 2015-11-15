@@ -206,20 +206,20 @@ class FiniteSampler(PyzmqSampler):
         ## of transitioning to the end state. also can add up
         ## total probability of data given model here.      
         last_index = len(sent)-1
-        for state in range(0,forward.shape[0]):
-            (f,j,a,b,g) = extractStates(state, totalK, maxes)
-            forward[state,last_index] *= ((10**models.fork.dist[b,g,0] * 10**models.reduce.dist[a,1]))
+#        for state in range(0,forward.shape[0]):
+#            (f,j,a,b,g) = extractStates(state, totalK, maxes)
+#            forward[state,last_index] *= ((10**models.fork.dist[b,g,0] * 10**models.reduce.dist[a,1]))
                        
-            if ((last_index > 0 and (a == 0 or b == 0)) or g == 0) and forward[state, last_index] != 0:
-                logging.error("Error: Non-zero probability at g=0 in forward pass!")
-                sys.exit(-1)
+#            if ((last_index > 0 and (a == 0 or b == 0)) or g == 0) and forward[state, last_index] != 0:
+#                logging.error("Error: Non-zero probability at g=0 in forward pass!")
+#                sys.exit(-1)
 
         
         if np.argwhere(forward.max(0)[:,0:last_index+1] == 0).size > 0:
             logging.error("Error; There is a word with no positive probabilities for its generation")
             sys.exit(-1)
 
-        sentence_log_prob += np.log10( forward[:,last_index].sum() )
+#        sentence_log_prob += np.log10( forward[:,last_index].sum() )
         
         return dyn_prog, sentence_log_prob
 
@@ -264,9 +264,13 @@ class FiniteSampler(PyzmqSampler):
                     dyn_prog[ind,t] = 0
                     continue
                 
-                trans_prob = 10**models.fork.dist[pb, pg, nf]
-                if nf == 0:
-                    trans_prob *= (10**models.reduce.dist[pa,nj])
+                trans_prob = 1.0
+                
+                if t > 0:
+                    trans_prob *= 10**models.fork.dist[pb, pg, nf]
+
+#                if nf == 0:
+#                    trans_prob *= (10**models.reduce.dist[pa,nj])
       
                 if nf == 0 and nj == 0:
                     trans_prob *= (10**models.act.dist[pa,na])
