@@ -200,6 +200,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
 
     else:
         sample = ihmm_io.read_serialized_sample(pickle_file)
+        sample.log_prob = 0
         models = sample.models
         hid_seqs = sample.hid_seqs
         sample.hid_seqs = [] ## Empty out hid_seqs because we will append later.
@@ -566,7 +567,7 @@ def resample_beta_g(models, gamma):
                     dart = np.random.random()
                     alpha_beta = models.pos.alpha * models.pos.beta[g]
                     m[b][g] += (dart < (alpha_beta / (alpha_beta + l - 1)))
-                
+
     if 0 in m.sum(0)[1:]:
         logging.warn("There seems to be an illegal value here:")
         
