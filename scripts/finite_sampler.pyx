@@ -260,7 +260,7 @@ class FiniteSampler(PyzmqSampler):
                     logging.warn("Found a positive probability where there shouldn't be one -- pj == 1 and t == 1")
                     dyn_prog[ind,t] = 0
                     continue
-                                
+
                 if pf == 0 and pj == 1:
                     logging.warn("Found a positive probability where there shouldn't be one -- pf == 0 and pj == 1")
                     dyn_prog[ind,t] = 0
