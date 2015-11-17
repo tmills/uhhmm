@@ -21,7 +21,7 @@ data/simplewiki_d1.txt: data/simplewiki-20140903-pages-articles.wsj02to21-compar
 	cat $< | ./scripts/extract_d1_trees.sh | ./scripts/trees2words.sh > $@
 
 data/simplewiki_d1_tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
-	cat $< | ./scripts/extract_d1_trees.sh | ./scripts/trees2poswords.sh > $@
+	cat $< | grep -v "#" | ./scripts/extract_d1_trees.sh | grep "^(S" | ./scripts/trees2poswords.sh > $@
 
 data/simplewiki_d2_tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
 	cat $< ./scripts/extract_d2_trees.sh | grep "^(S" | ./scripts/trees2poswords.sh | sort -R --random-source /dev/zero | head -5000 > $@ 
