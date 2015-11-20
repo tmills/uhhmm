@@ -115,7 +115,9 @@ def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix="")
     for ind,val in np.ndenumerate(dist):
         lhs = ind[0:-1]
         rhs = ind[-1]
-        if rhs == 0:
+        unlog_val = 10**val
+        
+        if rhs == 0 or unlog_val < 0.000001:
             continue
 
         if word_dict == None:
