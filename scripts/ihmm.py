@@ -108,7 +108,7 @@ class Models(list):
 # Arg 1: ev_seqs : a list of lists of integers, representing
 # the EVidence SEQuenceS seen by the user (e.g., words in a sentence
 # mapped to ints).
-def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_file=None):    
+def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_dir, pickle_file=None):    
     
     global start_a, start_b, start_g
     global a_max, b_max, g_max
@@ -219,7 +219,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     logging.debug(ev_seqs[0])
     logging.debug(list(map(lambda x: x.str(), hid_seqs[0])))
 
-    workDistributer = PyzmqSentenceDistributerServer(ev_seqs, num_procs)
+    workDistributer = PyzmqSentenceDistributerServer(ev_seqs, num_procs, working_dir)
     
     ## Initialize all the sub-processes with their input-output queues
     ## and dimensions of matrix they'll need    

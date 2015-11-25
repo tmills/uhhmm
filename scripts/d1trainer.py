@@ -45,7 +45,7 @@ def main(argv):
             config.write(configfile)
     
     input_file = config.get('io', 'input_file')
-    
+    working_dir = config.get('io', 'working_dir')
 
     ## Read in input file to get sequence for X
     (pos_seq, word_seq) = io.read_input_file(input_file)
@@ -55,7 +55,7 @@ def main(argv):
     
     params['h'] = init_emission_base(num_types)
     
-    (samples, stats) = ihmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), pickle_file)
+    (samples, stats) = ihmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), working_dir, pickle_file)
     
     if len(samples) > 0:
         io.write_output(samples[-1], stats, config, pos_seq)

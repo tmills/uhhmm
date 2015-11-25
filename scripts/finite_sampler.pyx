@@ -3,6 +3,7 @@
 import ihmm
 import ihmm_io
 import logging
+import pickle
 import time
 import numpy as np
 import sys
@@ -169,7 +170,9 @@ class FiniteSampler(PyzmqSampler):
         if msg == None:
             return False
         else:
-            (self.models, self.pi, self.phi) = msg
+            in_file = open(msg, 'rb')
+            (self.models, self.pi, self.phi) = pickle.load(in_file)
+            in_file.close()
             return True
     
     def initialize_dynprog(self):

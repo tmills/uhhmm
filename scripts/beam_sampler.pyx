@@ -2,6 +2,7 @@
 import ihmm
 import ihmm_io
 import logging
+import pickle
 import time
 import numpy as np
 import sys
@@ -26,7 +27,9 @@ class InfiniteSampler(PyzmqSampler):
         if msg == None:
             return False
         else:
-            self.models = msg
+            in_file = open(msg, 'rb')
+            self.models = pickle.load(in_file)
+            in_file.close()
             return True
         
     def initialize_dynprog(self):

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+import pickle
 import socket
 import time
 import zmq
@@ -115,19 +116,25 @@ class Sink(Thread):
         return self.outputs
 
 class ModelDistributer():
-    def __init__(self, host, sync_port, num_workers):
+    def __init__(self, host, sync_port, num_workers, working_dir):
         self.host = host
         self.num_workers = num_workers
         context = zmq.Context()
         self.socket = context.socket(zmq.REP)
         self.port = self.socket.bind_to_random_port("tcp://"+self.host)
         logging.debug("Model server successfully bound to REP socket")
+        self.working_dir = working_dir
         
     def send_models(self, models):
+        fn = self.working_dir+'/models.bin'
+        out_file = open(fn, 'wb')
+        pickle.dump(models, out_file)
+        out_file.close()
         for i in range(0, self.num_workers):
             logging.log(logging.DEBUG, 'Sending worker a model')
             self.socket.recv()
-            self.socket.send_pyobj(models)
+            logging.log(logging.DEBUG-1, 'Received signal to send model')
+            self.socket.send_pyobj(self.working_dir+'/models.bin')
 
         logging.debug("Model distributer finished sending models.")
 
@@ -137,7 +144,7 @@ class ModelDistributer():
             self.socket.send_pyobj(None)
             
 class PyzmqSentenceDistributerServer():
-    def __init__(self, sent_list, num_workers):
+    def __init__(self, sent_list, num_workers, working_dir):
 
         ## Set up job distribution servers:
         self.host = socket.gethostbyname(socket.gethostname())
@@ -150,7 +157,7 @@ class PyzmqSentenceDistributerServer():
 
         self.vent = Ventilator(self.host, sync_port, sent_list, num_workers)
         self.sink = Sink(self.host, sync_port, num_workers)
-        self.model_server = ModelDistributer(self.host, sync_port, num_workers)
+        self.model_server = ModelDistributer(self.host, sync_port, num_workers, working_dir)
         
         self.jobs_port = self.vent.port
         self.results_port = self.sink.port
