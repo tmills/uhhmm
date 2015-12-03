@@ -10,7 +10,7 @@ import sys
 import zmq
 #from scipy.sparse import *
 import pyximport; pyximport.install()
-from PyzmqSampler import *
+from Sampler import *
 import subprocess
 
 def compile_models(totalK, models):
@@ -153,7 +153,7 @@ def getStateRange(f,j,a,b, maxes):
     return range(start,start+g_max-1)
 
 
-class FiniteSampler(PyzmqSampler):
+class FiniteSampler():
     def __init__(self, host, jobs_port, results_port, models_port, maxLen, tid, cluster_cmd=None):
         self.cluster_cmd = None
         if cluster_cmd == None:
@@ -305,11 +305,3 @@ class FiniteSampler(PyzmqSampler):
         logging.log(logging.DEBUG-1, "Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
         return sample_seq
 
-def main(args):
-    logging.basicConfig(level=logging.INFO)
-    fs = FiniteSampler(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), int(args[5]))
-    ## Call run directly instead of start otherwise we'll have 2n workers
-    fs.run()
-    
-if __name__ == "__main__":
-    main(sys.argv[1:])

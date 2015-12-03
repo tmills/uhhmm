@@ -13,7 +13,7 @@ def getVariableMaxes(models):
     g_max = models.pos.dist.shape[-1]
     return (a_max, b_max, g_max)
 
-class PyzmqSampler(Process):
+class PyzmqWorker(Process):
     def __init__(self, host, jobs_port, results_port, models_port, maxLen, tid, out_freq=100):
         Process.__init__(self)
         logging.debug("Sampler %d started" % tid)
@@ -100,4 +100,13 @@ class PyzmqSampler(Process):
         logging.debug("Worker %d disconnecting sockets and finishing up" % self.tid)
         jobs_socket.close()
         results_socket.close()
+
+def main(args):
+    logging.basicConfig(level=logging.INFO)
+    fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), int(args[5]))
+    ## Call run directly instead of start otherwise we'll have 2n workers
+    fs.run()
+    
+if __name__ == "__main__":
+    main(sys.argv[1:])
 

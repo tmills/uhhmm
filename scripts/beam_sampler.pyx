@@ -11,11 +11,10 @@ from PyzmqSampler import *
 import pyximport; pyximport.install()
 import log_math as lm
 
-class InfiniteSampler(PyzmqSampler):
+class InfiniteSampler():
     def __init__(self, host, jobs_port, results_port, models_port, maxLen, tid, out_freq=25, cluster_cmd=None):
         self.cluster_cmd = None
         if cluster_cmd == None:
-            PyzmqSampler.__init__(self, host, jobs_port, results_port, models_port, maxLen, tid)
             self.dyn_prog = []
         else:
             cmd_str = 'python3 scripts/beam_sampler.pyx %s %d %d %d %d %d' % (host, jobs_port, results_port, models_port, maxLen, tid)
@@ -201,10 +200,3 @@ def sample_from_ndarray(a):
         if dart < sum:
             return ind
 
-def main(args):
-    logging.basicConfig(level=logging.INFO)
-    sampler = InfiniteSampler(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), int(args[5]))
-    sampler.run()
-
-if __name__ == "__main__":
-    main(sys.argv[1:])
