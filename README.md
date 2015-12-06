@@ -13,7 +13,7 @@ The config has an 'io' (input/output) section and a 'params' (machine learning p
 The input file should contain one sentence per line, with space-separated ints representing tokens (if evaluating for POS tagging, the system accepts space-separated tag/word tokens.
 
 The output directory is where all output will be stored. This is so multiple runs will be preserved if desired. The first thing the d1trainer.py script will do is copy the config file into the output directory, to promote reproducibility.
-The dictionary file should contain a mapping between words and their index. Each line should be <word> <index>. While it is technically optional, it is borderline required for understanding output.
+The dictionary file should contain a mapping between words and their index. Each line should be &lt;word&gt; &lt;index&gt;.
 
 There are scripts in the scripts/ sub-directory to convert token files into int files, creating a dictionary as well.
 
