@@ -14,3 +14,8 @@ class PyzmqParse:
         self.index = index
         self.state_list = state_list
         self.log_prob = log_prob
+
+class PyzmqModel:
+    def __init__(self, location, finite):
+        self.location = location
+        self.finite = finite

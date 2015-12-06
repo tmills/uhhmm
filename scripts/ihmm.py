@@ -13,7 +13,7 @@ from multiprocessing import Process,Queue,JoinableQueue
 import zmq
 from PyzmqSentenceDistributerServer import *
 from PyzmqMessage import *
-from PyzmqSampler import *
+from PyzmqWorker import *
 
 # The set of random variable values at one word
 # There will be one of these for every word in the training set
@@ -225,7 +225,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     ## and dimensions of matrix they'll need    
     for cur_proc in range(0,num_procs):
         ## Initialize and start the sub-process
-        inf_procs[cur_proc] = PyzmqSampler.PyzmqWorker(workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, cur_proc, out_freq=100, cluster_cmd=cluster_cmd)
+        inf_procs[cur_proc] = PyzmqWorker(workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, cur_proc, out_freq=100, cluster_cmd=cluster_cmd)
   
         inf_procs[cur_proc].start()
 
@@ -289,10 +289,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## workers but is harder when you need to coordinate timing of reading new models in every pass)
         t0 = time.time()
         if finite:
-            (trans_mat, obs_mat) = finite_sampler.compile_models(totalK, models)
-            workDistributer.run_one_iteration((models, trans_mat, obs_mat))
+            (trans_mat, obs_mat) = finite_sampler.compile_models(models)
+            workDistributer.run_one_iteration((models, trans_mat, obs_mat), finite)
         else:
-            workDistributer.run_one_iteration(models)
+            workDistributer.run_one_iteration(models, finite)
         
         ## Wait for server to finish distributing sentences for this iteration:
         t1 = time.time()

@@ -4,17 +4,16 @@ import zmq
 from PyzmqMessage import *
 from multiprocessing import Process
 import logging
+import pickle
 import time
 import subprocess
-
-def getVariableMaxes(models):
-    a_max = models.act.dist.shape[-1]
-    b_max = models.start.dist.shape[-1]
-    g_max = models.pos.dist.shape[-1]
-    return (a_max, b_max, g_max)
+import pyximport; pyximport.install()
+import beam_sampler
+import finite_sampler
+from Sampler import *
 
 class PyzmqWorker(Process):
-    def __init__(self, host, jobs_port, results_port, models_port, maxLen, tid, out_freq=100):
+    def __init__(self, host, jobs_port, results_port, models_port, maxLen, tid, cluster_cmd=None, out_freq=100):
         Process.__init__(self)
         logging.debug("Sampler %d started" % tid)
         self.host = host
@@ -24,6 +23,7 @@ class PyzmqWorker(Process):
         self.maxLen = maxLen
         self.tid = tid
         self.out_freq = out_freq
+        self.cluster_cmd = cluster_cmd
     
     def start(self):
         if self.cluster_cmd == None:
@@ -48,19 +48,30 @@ class PyzmqWorker(Process):
         results_socket.connect("tcp://%s:%s" % (self.host, self.results_port))
 
         logging.debug("Worker %d connected to all three endpoints" % self.tid)
-
+        sampler = None
+        
         while True:
             #  Socket to talk to server
             logging.debug("Thread %d waiting for new models..." % self.tid)
-            valid_models = self.read_models(models_socket)
-            if not valid_models:
+            models_socket.send(b'0')
+            msg = models_socket.recv_pyobj()
+            if msg == None:
                 break
+            else:
+                in_file = open(msg.location, 'rb')
+                models = pickle.load(in_file)
+                in_file.close()
+                
+            if msg.finite:
+                sampler = finite_sampler.FiniteSampler()
+            else:
+                sampler = beam_sampler.InfiniteSampler()
             
+            sampler.set_models(models)
+                       
             logging.debug("Thread %d received new models..." % self.tid)
-            (a_max, b_max, g_max) = getVariableMaxes(self.models)
-            self.K = 2 * 2 * a_max * b_max * g_max            
 
-            self.initialize_dynprog()        
+            sampler.initialize_dynprog(self.maxLen)        
             
             sents_processed = 0
             while True: 
@@ -78,8 +89,9 @@ class PyzmqWorker(Process):
                 logging.log(logging.DEBUG-1, "Worker %d has received sentence %d" % (self.tid, sent_index))                
 
                 t0 = time.time()
-                (self.dyn_prog, log_prob) = self.forward_pass(self.dyn_prog, sent, self.models, self.K, sent_index)
-                sent_sample = self.reverse_sample(self.dyn_prog, sent, self.models, self.K, sent_index)
+                
+                (sent_sample, log_prob) = sampler.sample(sent, sent_index)
+                
                 if sent_index % self.out_freq == 0:
                     logging.info("Processed sentence {0} (Worker {1})".format(sent_index, self.tid))
 

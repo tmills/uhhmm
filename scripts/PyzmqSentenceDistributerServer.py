@@ -125,7 +125,7 @@ class ModelDistributer():
         logging.debug("Model server successfully bound to REP socket")
         self.working_dir = working_dir
         
-    def send_models(self, models):
+    def send_models(self, models, finite):
         fn = self.working_dir+'/models.bin'
         out_file = open(fn, 'wb')
         pickle.dump(models, out_file)
@@ -134,7 +134,9 @@ class ModelDistributer():
             logging.log(logging.DEBUG, 'Sending worker a model')
             self.socket.recv()
             logging.log(logging.DEBUG-1, 'Received signal to send model')
-            self.socket.send_pyobj(self.working_dir+'/models.bin')
+            msg = PyzmqModel(self.working_dir + '/models.bin', finite)
+            
+            self.socket.send_pyobj(msg)
 
         logging.debug("Model distributer finished sending models.")
 
@@ -144,6 +146,7 @@ class ModelDistributer():
             self.socket.send_pyobj(None)
             
 class PyzmqSentenceDistributerServer():
+   
     def __init__(self, sent_list, num_workers, working_dir):
 
         ## Set up job distribution servers:
@@ -171,12 +174,12 @@ class PyzmqSentenceDistributerServer():
 
         self.models = None
         
-    def run_one_iteration(self, models):
+    def run_one_iteration(self, models, finite):
         ind = 0
         num_workers = 0
         num_done = 0
         
-        self.model_server.send_models(models)
+        self.model_server.send_models(models, finite)
         self.sink.setProcessing(True)
         
         ## Wait a bit for sink to process signal and set processing to true for the first time

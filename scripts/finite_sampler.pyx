@@ -13,9 +13,10 @@ import pyximport; pyximport.install()
 from Sampler import *
 import subprocess
 
-def compile_models(totalK, models):
+def compile_models(models):
     logging.info("Compiling component models into mega-HMM transition and observation matrices")
     (a_max, b_max, g_max) = getVariableMaxes(models)
+    totalK = get_state_size(models)
     
     t0 = time.time()
 #    pi = np.zeros((totalK, totalK))
@@ -153,36 +154,19 @@ def getStateRange(f,j,a,b, maxes):
     return range(start,start+g_max-1)
 
 
-class FiniteSampler():
-    def __init__(self, host, jobs_port, results_port, models_port, maxLen, tid, cluster_cmd=None):
-        self.cluster_cmd = None
-        if cluster_cmd == None:
-            PyzmqSampler.__init__(self, host, jobs_port, results_port, models_port, maxLen, tid)
-            self.dyn_prog = []
-        else:
-            cmd_str = 'python3 scripts/finite_sampler.pyx %s %d %d %d %d %d' % (host, jobs_port, results_port, models_port, maxLen, tid)
-            self.cluster_cmd = [ cmd_arg.replace("%c", cmd_str) for cmd_arg in cluster_cmd.split()]
-            #logging.debug("Cluster command is " + str(self.cluster_cmd))
+class FiniteSampler(Sampler):
                     
-    def read_models(self, models_socket):
-        models_socket.send(b'0')
-        msg = models_socket.recv_pyobj()
-        if msg == None:
-            return False
-        else:
-            in_file = open(msg, 'rb')
-            (self.models, self.pi, self.phi) = pickle.load(in_file)
-            in_file.close()
-            return True
-    
-    def initialize_dynprog(self):
-        self.dyn_prog = np.zeros((self.K, self.maxLen))
+    def set_models(self, models):
+        (self.models, self.pi, self.phi) = models
         
-    def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
+    def initialize_dynprog(self, maxLen):
+        self.dyn_prog = np.zeros((get_state_size(self.models), maxLen))
+        
+    def forward_pass(self,dyn_prog,sent,sent_index):
         ## keep track of forward probs for this sentence:
-        maxes = getVariableMaxes(models)
+        maxes = getVariableMaxes(self.models)
         (a_max,b_max,g_max) = maxes
-        
+
         dyn_prog[:] = 0
         sentence_log_prob = 0
         
@@ -194,7 +178,7 @@ class FiniteSampler():
             ## Still use special case for 0
             if index == 0:
                 g0_ind = getStateIndex(0,0,0,0,0,maxes)
-                forward[g0_ind+1:g0_ind+g_max-1,0] = np.matrix(10**models.lex.dist[1:-1,token]).transpose()
+                forward[g0_ind+1:g0_ind+g_max-1,0] = np.matrix(10**self.models.lex.dist[1:-1,token]).transpose()
             else:
                 forward[:,index] = self.pi.transpose() * forward[:,index-1]
                 forward[:,index] = np.multiply(forward[:,index], self.phi[:,token])
@@ -226,10 +210,11 @@ class FiniteSampler():
         
         return dyn_prog, sentence_log_prob
 
-    def reverse_sample(self, dyn_prog, sent, models, totalK, sent_index):            
+    def reverse_sample(self, dyn_prog, sent, sent_index):            
         sample_seq = []
         sample_log_prob = 0
-        maxes = getVariableMaxes(models)
+        maxes = getVariableMaxes(self.models)
+        totalK = get_state_size(self.models)
         
         ## Normalize and grab the sample from the forward probs at the end of the sentence
         last_index = len(sent)-1
@@ -248,7 +233,7 @@ class FiniteSampler():
                 if dyn_prog[ind,t] == 0:
                     continue
 
-                (pf,pj,pa,pb,pg) = extractStates(ind,totalK, getVariableMaxes(models))
+                (pf,pj,pa,pb,pg) = extractStates(ind, totalK, getVariableMaxes(self.models))
                 (nf,nj,na,nb,ng) = sample_seq[-1].to_list()
                 
                 ## shouldn't be necessary, put in debugs:
@@ -270,31 +255,31 @@ class FiniteSampler():
                 trans_prob = 1.0
                 
                 if t > 0:
-                    trans_prob *= 10**models.fork.dist[pb, pg, nf]
+                    trans_prob *= 10**self.models.fork.dist[pb, pg, nf]
 
 #                if nf == 0:
-#                    trans_prob *= (10**models.reduce.dist[pa,nj])
+#                    trans_prob *= (10**self.models.reduce.dist[pa,nj])
       
                 if nf == 0 and nj == 0:
-                    trans_prob *= (10**models.act.dist[pa,na])
+                    trans_prob *= (10**self.models.act.dist[pa,na])
                 elif nf == 1 and nj == 0:
-                    trans_prob *= (10**models.root.dist[pg,na])
+                    trans_prob *= (10**self.models.root.dist[pg,na])
                 elif nf == 1 and nj == 1:
                     if na != pa:
                         trans_prob = 0
       
                 if nj == 0:
-                    trans_prob *= (10**models.start.dist[pa,na,nb])
+                    trans_prob *= (10**self.models.start.dist[pa,na,nb])
                 else:
-                    trans_prob *= (10**models.cont.dist[pb,pg,nb])
+                    trans_prob *= (10**self.models.cont.dist[pb,pg,nb])
       
-                trans_prob *= (10**models.pos.dist[nb,ng])
+                trans_prob *= (10**self.models.pos.dist[nb,ng])
                               
                 dyn_prog[ind,t] *= trans_prob
 
             dyn_prog[:,t] /= dyn_prog[:,t].sum()
             sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,t]))
-            state_list = extractStates(sample_t, totalK, getVariableMaxes(models))
+            state_list = extractStates(sample_t, totalK, getVariableMaxes(self.models))
             
             sample_state = ihmm.State(state_list)
             if t > 0 and sample_state.g == 0:

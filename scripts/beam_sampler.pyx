@@ -7,41 +7,26 @@ import time
 import numpy as np
 import sys
 import subprocess
-from PyzmqSampler import *
+from PyzmqWorker import *
+from Sampler import *
 import pyximport; pyximport.install()
 import log_math as lm
 
-class InfiniteSampler():
-    def __init__(self, host, jobs_port, results_port, models_port, maxLen, tid, out_freq=25, cluster_cmd=None):
-        self.cluster_cmd = None
-        if cluster_cmd == None:
-            self.dyn_prog = []
-        else:
-            cmd_str = 'python3 scripts/beam_sampler.pyx %s %d %d %d %d %d' % (host, jobs_port, results_port, models_port, maxLen, tid)
-            self.cluster_cmd = [cmd_arg.replace("%c", cmd_str) for cmd_arg in cluster_cmd.split()]
+class InfiniteSampler(Sampler):
+    def set_models(self, models):
+        self.models = models
 
-    def read_models(self, models_socket):
-        models_socket.send(b'0')
-        msg = models_socket.recv_pyobj()
-        if msg == None:
-            return False
-        else:
-            in_file = open(msg, 'rb')
-            self.models = pickle.load(in_file)
-            in_file.close()
-            return True
-        
-    def initialize_dynprog(self):
-        self.dyn_prog = np.zeros((2,2,self.models.act.dist.shape[-1], self.models.cont.dist.shape[-1], self.models.pos.dist.shape[-1], self.maxLen))
+    def initialize_dynprog(self, maxLen):
+        self.dyn_prog = np.zeros((2,2,self.models.act.dist.shape[-1], self.models.cont.dist.shape[-1], self.models.pos.dist.shape[-1], maxLen))
 
-    def forward_pass(self,dyn_prog,sent,models,totalK, sent_index):
-        (a_max,b_max,g_max) = getVariableMaxes(models)
+    def forward_pass(self, dyn_prog, sent, sent_index):
+        (a_max,b_max,g_max) = getVariableMaxes(self.models)
         dyn_prog[:] = -np.inf
         
         ## keep track of forward probs for this sentence:
         for index,token in enumerate(sent):
             if index == 0:
-                dyn_prog[0,0,0,0,1:g_max-1,0] = models.lex.dist[1:-1,token]
+                dyn_prog[0,0,0,0,1:g_max-1,0] = self.models.lex.dist[1:-1,token]
             else:
                 for (ind,val) in np.ndenumerate(dyn_prog[...,index-1]):
                     if val == -np.inf:
@@ -58,7 +43,7 @@ class InfiniteSampler():
                         if index == 1 and f == 0:
                             continue
 
-                        cumProbs[0] = dyn_prog[prevF,prevJ,prevA,prevB,prevG,index-1] + models.fork.dist[prevB,prevG,f]
+                        cumProbs[0] = dyn_prog[prevF,prevJ,prevA,prevB,prevG,index-1] + self.models.fork.dist[prevB,prevG,f]
                         if index == 1:
                             j = 0
                         else:
@@ -71,12 +56,12 @@ class InfiniteSampler():
                         for a in range(1,a_max):
                             if f == 0 and j == 0:
                                 ## active transition:
-                                cumProbs[2] = cumProbs[1] + lm.log_boolean(models.act.dist[prevA,a] > models.act.u[sent_index,index])
+                                cumProbs[2] = cumProbs[1] + lm.log_boolean(self.models.act.dist[prevA,a] > self.models.act.u[sent_index,index])
                             elif f == 1 and j == 0:
                                 ## root -- technically depends on prevA and prevG
                                 ## but in depth 1 this case only comes up at start
                                 ## of sentence and prevA will always be 0
-                                cumProbs[2] = cumProbs[1] + lm.log_boolean(models.root.dist[prevG,a] > models.root.u[sent_index, index])
+                                cumProbs[2] = cumProbs[1] + lm.log_boolean(self.models.root.dist[prevG,a] > self.models.root.u[sent_index, index])
                             elif f == 1 and j == 1 and prevA == a:
                                 cumProbs[2] = cumProbs[1]
                             else:
@@ -88,9 +73,9 @@ class InfiniteSampler():
                       
                             for b in range(1,b_max):
                                 if j == 1:
-                                    cumProbs[3] = cumProbs[2] + models.cont.dist[prevB,prevG,b]
+                                    cumProbs[3] = cumProbs[2] + self.models.cont.dist[prevB,prevG,b]
                                 else:
-                                    cumProbs[3] = cumProbs[2] + models.start.dist[prevA, a, b]
+                                    cumProbs[3] = cumProbs[2] + self.models.start.dist[prevA, a, b]
                             
                                 # Multiply all the g's in one pass:
                                 ## range gets the range of indices in the forward pass
@@ -99,7 +84,7 @@ class InfiniteSampler():
                                 
                                 #logging.debug(dyn_prog[state_range, index])
                                 
-                                range_probs = cumProbs[3] + lm.log_boolean(models.pos.dist[b,:] > models.pos.u[sent_index,index]) + models.lex.dist[:,token]
+                                range_probs = cumProbs[3] + lm.log_boolean(self.models.pos.dist[b,:] > self.models.pos.u[sent_index,index]) + self.models.lex.dist[:,token]
                                 
                                 dyn_prog[f,j,a,b,:,index] = lm.log_vector_add(dyn_prog[f,j,a,b,:,index], range_probs)
 
@@ -116,7 +101,7 @@ class InfiniteSampler():
         last_index = len(sent)-1
         for (ind,val) in np.ndenumerate(dyn_prog[...,0]):
             (f,j,a,b,g) = ind
-            dyn_prog[ind][last_index] += ((models.fork.dist[b,g,0] + models.reduce.dist[a,1]))
+            dyn_prog[ind][last_index] += ((self.models.fork.dist[b,g,0] + self.models.reduce.dist[a,1]))
             sentence_log_prob = lm.log_add(sentence_log_prob, dyn_prog[f,j,a,b,g, last_index])
 #            logging.debug(dyn_prog[state,last_index])
                        
@@ -130,7 +115,7 @@ class InfiniteSampler():
 
         return dyn_prog, sentence_log_prob
 
-    def reverse_sample(self, dyn_prog, sent, models, totalK, sent_index):            
+    def reverse_sample(self, dyn_prog, sent, sent_index):            
         sample_seq = []
         sample_log_prob = 0
         
@@ -154,24 +139,24 @@ class InfiniteSampler():
                 (pf,pj,pa,pb,pg) = ind
                 (nf,nj,na,nb,ng) = sample_seq[-1].to_list()
 
-                trans_prob = models.fork.dist[pb,pg,nf]
+                trans_prob = self.models.fork.dist[pb,pg,nf]
                 if nf == 0:
-                    trans_prob += models.reduce.dist[pa,nj]
+                    trans_prob += self.models.reduce.dist[pa,nj]
       
                 if nf == 0 and nj == 0:
-                    trans_prob += models.act.dist[pa,na]
+                    trans_prob += self.models.act.dist[pa,na]
                 elif nf == 1 and nj == 0:
-                    trans_prob += models.root.dist[pg,na]
+                    trans_prob += self.models.root.dist[pg,na]
                 elif nf == 1 and nj == 1:
                     if na != pa:
                         trans_prob = -np.inf
       
                 if nj == 0:
-                    trans_prob += models.start.dist[pa,na,nb]
+                    trans_prob += self.models.start.dist[pa,na,nb]
                 else:
-                    trans_prob += models.cont.dist[pb,pg,nb]
+                    trans_prob += self.models.cont.dist[pb,pg,nb]
       
-                trans_prob += models.pos.dist[nb,ng]
+                trans_prob += self.models.pos.dist[nb,ng]
                 if np.isnan(trans_prob):
                     logging.error("pos model is nan!")
                     
