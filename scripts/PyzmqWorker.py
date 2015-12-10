@@ -12,28 +12,30 @@ import beam_sampler
 import finite_sampler
 from Sampler import *
 
+def start_workers(workers, cluster_cmd):
+    num_workers = len(workers)
+    logging.info("Cluster command is %s" % cluster_cmd)
+
+    if cluster_cmd == None:
+        for i in range(0, num_workers):
+            workers[i].start()
+    else:
+        cmd_str = 'python3 scripts/PyzmqWorker.py %s %d %d %d %d' % (workers[0].host, workers[0].jobs_port, workers[0].results_port, workers[0].models_port, workers[0].maxLen)
+        submit_cmd = [ cmd_arg.replace("%c", cmd_str) for cmd_arg in cluster_cmd.split()]
+        logging.debug("Making cluster submit call with the following command: %s" % str(submit_cmd))
+        subprocess.call(submit_cmd)
+
 class PyzmqWorker(Process):
-    def __init__(self, host, jobs_port, results_port, models_port, maxLen, tid, cluster_cmd=None, out_freq=100):
+    def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100):
         Process.__init__(self)
-        logging.debug("Sampler %d started" % tid)
         self.host = host
         self.jobs_port = jobs_port
         self.results_port = results_port
         self.models_port = models_port
         self.maxLen = maxLen
-        self.tid = tid
         self.out_freq = out_freq
-        self.cluster_cmd = cluster_cmd
-    
-    def start(self):
-        if self.cluster_cmd == None:
-            ## continue up the call chain
-            Process.start(self)
-        else:
-            logging.debug("Making cluster submit call with the following command: %s" % self.cluster_cmd)
-            ## call the cluster submission command
-            subprocess.call(self.cluster_cmd)
-        
+        self.tid = 0
+
     def run(self):
         logging.debug("Starting forward pass in thread %d", self.tid)
 
@@ -115,7 +117,7 @@ class PyzmqWorker(Process):
 
 def main(args):
     logging.basicConfig(level=logging.INFO)
-    fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), int(args[5]))
+    fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]))
     ## Call run directly instead of start otherwise we'll have 2n workers
     fs.run()
     

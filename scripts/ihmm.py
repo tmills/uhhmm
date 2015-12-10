@@ -225,9 +225,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     ## and dimensions of matrix they'll need    
     for cur_proc in range(0,num_procs):
         ## Initialize and start the sub-process
-        inf_procs[cur_proc] = PyzmqWorker(workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, cur_proc, out_freq=100, cluster_cmd=cluster_cmd)
-  
-        inf_procs[cur_proc].start()
+        inf_procs[cur_proc] = PyzmqWorker(workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, out_freq=100)
+    
+    logging.info("Starting workers")
+    start_workers(inf_procs, cluster_cmd)
 
     ### Start doing actual sampling:
     while num_samples < max_samples:
