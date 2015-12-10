@@ -35,7 +35,7 @@ class State:
         j_str = '+' if self.j==1 else '-'
         string += j_str
         
-        string += "::" + str(self.a) + '/' + str(self.b) + ':' + str(self.g)
+        string += "::ACT" + str(self.a) + '/AWA' + str(self.b) + ':POS' + str(self.g)
         
         return string
 

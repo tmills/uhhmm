@@ -4,6 +4,7 @@ import zmq
 from PyzmqMessage import *
 from multiprocessing import Process
 import logging
+import os
 import pickle
 import time
 import subprocess
@@ -14,15 +15,15 @@ from Sampler import *
 
 def start_workers(workers, cluster_cmd):
     num_workers = len(workers)
-    logging.info("Cluster command is %s" % cluster_cmd)
+    logging.debug("Cluster command is %s" % cluster_cmd)
 
     if cluster_cmd == None:
         for i in range(0, num_workers):
             workers[i].start()
     else:
-        cmd_str = 'python3 scripts/PyzmqWorker.py %s %d %d %d %d' % (workers[0].host, workers[0].jobs_port, workers[0].results_port, workers[0].models_port, workers[0].maxLen)
+        cmd_str = 'python3 %s/scripts/PyzmqWorker.py %s %d %d %d %d' % (os.getcwd(), workers[0].host, workers[0].jobs_port, workers[0].results_port, workers[0].models_port, workers[0].maxLen)
         submit_cmd = [ cmd_arg.replace("%c", cmd_str) for cmd_arg in cluster_cmd.split()]
-        logging.debug("Making cluster submit call with the following command: %s" % str(submit_cmd))
+        logging.info("Making cluster submit call with the following command: %s" % str(submit_cmd))
         subprocess.call(submit_cmd)
 
 class PyzmqWorker(Process):
