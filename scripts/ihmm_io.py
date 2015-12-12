@@ -1,8 +1,11 @@
 #!/usr/bin/env python3.4
 
 import calcV
+import logging
 import numpy as np
+import os.path
 import pickle
+import shutil
 
 def read_input_file(filename):
     pos_seqs = list()
@@ -100,6 +103,12 @@ def write_output(sample, stats, config, gold_pos=None):
 
 def checkpoint(sample, config):
     output_dir = config.get('io', 'output_dir')
+    
+    if os.path.isfile(output_dir + "/sample.obj"):
+        logging.info("Saving previous checkpoint")
+        shutil.copy2(output_dir +"/sample.obj", output_dir + "/sample.obj.last")
+    
+    logging.info("Creating new checkpoint")
     out_file = open(output_dir + "/sample.obj", 'wb')
     pickle.dump(sample, out_file)
     out_file.close()
