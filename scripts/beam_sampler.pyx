@@ -53,7 +53,7 @@ class InfiniteSampler(Sampler):
                         cumProbs[1] = cumProbs[0]
                         
                         
-                        for a in range(1,a_max):
+                        for a in range(1,a_max-1):
                             if f == 0 and j == 0:
                                 ## active transition:
                                 cumProbs[2] = cumProbs[1] + lm.log_boolean(self.models.act.dist[prevA,a] > self.models.act.u[sent_index,index])
@@ -71,12 +71,15 @@ class InfiniteSampler(Sampler):
                             if cumProbs[2] == -np.inf:
                                 continue
                       
-                            for b in range(1,b_max):
+                            for b in range(1,b_max-1):
                                 if j == 1:
                                     cumProbs[3] = cumProbs[2] + self.models.cont.dist[prevB,prevG,b]
                                 else:
                                     cumProbs[3] = cumProbs[2] + self.models.start.dist[prevA, a, b]
-                            
+                                
+                                if cumProbs[3] == -np.inf:
+                                    continue
+                                    
                                 # Multiply all the g's in one pass:
                                 ## range gets the range of indices in the forward pass
                                 ## that are contiguous in the state space
@@ -84,33 +87,33 @@ class InfiniteSampler(Sampler):
                                 
                                 #logging.debug(dyn_prog[state_range, index])
                                 
-                                range_probs = cumProbs[3] + lm.log_boolean(self.models.pos.dist[b,:] > self.models.pos.u[sent_index,index]) + self.models.lex.dist[:,token]
+                                range_probs = cumProbs[3] + lm.log_boolean(self.models.pos.dist[b,:-1] > self.models.pos.u[sent_index,index]) + self.models.lex.dist[:-1,token]
                                 
-                                dyn_prog[f,j,a,b,:,index] = lm.log_vector_add(dyn_prog[f,j,a,b,:,index], range_probs)
+                                dyn_prog[f,j,a,b,:-1,index] = lm.log_vector_add(dyn_prog[f,j,a,b,:-1,index], range_probs)
 
         
-            if np.argwhere(np.logical_not(np.isnan(dyn_prog[...,index]))).size == 0:
-                logging.error("Error: Every value in the forward probability is nan!")
+            if dyn_prog[...,index].max() == -np.inf:
+                logging.error("Error: Every value in the forward probability of sentence %d, index %d is nan!" % (sent_index, index))
                 sys.exit(-1)
-
         
         ## For the last token, multiply in the probability
         ## of transitioning to the end state. also can add up
         ## total probability of data given model here.
         sentence_log_prob = -np.inf
         last_index = len(sent)-1
-        for (ind,val) in np.ndenumerate(dyn_prog[...,0]):
-            (f,j,a,b,g) = ind
-            dyn_prog[ind][last_index] += ((self.models.fork.dist[b,g,0] + self.models.reduce.dist[a,1]))
-            sentence_log_prob = lm.log_add(sentence_log_prob, dyn_prog[f,j,a,b,g, last_index])
+#        for (ind,val) in np.ndenumerate(dyn_prog[...,0]):
+#            (f,j,a,b,g) = ind
+#            dyn_prog[ind][last_index] += ((self.models.fork.dist[b,g,0] + self.models.reduce.dist[a,1]))
+#            sentence_log_prob = lm.log_add(sentence_log_prob, dyn_prog[f,j,a,b,g, last_index])
 #            logging.debug(dyn_prog[state,last_index])
                        
-            if last_index > 0 and (a == 0 or b == 0 or g == 0) and dyn_prog[f,j,a,b,g, last_index] != -np.inf:
-                logging.error("Error: Non-zero probability at g=0 in forward pass!")
-                sys.exit(-1)
+#            if last_index > 0 and (a == 0 or b == 0 or g == 0) and dyn_prog[f,j,a,b,g, last_index] != -np.inf:
+#                logging.error("Error: Non-zero probability at g=0 in forward pass!")
+#                sys.exit(-1)
 
         if dyn_prog[...,last_index].max() == -np.inf:
-            logging.error("Error; There is a word with no positive probabilities for its generation")
+            logging.error("Error; In sentence %d there is a word with no positive probabilities for its generation" % (sent_index))
+            
             sys.exit(-1)
 
         return dyn_prog, sentence_log_prob
@@ -138,10 +141,13 @@ class InfiniteSampler(Sampler):
 
                 (pf,pj,pa,pb,pg) = ind
                 (nf,nj,na,nb,ng) = sample_seq[-1].to_list()
-
-                trans_prob = self.models.fork.dist[pb,pg,nf]
-                if nf == 0:
-                    trans_prob += self.models.reduce.dist[pa,nj]
+                
+                trans_prob = 1.0
+                if t > 0:
+                    trans_prob += self.models.fork.dist[pb,pg,nf]
+                    
+#                if nf == 0:
+#                    trans_prob += self.models.reduce.dist[pa,nj]
       
                 if nf == 0 and nj == 0:
                     trans_prob += self.models.act.dist[pa,na]

@@ -273,7 +273,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 logging.warn('Stick-breaking (g) terminated due to hard limit and not gracefully.')
 
 
-
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
         a_max = models.act.dist.shape[-1]
@@ -371,6 +370,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
         models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
         models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+        
+        collect_trans_probs(hid_seqs, models)
+
         t1 = time.time()
         
         logging.debug("Resampling models took %d s" % (t1-t0))       
