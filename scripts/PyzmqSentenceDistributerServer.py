@@ -9,11 +9,10 @@ from PyzmqMessage import *
 from threading import Thread, Lock
 
 class Ventilator(Thread):
-    def __init__(self, host, sync_port, sent_list, num_workers):
+    def __init__(self, host, sync_port, sent_list):
         Thread.__init__(self)
         self.host = host
         self.sent_list = sent_list
-        self.num_workers = num_workers
         logging.debug("Job distributer attempting to bind to PUSH socket...")
         context = zmq.Context()
         self.socket = context.socket(zmq.REP)
@@ -30,22 +29,28 @@ class Ventilator(Thread):
             ## Wait for signal to start:
             logging.debug("Ventilator waiting for permission to start")
             self.sync_socket.send(b'0')
-            sync = self.sync_socket.recv()
+            sync = self.sync_socket.recv_pyobj()
+
             if sync == b'0':
                 break
+            else:
+                current_model_sig = sync
 
-            logging.debug("Ventilator received sync signal %s and starting" % sync)
+            logging.debug("Ventilator received model signature sync signal")
 
             for ind,sent in enumerate(self.sent_list):
                 logging.log(logging.DEBUG-1, "Ventilator pushing job %d" % ind)
-                self.socket.recv()
+                
+                
+                while not model_current(current_model_sig, self.socket.recv_pyobj()):
+                    ## if the model is not current tell this worker to quit this iteration
+#                    logging.log(logging.DEBUG-1, "Current sig is %s, received sig is %s" % (current_model_sig, 
+                    self.socket.send_pyobj(PyzmqJob(PyzmqJob.QUIT, -1, None))
+    
+                ## We heard from a worker with an up to date model, so send it a real sentence
                 self.socket.send_pyobj(PyzmqJob(PyzmqJob.SENTENCE, ind, sent))
                 logging.log(logging.DEBUG-1, "Ventilator has pushed job %d" % ind)
                 
-            for i in range(0, self.num_workers):
-                self.socket.recv()
-                self.socket.send_pyobj(PyzmqJob(PyzmqJob.QUIT, -1, None))
-
             time.sleep(1)
             logging.debug("Ventilator iteration finishing")
         
@@ -54,14 +59,14 @@ class Ventilator(Thread):
         self.sync_socket.close()
         
 class Sink(Thread):
-    def __init__(self, host, sync_port, num_workers):
+    def __init__(self, host, sync_port, num_sents):
         Thread.__init__(self)
         self.host = host
+        self.num_sents = num_sents
         self.outputs = list()
         logging.debug("Parse accumulator attempting to bind to PULL socket...")
         context = zmq.Context()
         self.socket = context.socket(zmq.PULL)
-        self.num_workers = num_workers
         
         self.port = self.socket.bind_to_random_port("tcp://"+self.host)
         
@@ -79,20 +84,21 @@ class Sink(Thread):
         while True:
             logging.debug("Sink waiting for permission to start...")
             self.sync_socket.send(b'0')
-            sync = self.sync_socket.recv()
+            sync = self.sync_socket.recv_pyobj()
             if sync == b'0':
                 break
 
-            logging.debug("Sink received start bit %s" % sync)
+            model_sig = sync
+            
+            logging.debug("Sink received model signature sync signal")
+            
             num_done = 0
             self.outputs = list()
-                        
-            while num_done < self.num_workers:
+                  
+            while len(self.outputs) < self.num_sents:      
                 parse = self.socket.recv_pyobj()
                 logging.log(logging.DEBUG-1, "Sink received parse %d" % parse.index)
-                if parse.index == -1:
-                    num_done += 1
-                else:
+                if parse.index >= 0:
                     self.outputs.append(parse)
         
             self.setProcessing(False)
@@ -115,39 +121,60 @@ class Sink(Thread):
     def get_parses(self):
         return self.outputs
 
-class ModelDistributer():
-    def __init__(self, host, sync_port, num_workers, working_dir):
+class ModelDistributer(Thread):
+    def __init__(self, host, sync_port, working_dir):
+        Thread.__init__(self)
         self.host = host
-        self.num_workers = num_workers
         context = zmq.Context()
         self.socket = context.socket(zmq.REP)
         self.port = self.socket.bind_to_random_port("tcp://"+self.host)
         logging.debug("Model server successfully bound to REP socket")
         self.working_dir = working_dir
+        self.model_sig = None
+        self.model_lock = Lock()
+        self.quit = False
         
+    ## All this method does is wait for requests for the model and send them,
+    ## with a quick check to make sure that the model isn't currently being written
+    def run(self):
+        model_loc = self.working_dir + '/models.bin'
+        
+        ## Wait until we're actually given a model to start sending them out...
+        while self.model_sig == None:
+            time.sleep(1)
+
+        while True:
+            ## TODO -- put a timeout in this recv() of a second so that it checks the
+            ## quit flag regularly
+            sync = self.socket.recv()
+            logging.log(logging.DEBUG, 'Sending worker a model')
+            self.model_lock.acquire()
+            self.socket.send_pyobj(model_loc)
+            self.model_lock.release()
+            time.sleep(1)
+            
+            if self.quit:
+                break
+            
     def send_models(self, models, finite):
         fn = self.working_dir+'/models.bin'
+        self.model_lock.acquire()
         out_file = open(fn, 'wb')
-        pickle.dump(models, out_file)
+        model = PyzmqModel(models, finite)
+        pickle.dump(model, out_file)
         out_file.close()
-        for i in range(0, self.num_workers):
-            logging.log(logging.DEBUG, 'Sending worker a model')
-            self.socket.recv()
-            logging.log(logging.DEBUG-1, 'Received signal to send model')
-            msg = PyzmqModel(self.working_dir + '/models.bin', finite)
-            
-            self.socket.send_pyobj(msg)
-
-        logging.debug("Model distributer finished sending models.")
+        self.model_sig = get_file_signature(fn)
+        self.model_lock.release()
 
     def send_quit(self):
-        for i in range(0, self.num_workers):
-            self.socket.recv()
-            self.socket.send_pyobj(None)
+        self.quit = True
+#        for i in range(0, self.num_workers):
+#            self.socket.recv()
+#            self.socket.send_pyobj(None)
             
 class PyzmqSentenceDistributerServer():
    
-    def __init__(self, sent_list, num_workers, working_dir):
+    def __init__(self, sent_list, working_dir):
 
         ## Set up job distribution servers:
         self.host = socket.gethostbyname(socket.gethostname())
@@ -158,9 +185,9 @@ class PyzmqSentenceDistributerServer():
         self.sync_socket = context.socket(zmq.REP)
         sync_port = self.sync_socket.bind_to_random_port("tcp://"+self.host)
 
-        self.vent = Ventilator(self.host, sync_port, sent_list, num_workers)
-        self.sink = Sink(self.host, sync_port, num_workers)
-        self.model_server = ModelDistributer(self.host, sync_port, num_workers, working_dir)
+        self.vent = Ventilator(self.host, sync_port, sent_list)
+        self.sink = Sink(self.host, sync_port, len(sent_list))
+        self.model_server = ModelDistributer(self.host, sync_port, working_dir)
         
         self.jobs_port = self.vent.port
         self.results_port = self.sink.port
@@ -171,26 +198,28 @@ class PyzmqSentenceDistributerServer():
         
         self.sink_socket = context.socket(zmq.PUSH)
         self.sink_socket.connect("tcp://%s:%s" % (self.sink.host, self.sink.port))
-
+        
         self.models = None
+        self.model_server.start()
         
     def run_one_iteration(self, models, finite):
         ind = 0
-        num_workers = 0
         num_done = 0
         
         self.model_server.send_models(models, finite)
+        model_sig = self.model_server.model_sig
+        
         self.sink.setProcessing(True)
         
         ## Wait a bit for sink to process signal and set processing to true for the first time
         time.sleep(3)
 
         ## Wait for the sink to be ready before we start sending sentences out:
-        logging.debug("Sending start bits to threads:")
+        logging.debug("Sending new model signatures to threads:")
         self.sync_socket.recv()
-        self.sync_socket.send(b'1')
+        self.sync_socket.send_pyobj(model_sig)
         self.sync_socket.recv()
-        self.sync_socket.send(b'1')
+        self.sync_socket.send_pyobj(model_sig)
         
         while self.sink.getProcessing():
             time.sleep(1)

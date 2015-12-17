@@ -123,7 +123,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     burnin = int(params.get('burnin'))
     iters = int(params.get('sample_iters'))
     max_samples = int(params.get('num_samples'))
-    num_procs = int(params.get('num_procs'))
+    num_procs = int(params.get('num_procs', 0))
     debug = bool(int(params.get('debug', 0)))
     profile = bool(int(params.get('profile', 0)))
     finite = bool(int(params.get('finite', 0)))
@@ -219,16 +219,22 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     logging.debug(ev_seqs[0])
     logging.debug(list(map(lambda x: x.str(), hid_seqs[0])))
 
-    workDistributer = PyzmqSentenceDistributerServer(ev_seqs, num_procs, working_dir)
+    workDistributer = PyzmqSentenceDistributerServer(ev_seqs, working_dir)
+    
+    logging.info("Start a new worker with python3 scripts/PyzmqWorker.py %s %d %d %d %d" % (workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1))
     
     ## Initialize all the sub-processes with their input-output queues
     ## and dimensions of matrix they'll need    
-    for cur_proc in range(0,num_procs):
-        ## Initialize and start the sub-process
-        inf_procs[cur_proc] = PyzmqWorker(workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, out_freq=100)
+    if num_procs > 0:
+        for cur_proc in range(0,num_procs):
+            ## Initialize and start the sub-process
+            inf_procs[cur_proc] = PyzmqWorker(workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, out_freq=100)
+            inf_procs[cur_proc].start()
     
+    elif cluster_cmd != None:
+        start_workers(workDistributer, cluster_cmd)
+            
     logging.info("Starting workers")
-    start_workers(inf_procs, cluster_cmd)
 
     ### Start doing actual sampling:
     while num_samples < max_samples:
