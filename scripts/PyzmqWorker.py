@@ -5,27 +5,25 @@ from PyzmqMessage import *
 from multiprocessing import Process
 import logging
 import os
+import os.path
 import pickle
-import time
+import signal
 import subprocess
+import sys
+import time
 import pyximport; pyximport.install()
 import beam_sampler
 import finite_sampler
 from Sampler import *
 
-def start_workers(workers, cluster_cmd):
-    num_workers = len(workers)
+def start_workers(work_distributer, cluster_cmd):
     logging.debug("Cluster command is %s" % cluster_cmd)
 
-    if cluster_cmd == None:
-        for i in range(0, num_workers):
-            workers[i].start()
-    else:
-        cmd_str = 'python3 %s/scripts/PyzmqWorker.py %s %d %d %d %d' % (os.getcwd(), workers[0].host, workers[0].jobs_port, workers[0].results_port, workers[0].models_port, workers[0].maxLen)
-        submit_cmd = [ cmd_arg.replace("%c", cmd_str) for cmd_arg in cluster_cmd.split()]
-        logging.info("Making cluster submit call with the following command: %s" % str(submit_cmd))
-        subprocess.call(submit_cmd)
-
+    cmd_str = 'python3 %s/scripts/PyzmqWorker.py %s %d %d %d %d' % (os.getcwd(), work_distributer.host, work_distributer.jobs_port, work_distributer.results_port, work_distributer.models_port, work_distributer.maxLen)
+    submit_cmd = [ cmd_arg.replace("%c", cmd_str) for cmd_arg in cluster_cmd.split()]
+    logging.info("Making cluster submit call with the following command: %s" % str(submit_cmd))
+    subprocess.call(submit_cmd)
+    
 class PyzmqWorker(Process):
     def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100):
         Process.__init__(self)
@@ -36,6 +34,7 @@ class PyzmqWorker(Process):
         self.maxLen = maxLen
         self.out_freq = out_freq
         self.tid = 0
+        self.quit = False
 
     def run(self):
         logging.debug("Starting forward pass in thread %d", self.tid)
@@ -61,14 +60,15 @@ class PyzmqWorker(Process):
             logging.debug("Thread %d waiting for new models..." % self.tid)
             models_socket.send(b'0')
             msg = models_socket.recv_pyobj()
-            if msg == None:
-                break
-            else:
-                in_file = open(msg.location, 'rb')
-                models = pickle.load(in_file)
-                in_file.close()
-                
-            if msg.finite:
+            
+            in_file = open(msg, 'rb')
+            model_obj = pickle.load(in_file)
+            in_file.close()
+            model_file_sig = get_file_signature(msg)
+            models = model_obj.model
+            finite = model_obj.finite
+            
+            if finite:
                 sampler = finite_sampler.FiniteSampler()
             else:
                 sampler = beam_sampler.InfiniteSampler()
@@ -80,9 +80,13 @@ class PyzmqWorker(Process):
             sampler.initialize_dynprog(self.maxLen)        
             
             sents_processed = 0
+            
+            if self.quit:
+                break
+
             while True: 
                 logging.log(logging.DEBUG-1, "Worker %d waiting for job" % self.tid)
-                jobs_socket.send(b'0')
+                jobs_socket.send_pyobj(model_file_sig)
                 job = jobs_socket.recv_pyobj();
                 
                 if job.type == PyzmqJob.SENTENCE:
@@ -107,22 +111,31 @@ class PyzmqWorker(Process):
                 parse = PyzmqParse(sent_index, sent_sample, log_prob)
                 
                 results_socket.send_pyobj(parse)
-                          
+                if self.quit:
+                    break
+
                 if log_prob > 0:
                     logging.error('Sentence %d had positive log probability %f' % (sent_index, log_prob))
             
             ## Tell the sink that i'm done:
-            results_socket.send_pyobj(PyzmqParse(-1,None,0))
+#            results_socket.send_pyobj(PyzmqParse(-1,None,0))
             logging.debug("Worker %d processed %d sentences this iteration" % (self.tid, sents_processed))
 
         logging.debug("Worker %d disconnecting sockets and finishing up" % self.tid)
         jobs_socket.close()
         results_socket.close()
 
+    def handle_sigint(self, signum, frame):
+        logging.info("Worker received quit signal... will terminate after cleaning up.")
+        self.quit = True
+        
 def main(args):
     logging.basicConfig(level=logging.INFO)
+
     fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]))
-    ## Call run directly instead of start otherwise we'll have 2n workers
+    signal.signal(signal.SIGINT, fs.handle_sigint)
+    
+    ## Call run directly instead of start otherwise we'll have 2n workers    
     fs.run()
     
 if __name__ == "__main__":

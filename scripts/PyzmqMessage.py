@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Classes and methods for facilitating communication between workers and server
+
+import os
 
 class PyzmqJob:
     SENTENCE=0
@@ -16,6 +19,15 @@ class PyzmqParse:
         self.log_prob = log_prob
 
 class PyzmqModel:
-    def __init__(self, location, finite):
-        self.location = location
+    def __init__(self, model, finite):
+        self.model = model
         self.finite = finite
+
+def model_current(ref_sig, comp_sig):
+    return (ref_sig[0] == comp_sig[0] and ref_sig[1] == comp_sig[1])
+    
+def get_file_signature(filename):
+    (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime) = os.stat(filename)
+    return (size, mtime)    
+
+    
