@@ -16,10 +16,10 @@ import beam_sampler
 import finite_sampler
 from Sampler import *
 
-def start_workers(work_distributer, cluster_cmd):
+def start_workers(work_distributer, cluster_cmd, maxLen):
     logging.debug("Cluster command is %s" % cluster_cmd)
 
-    cmd_str = 'python3 %s/scripts/PyzmqWorker.py %s %d %d %d %d' % (os.getcwd(), work_distributer.host, work_distributer.jobs_port, work_distributer.results_port, work_distributer.models_port, work_distributer.maxLen)
+    cmd_str = 'python3 %s/scripts/PyzmqWorker.py %s %d %d %d %d' % (os.getcwd(), work_distributer.host, work_distributer.jobs_port, work_distributer.results_port, work_distributer.models_port, maxLen)
     submit_cmd = [ cmd_arg.replace("%c", cmd_str) for cmd_arg in cluster_cmd.split()]
     logging.info("Making cluster submit call with the following command: %s" % str(submit_cmd))
     subprocess.call(submit_cmd)

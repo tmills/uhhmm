@@ -232,7 +232,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             inf_procs[cur_proc].start()
     
     elif cluster_cmd != None:
-        start_workers(workDistributer, cluster_cmd)
+        start_workers(workDistributer, cluster_cmd, maxLen)
             
     logging.info("Starting workers")
 
