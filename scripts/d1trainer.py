@@ -45,7 +45,7 @@ def main(argv):
             config.write(configfile)
     
     input_file = config.get('io', 'input_file')
-    working_dir = config.get('io', 'working_dir')
+    working_dir = config.get('io', 'working_dir', fallback='.')
 
     ## Read in input file to get sequence for X
     (pos_seq, word_seq) = io.read_input_file(input_file)
