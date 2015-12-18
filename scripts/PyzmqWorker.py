@@ -51,9 +51,12 @@ class PyzmqWorker(Process):
         results_socket.connect("tcp://%s:%s" % (self.host, self.results_port))
 
         logging.debug("Worker %d connected to all three endpoints" % self.tid)
-        sampler = None
-        
+                
         while True:
+            if self.quit:   
+                break
+
+            sampler = None
             #  Socket to talk to server
             logging.debug("Thread %d waiting for new models..." % self.tid)
             models_socket.send(b'0')
