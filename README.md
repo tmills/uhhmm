@@ -27,7 +27,7 @@ where &lt;output dir&gt; is the directory that the run was writing its output to
 This software has been written to be highly parallelizable, either on a single node with multiple cores or in a cluster environment with multiple nodes. We use Pyzmq inter-process messaging to pass sentences to workers and receive parses from workers. The main job collects the sampled sentences, recomputes UHHMM model parameters, and then iterates.
 
 ### Cluster submission scripts:
-To run the code on a cluster, there is an additional parameter that must be included in the config file (cluster_cmd), which tells the software how to submit job arrays for its workers. This command needs to have a parameter %%c where the executable name goes which our code will replace with the call to start the workers (it needs two % because the .ini script will remove the first one). We have tested this code on two different cluster platforms -- LSF and SLURM -- see the examples below.
+When running the code on the cluster, it is probably a requirement to set the num_procs parameter to 0. This will disable the main thread from creating workers outside the cluster job submission framework. There is an additional parameter to use instead (cluster_cmd), which tells the software how to submit job arrays for its workers. This command needs to have a parameter %%c where the executable name goes which our code will replace with the call to start the workers (it needs two % because the .ini script will remove the first one). We have tested this code on three different cluster platforms -- LSF (bsub), SLURM (sbatch), and Sun GridEngine (qsub) -- see the examples below.
 
 #### LSF:
 cluster_cmd=bsub -e %%J.err -J workers[1-70] -q &lt;queue name&gt; %%c
@@ -39,3 +39,5 @@ cluster_cmd=sbatch --array=1-30 --mem-per-cpu 3000 -p &lt;partition name&gt; -t 
 
 This command uses 30 workers, requests 3 GB of RAM per worker, is submitted to the partition given (similar to the queues above) and will be killed after one day. 
 
+#### GridEngine:
+cluster_cmd=qsub -V -b y -j y -t 1-100 -cwd %%c
