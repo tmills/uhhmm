@@ -35,6 +35,7 @@ def main(argv):
         ## Resume mode
         config.read(path + "/config.ini")
         pickle_file = path + "/sample.obj"
+        out_dir = config.get('io', 'output_dir')
     else:
         config.read(argv[0])
         out_dir = config.get('io', 'output_dir')
