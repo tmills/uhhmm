@@ -14,6 +14,7 @@ import pdb
 import os
 import pickle
 import logging
+import signal
 
 def main(argv):
     if len(argv) < 1:
@@ -45,7 +46,7 @@ def main(argv):
             config.write(configfile)
     
     input_file = config.get('io', 'input_file')
-    working_dir = config.get('io', 'working_dir', fallback='.')
+    working_dir = config.get('io', 'working_dir', fallback=out_dir)
 
     ## Read in input file to get sequence for X
     (pos_seq, word_seq) = io.read_input_file(input_file)
