@@ -13,10 +13,11 @@ class PyzmqJob:
         self.ev_seq = ev_seq
 
 class PyzmqParse:
-    def __init__(self, index, state_list, log_prob):
+    def __init__(self, index, state_list, log_prob, success=True):
         self.index = index
         self.state_list = state_list
         self.log_prob = log_prob
+        self.success = success
 
 class PyzmqModel:
     def __init__(self, model, finite):

@@ -128,6 +128,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     profile = bool(int(params.get('profile', 0)))
     finite = bool(int(params.get('finite', 0)))
     cluster_cmd = params.get('cluster_cmd', None)
+    infinite_sample_prob = float(params.get('infinite_prob', 0.0))
+    return_to_finite = False
     
     seed = int(params.get('seed', -1))
     if seed > 0:
@@ -240,6 +242,15 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     while num_samples < max_samples:
         sample.iter = iter
 
+        if finite:
+            if np.random.random() < infinite_sample_prob:
+                if finite:
+                    logging.info("Randomly chose infinite sample with probability %f" % infinite_sample_prob)
+                finite = False
+                return_to_finite = True
+            else:
+                logging.info("Performing standard finite sample")
+
         if iter > 0 and not finite:
         
             ## now that we've resampled models, store the transition probabilities that
@@ -316,9 +327,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         
         for parse in parses:
             num_processed += 1
-            increment_counts(parse.state_list, ev_seqs[ parse.index ], models, parse.index)
+            if parse.success:
+                increment_counts(parse.state_list, ev_seqs[ parse.index ], models, parse.index)
+                sample.log_prob += parse.log_prob
+            
             sample_map[parse.index] = parse.state_list
-            sample.log_prob += parse.log_prob
 
         ## samples got unsorted by queueing them so resort them just for the purpose 
         ## of debugging.
@@ -385,11 +398,19 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         
         sample.models = models
         
+        if not finite and return_to_finite:
+            finite = True
+            return_to_finite = False
+        
         iter += 1
         
     logging.debug("Ending sampling")
     workDistributer.stop()
 
+    for cur_proc in range(0,num_procs):
+        inf_procs[cur_proc].join()
+        inf_procs[cur_proc] = None
+        
     return (samples, stats)
 
 def remove_unused_variables(models):

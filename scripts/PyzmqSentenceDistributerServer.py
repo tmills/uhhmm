@@ -19,7 +19,7 @@ class Ventilator(Thread):
         self.port = self.socket.bind_to_random_port("tcp://"+self.host)
 
         logging.debug("Ventilator successfully bound to PUSH socket.")
-            
+
         self.sync_socket = context.socket(zmq.REQ)
         self.sync_socket.connect("tcp://%s:%s" % (self.host, sync_port))
         logging.debug("Ventilator connected to sync socket.")
@@ -57,6 +57,7 @@ class Ventilator(Thread):
         logging.debug("Ventilator thread finishing")
         self.socket.close()
         self.sync_socket.close()
+        logging.debug("All ventilator sockets closed.")
         
 class Sink(Thread):
     def __init__(self, host, sync_port, num_sents):
@@ -106,6 +107,8 @@ class Sink(Thread):
         logging.debug("Sink thread finishing")
         self.socket.close()
         self.sync_socket.close()
+        logging.debug("All sink sockets closed.")
+        self.setProcessing(False)
 
     def setProcessing(self, val):
         self.work_lock.acquire()
@@ -127,6 +130,9 @@ class ModelDistributer(Thread):
         self.host = host
         context = zmq.Context()
         self.socket = context.socket(zmq.REP)
+        ## disconnect every TO ms to check for quit flag.
+        TO = 10000
+        self.socket.setsockopt(zmq.RCVTIMEO, TO)
         self.port = self.socket.bind_to_random_port("tcp://"+self.host)
         logging.debug("Model server successfully bound to REP socket")
         self.working_dir = working_dir
@@ -146,16 +152,26 @@ class ModelDistributer(Thread):
         while True:
             ## TODO -- put a timeout in this recv() of a second so that it checks the
             ## quit flag regularly
-            sync = self.socket.recv()
-            logging.log(logging.DEBUG, 'Sending worker a model')
-            self.model_lock.acquire()
-            self.socket.send_pyobj(model_loc)
-            self.model_lock.release()
+            try:
+                sync = self.socket.recv()
+                logging.log(logging.DEBUG, 'Sending worker a model')
+                self.model_lock.acquire()
+                self.socket.send_pyobj(model_loc)
+                self.model_lock.release()
+                ## Don't need to do anything -- this happens when there is a timeout,
+                ## and just need to check the quit value regularly. Don't know when
+                ## to quit otherwise because we can't be sure of how many workers there
+                ## are and that they've all quit.
+            except:
+                logging.debug("Model server timeout... checking quit flag.")
+
             time.sleep(1)
             
             if self.quit:
                 break
             
+        self.socket.close()
+
     def send_models(self, models, finite):
         fn = self.working_dir+'/models.bin'
         self.model_lock.acquire()
@@ -168,9 +184,6 @@ class ModelDistributer(Thread):
 
     def send_quit(self):
         self.quit = True
-#        for i in range(0, self.num_workers):
-#            self.socket.recv()
-#            self.socket.send_pyobj(None)
             
 class PyzmqSentenceDistributerServer():
    
@@ -215,7 +228,7 @@ class PyzmqSentenceDistributerServer():
         time.sleep(3)
 
         ## Wait for the sink to be ready before we start sending sentences out:
-        logging.debug("Sending new model signatures to threads:")
+        logging.debug("Sending new model signatures %s to threads:" % str(model_sig))
         self.sync_socket.recv()
         self.sync_socket.send_pyobj(model_sig)
         self.sync_socket.recv()
@@ -229,11 +242,20 @@ class PyzmqSentenceDistributerServer():
     def stop(self):
         ## Send two stop signals to sink and ventilator
         self.sync_socket.recv()
-        self.sync_socket.send(b'0')
+        self.sync_socket.send_pyobj(b'0')
         self.sync_socket.recv()
-        self.sync_socket.send(b'0')
+        self.sync_socket.send_pyobj(b'0')
         
+        self.sync_socket.close()
+        self.sink_socket.close()
+
         self.model_server.send_quit()
+        
+        logging.debug("Joining server threads.")
+        self.sink.join()
+        self.vent.join()
+        self.model_server.join()
+        logging.debug("All threads joined and exiting server.")
         
     def get_parses(self):
         return self.sink.get_parses()

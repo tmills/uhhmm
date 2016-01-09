@@ -94,7 +94,7 @@ class InfiniteSampler(Sampler):
         
             if dyn_prog[...,index].max() == -np.inf:
                 logging.error("Error: Every value in the forward probability of sentence %d, index %d is nan!" % (sent_index, index))
-                sys.exit(-1)
+                raise Exception("Every value in the forward probability of sentence %d, index %d is nan!" % (sent_index, index))
         
         ## For the last token, multiply in the probability
         ## of transitioning to the end state. also can add up
@@ -113,8 +113,7 @@ class InfiniteSampler(Sampler):
 
         if dyn_prog[...,last_index].max() == -np.inf:
             logging.error("Error; In sentence %d there is a word with no positive probabilities for its generation" % (sent_index))
-            
-            sys.exit(-1)
+            raise Exception("Error; In sentence %d there is a word with no positive probabilities for its generation" % (sent_index))
 
         return dyn_prog, sentence_log_prob
 
@@ -132,7 +131,7 @@ class InfiniteSampler(Sampler):
         sample_seq.append(ihmm.State(sample_t))
         if (last_index > 0 and (sample_seq[-1].a == 0 or sample_seq[-1].b == 0)) or sample_seq[-1].g == 0:
             logging.error("Error: First sample has a|b|g = 0")
-            sys.exit(-1)
+            raise Exception("Error: First sample has a|b|g = 0")
   
         for t in range(len(sent)-2,-1,-1):
             for (ind,val) in np.ndenumerate(dyn_prog[...,t]):
