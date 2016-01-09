@@ -6,12 +6,14 @@ my @sent;
 while(<STDIN>){
   if(m/^#/){
     @sent = ();
-  }elsif(m/^\d+\s+(\S+).*/){
-    push @sent, $1;
   }elsif(m/^\s*$/){
 #    print "End sentence of length".$#sent."\n";
     print join(" ", @sent)."\n";
     @sent = ();
-  } 
+  }else{
+    my @fields = split /\s+/;
+    my $tagword = $fields[6]."/".$fields[1];
+    push @sent, $tagword;
+  }
 }
 
