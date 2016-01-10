@@ -12,3 +12,4 @@ data/*ints.txt
 data/*morf.txt
 data/*.dict
 outputs
+starcluster
