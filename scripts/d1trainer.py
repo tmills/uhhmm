@@ -53,6 +53,9 @@ def main(argv):
     
     params = read_params(config)
     
+    if int(params.get('depth', 1)) > 1:
+        loggingerror("Error: this code can only be run with depth 1 configuration.")
+    
     params['h'] = init_emission_base(num_types)
     
     (samples, stats) = ihmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), working_dir, pickle_file)
