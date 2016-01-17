@@ -57,6 +57,7 @@ def read_serialized_models(pickle_filename):
 def write_output(sample, stats, config, gold_pos=None):
 #    last_sample = samples[-1]
     models = sample.models
+    depth = len(models.fork)
     
     output_dir = config.get('io', 'output_dir')
     dict_file = config.get('io', 'dict_file')
@@ -86,18 +87,14 @@ def write_output(sample, stats, config, gold_pos=None):
     
     write_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
     write_model(models.pos.dist, output_dir + "/p_pos_given_b_%d.txt" % sample.iter, condPrefix="AWA", outcomePrefix="POS")
-    write_model(models.cont.dist, output_dir + "/p_awa_given_b+g%d.txt" % sample.iter,
-    condPrefix="BG", outcomePrefix="AWA")
-    write_model(models.start.dist, output_dir + "/p_awa_given_a%d.txt" % sample.iter,
-    condPrefix="AA", outcomePrefix="AWA")
-    write_model(models.act.dist, output_dir + "/p_act_given_a%d.txt" % sample.iter,
-    condPrefix="ACT", outcomePrefix="ACT")
-    write_model(models.root.dist, output_dir + "/p_act_given_g%d.txt" %sample.iter,
-    condPrefix="POS", outcomePrefix="ACT")
-    write_model(models.fork.dist, output_dir + "/p_fork_given_b+g%d.txt" % sample.iter,
-    condPrefix="BG", outcomePrefix="F")
-    write_model(models.reduce.dist, output_dir + "/p_join_given_a+f1_%d.txt" % sample.iter,
-    condPrefix="A+", outcomePrefix="J")
+    
+    for d in range(0, depth):
+        write_model(models.cont[d].dist, output_dir + "/p_awa_given_b+g%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="AWA", depth=d)
+        write_model(models.start[d].dist, output_dir + "/p_awa_given_a%d.txt" % sample.iter, condPrefix="AA", outcomePrefix="AWA", depth=d)
+        write_model(models.act[d].dist, output_dir + "/p_act_given_a%d.txt" % sample.iter, condPrefix="ACT", outcomePrefix="ACT", depth=d)
+        write_model(models.root[d].dist, output_dir + "/p_act_given_g%d.txt" %sample.iter, condPrefix="POS", outcomePrefix="ACT", depth=d)
+        write_model(models.fork[d].dist, output_dir + "/p_fork_given_b+g%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="F", depth=d)
+        write_model(models.reduce[d].dist, output_dir + "/p_join_given_a+f1_%d.txt" % sample.iter, condPrefix="A+", outcomePrefix="J", depth=d)
     
     write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter, word_dict)
 
@@ -118,8 +115,8 @@ def checkpoint(sample, config):
     f.close()
     
 
-def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix=""):
-    f = open(out_file, 'w')
+def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix="", depth=-1):
+    f = open(out_file, 'a' if depth > 0 else 'w')
     
     for ind,val in np.ndenumerate(dist):
         lhs = ind[0:-1]
@@ -130,9 +127,9 @@ def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix="")
             continue
 
         if word_dict == None:
-            f.write("P( %s%d | %s%s ) = %f \n" % (outcomePrefix, rhs, condPrefix, str(lhs), 10**val))
+            f.write("P( %s%d | %s%s, %d ) = %f \n" % (outcomePrefix, rhs, condPrefix, str(lhs), depth, 10**val))
         else:
-            f.write("P( %s | %s ) = %f \n" % (word_dict[rhs], str(lhs), 10**val))
+            f.write("P( %s | %s, %d ) = %f \n" % (word_dict[rhs], str(lhs), depth, 10**val))
                 
     f.close()
 

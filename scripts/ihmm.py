@@ -18,30 +18,63 @@ from PyzmqWorker import *
 # The set of random variable values at one word
 # There will be one of these for every word in the training set
 class State:
-    def __init__(self, state=None):
+    def __init__(self, depth, state=None):
+        self.depth = depth
+        self.f = [None] * depth
+        self.j = [None] * depth
+        self.a = [None] * depth
+        self.b = [None] * depth
+        
         if state == None:
-            self.f = 0
-            self.j = 0
-            self.a = 0
-            self.b = 0
+            for d in range(0,depth):
+                self.f[d] = -1
+                self.j[d] = -1
+                self.a[d] = 0
+                self.b[d] = 0
             self.g = 0
         else:
-            (self.f, self.j, self.a, self.b, self.g) = state
+            (self.f[0], self.j[0], self.a[0], self.b[0], self.g) = state
 
     def str(self):
         string = ''
-        f_str = '+/' if self.f==1 else '-/'        
-        string += f_str
-        j_str = '+' if self.j==1 else '-'
-        string += j_str
+        for d in range(0, self.depth):
+            ## only one depth position of f and j will be active:
+            if self.f[d] >= 0 and self.j[d] >= 0:
+                f_str = '+/' if self.f[d]==1 else '-/'        
+                string += f_str
+                j_str = '+' if self.j[d]==1 else '-'
+                string += j_str
+                break
+                
+        string += "::"
         
-        string += "::ACT" + str(self.a) + '/AWA' + str(self.b) + ':POS' + str(self.g)
+        for d in range(0, self.depth):
+            if d > 0:
+                string += ";"
+
+            if self.a[d] > 0:
+                string += "ACT" + str(self.a[d]) + '/AWA' + str(self.b[d])
+        
+            
+        string += ':POS' + str(self.g)
         
         return string
 
     def to_list(self):
         return (self.f, self.j, self.a, self.b, self.g)
 
+    def max_fork_depth(self):
+        for d in range(0, self.depth):
+            if self.f[d] >= 0:
+                return d
+                
+    def max_awa_depth(self):
+        for d in range(0, self.depth):
+            if self.b[d] == 0:
+                return d-1
+                
+        return 0
+        
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
 class Sample:
@@ -118,6 +151,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
     
     num_samples = 0
+    depth = int(params.get('depth', 1))
     burnin = int(params.get('burnin'))
     iters = int(params.get('sample_iters'))
     max_samples = int(params.get('num_samples'))
@@ -161,21 +195,21 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         b_max = start_b+2
         g_max = start_g+2
 
-        models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), a_max, b_max, g_max)
-        hid_seqs = initialize_state(ev_seqs, models)
+        models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, a_max, b_max, g_max)
+        hid_seqs = initialize_state(ev_seqs, models, depth)
 
         sample = Sample()
     #    sample.hid_seqs = hid_seqs
-        sample.alpha_a = models.root.alpha ## float(params.get('alphaa'))
+        sample.alpha_a = models.root[0].alpha ## float(params.get('alphaa'))
         sample.alpha_b = float(params.get('alphab'))
         sample.alpha_g = float(params.get('alphag'))
         sample.alpha_f = float(params.get('alphaf'))
         sample.alpha_j = float(params.get('alphaj'))
         ## use plus 2 here (until moved later) since we need the null state (0) as well as 
         ## the extra part of the stick for "new tables"
-        sample.beta_a = models.root.beta ## np.ones((1,start_a+2)) / start_a
+        sample.beta_a = models.root[0].beta ## np.ones((1,start_a+2)) / start_a
     #    sample.beta_a[0][0] = 0
-        sample.beta_b = models.cont.beta
+        sample.beta_b = models.cont[0].beta
     #    sample.beta_b[0] = 0
         sample.beta_g = models.pos.beta
         sample.beta_f = np.ones(2) / 2
@@ -191,12 +225,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if np.argwhere(np.isnan(models.pos.dist)).size > 0:
             logging.error("Resampling the pos dist resulted in a nan")
         
-        models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
-        models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
-        models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
-        models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
-        models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
-        models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+        for d in range(0, depth):
+            models.start[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
+            models.cont[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
+            models.act[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
+            models.root[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
+            models.reduce[d].sampleBernoulli(sample.alpha_j * sample.beta_j)
+            models.fork[d].sampleBernoulli(sample.alpha_f * sample.beta_f)
     
         sample.models = models
         iter = 0
@@ -208,9 +243,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         hid_seqs = sample.hid_seqs
         sample.hid_seqs = [] ## Empty out hid_seqs because we will append later.
         
-        a_max = models.act.dist.shape[-1]
-        b_max = models.cont.dist.shape[-1]
-        g_max = models.pos.dist.shape[-1]
+        a_max = models.act[0].dist.shape[-1]
+        b_max = models.cont[0].dist.shape[-1]
+        g_max = models.pos[0].dist.shape[-1]
         
         iter = sample.iter+1
 
@@ -293,8 +328,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
-        a_max = models.act.dist.shape[-1]
-        b_max = models.cont.dist.shape[-1]
+        a_max = models.act[0].dist.shape[-1]
+        b_max = models.cont[0].dist.shape[-1]
         g_max = models.pos.dist.shape[-1]
         
         ## How many total states are there?
@@ -364,10 +399,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         next_sample.alpha_j = sample.alpha_j
         next_sample.beta_j = sample.beta_j
         
-        next_sample.alpha_a = models.root.alpha
-        next_sample.beta_a = models.root.beta
-        next_sample.alpha_b = models.cont.alpha
-        next_sample.beta_b = models.cont.beta
+        next_sample.alpha_a = models.root[0].alpha
+        next_sample.beta_a = models.root[0].beta
+        next_sample.alpha_b = models.cont[0].alpha
+        next_sample.beta_b = models.cont[0].beta
 #        next_sample.alpha_g = sample.alpha_g
 #        next_sample.beta_g = sample.beta_g
         next_sample.alpha_g = models.pos.alpha
@@ -387,12 +422,14 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                
         models.lex.sampleDirichlet(params['h'])
         models.pos.selfSampleDirichlet()
-        models.start.sampleDirichlet(sample.alpha_b * sample.beta_b)
-        models.cont.sampleDirichlet(sample.alpha_b * sample.beta_b)
-        models.act.sampleDirichlet(sample.alpha_a * sample.beta_a)
-        models.root.sampleDirichlet(sample.alpha_a * sample.beta_a)
-        models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
-        models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
+
+        for d in range(0, depth):        
+            models.start[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
+            models.cont[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
+            models.act[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
+            models.root[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
+            models.reduce[d].sampleBernoulli(sample.alpha_j * sample.beta_j)
+            models.fork[d].sampleBernoulli(sample.alpha_f * sample.beta_f)
         
         collect_trans_probs(hid_seqs, models)
 
@@ -583,7 +620,7 @@ def break_g_stick(models, sample, params):
 
 def resample_beta_g(models, gamma):
     
-    b_max = models.cont.dist.shape[-1]
+    b_max = models.cont[0].dist.shape[-1]
     g_max = models.pos.dist.shape[-1]
     m = np.zeros((b_max,g_max-1))
     
@@ -606,26 +643,44 @@ def resample_beta_g(models, gamma):
     models.pos.beta[1:] = 0
     models.pos.beta[1:] += sampler.sampleSimpleDirichlet(params)
 
-def initialize_models(models, max_output, params, corpus_shape, a_max, b_max, g_max):
+def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_max, g_max):
 
-    ## One fork model:
-    models.fork = Model((b_max, g_max, 2))
+    models.fork = [None] * depth
+    ## J models:
+    models.trans = [None] * depth
+    models.reduce = [None] * depth
+    ## Active models:
+    models.act = [None] * depth
+    models.root = [None] * depth
+    ## Reduce models:
+    models.cont = [None] * depth
+    models.exp = [None] * depth
+    models.next = [None] * depth
+    models.start = [None] * depth
     
-    ## Two join models:
-#    models.trans = Model((b_max, g_max, 2))
-    models.reduce = Model((a_max, 2))
+    ## One fork model:    
+    for d in range(0, depth):
+        models.fork[d] = Model((b_max, g_max, 2))
     
-    ## One active model:
-    models.act = Model((a_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape)
-    models.root = Model((g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape)
-    models.root.beta = np.zeros(a_max)
-    models.root.beta[1:] = np.ones(a_max-1) / (a_max-1)
+        ## Two join models:
+        models.trans[d] = Model((b_max, g_max, 2))
+        models.reduce[d] = Model((a_max, 2))
     
-    ## two awaited models:
-    models.cont = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
-    models.start = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
-    models.cont.beta = np.zeros(b_max)
-    models.cont.beta[1:] = np.ones(b_max-1) / (b_max-1)
+        ## TODO -- set d > 0 beta to the value of the model at d (can probably do this later)
+        ## One active model:
+        models.act[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape)
+        models.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape)
+        models.root[d].beta = np.zeros(a_max)
+        models.root[d].beta[1:] = np.ones(a_max-1) / (a_max-1)
+    
+        ## four awaited models:
+        models.cont[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
+        models.exp[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
+        models.next[d] = Model((b_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
+        models.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
+        models.cont[d].beta = np.zeros(b_max)
+        models.cont[d].beta[1:] = np.ones(b_max-1) / (b_max-1)
+        
     
     ## one pos model:
     models.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape)
@@ -635,44 +690,43 @@ def initialize_models(models, max_output, params, corpus_shape, a_max, b_max, g_
     ## one lex model:
     models.lex = Model((g_max, max_output+1))
     
-    logging.debug("Value of amax=%d, b_max=%d, g_max=%d", a_max, b_max, g_max)
     return models
 
 # Randomly initialize all the values for the hidden variables in the 
 # sequence. Obeys constraints (e.g., when f=1,j=1 a=a_{t-1}) but otherwise
 # samples randomly.
-def initialize_state(ev_seqs, models):
+def initialize_state(ev_seqs, models, depth):
     global a_max, b_max, g_max
     
     state_seqs = list()
     for sent_index,sent in enumerate(ev_seqs):
         hid_seq = list()
         for index,word in enumerate(sent):
-            state = State()
+            state = State(depth)
             ## special case for first word
             if index == 0:
-                state.f = 0
-                state.j = 0
-                state.a = 0
-                state.b = 0
+                state.f[0] = 0
+                state.j[0] = 0
+                state.a[0] = 0
+                state.b[0] = 0
             else:
                 if index == 1:
-                    state.f = 1
-                    state.j = 0
+                    state.f[0] = 1
+                    state.j[0] = 0
                 else:
                     if np.random.random() >= 0.5:
-                        state.f = 1
+                        state.f[0] = 1
                     else:
-                        state.f = 0
+                        state.f[0] = 0
                     ## j is deterministic in the middle of the sentence
-                    state.j = state.f
+                    state.j[0] = state.f[0]
                     
                 if state.f == 1 and state.j == 1:
-                    state.a = prev_state.a
+                    state.a[0] = prev_state.a[0]
                 else:
-                    state.a = np.random.randint(1,a_max-1)
+                    state.a[0] = np.random.randint(1,a_max-1)
 
-                state.b = np.random.randint(1,b_max-1)
+                state.b[0] = np.random.randint(1,b_max-1)
 
             state.g = np.random.randint(1,g_max-1)
                     
@@ -689,55 +743,75 @@ def collect_trans_probs(hid_seqs, models):
     for sent_index,hid_seq in enumerate(hid_seqs):
         ## for every state transition in the sentence increment the count
         ## for the condition and for the output
-        for index, state in enumerate(hid_seq):
+        for index, state in enumerate(hid_seq):            
+            d = state.max_fork_depth()
+            
             if index != 0:
-                ## Count F & J
                 if index == 1:
-                    models.root.trans_prob[sent_index,index] = models.root.dist[prevState.g, state.a]
-
-                    ## Count A & B
-                    if state.f == 0 and state.j == 0:
-                        models.root.trans_prob[sent_index,index] = models.act.trans_prob[sent_index,index] = models.act.dist[prevState.a, state.a]
-
-                if state.j == 0:
-                    models.cont.trans_prob[sent_index,index] = models.start.trans_prob[sent_index,index] = models.start.dist[prevState.a, state.a, state.b]
+                    models.root[0].trans_prob[sent_index, index] = models.root[0].dist[0, prevState.g, state.a[0]]
+                    models.start[0].trans_prob[sent_index, index] = models.start[0].dist[0, state.a[0], state.b[0]]
                 else:
-                    models.cont.trans_prob[sent_index,index] = models.cont.dist[prevState.b, prevState.g, state.b]
-
-            
-            ## Count G
-            models.pos.trans_prob[sent_index, index] = models.pos.dist[state.b, state.g]
-            
+                    ## Fork and join don't have trans_probs because they are finite:
+                    if state.f[d] == 0 and state.j[d] == 0:
+                        models.act[d].trans_prob[sent_index, index] = models.root[d].trans_prob[sent_index, index] = models.act[d].dist[ prevState.a[d], prevState.b[d], state.a[d] ]
+                        models.start[d].trans_prob[sent_index, index] = models.cont[d].trans_prob[sent_index, index] = models.start[d].dist[ prevState.a[d], state.a[d], state.b[d] ]
+                    elif state.f[d] == 1 and state.j[d] == 1:
+                        models.act[d].trans_prob[sent_index, index] = models.root[d].trans_prob[sent_index, index] = 0
+                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.cont[d].dist[ prevState.b[d], prevState.g, state.b[d] ]
+                    elif state.f[d] == 1 and state.j[d] == 0:
+                        models.root[d+1].trans_prob[sent_index, index] = models.act[d].trans_prob[sent_index, index]  = models.root[d+1].dist[ prevState.a[d], prevState.g, state.a[d+1] ]
+                    elif state.f[d] == 0 and state.j[d] == 1:
+                        models.act[d-1].trans_prob[sent_index, index] = models.root[d-1].trans_prob[sent_index, index] = 0
+                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.cont[d-1].dist[ prevState.b[d-1], prevState.g, state.b[d] ]
+                                                    
             prevState = state
 
 def increment_counts(hid_seq, sent, models, sent_index):
+    depth = len(models.fork)
+    
     ## for every state transition in the sentence increment the count
     ## for the condition and for the output
     for index,word in enumerate(sent):
         state = hid_seq[index]
+        d = state.max_fork_depth()
+        
         if index != 0:
             ## Count F & J
             if index == 1:
-                models.root.count(prevState.g, state.a)
+                ## No counts for f & j -- deterministically +/- at depth 0
+                models.root[0].count((0, prevState.g), state.a[0])
+                models.start[0].count((0, state.a[0]), state.b[0])
             else:
-                models.fork.count((prevState.b, prevState.g), state.f)
+                models.fork[d].count((prevState.b[d], prevState.g), state.f[d])
 
+                if state.f[d] == 0:
+                    models.reduce[d].count(prevState.a[d], state.j[d])
+                elif state.f[d] == 1:
+                    models.trans[d].count((prevState.b[d], prevState.g), state.j[d])
+                            
                 ## Count A & B
-                if state.f == 0 and state.j == 0:
-                    models.act.count(prevState.a, state.a)
-
-            if state.f == 0 and state.j == 0:
-                models.reduce.count(prevState.a, state.j)
-                                
-            if state.j == 0:
-                models.start.count((prevState.a, state.a), state.b)
-            else:
-                models.cont.count((prevState.b, prevState.g), state.b)
-
-            
-        ## Count G
-        models.pos.count(state.b, state.g)
-            
+                if state.f[d] == 0 and state.j[d] == 0:
+                    prevB = prevState.b[d-1] if d > 0 else 0
+                    models.act[d].count((prevState.a[d], prevB), state.a[d])
+                    models.start[d].count((prevState.a[d], state.a[d]), state.b[d])
+                elif state.f[d] == 1 and state.j[d] == 1:
+                    ## no change to act, awa increments cont model
+                    models.cont[d].count((prevState.b[d], prevState.g), state.b[d])
+                elif state.f[d] == 1 and state.j[d] == 0:
+                    ## run root and exp models at depth d+1
+                    models.root[d+1].count((prevState.b[d-1], prevState.g), state.a[d+1])
+                    models.exp[d+1]((prevState.g, state.a[d+1]), state.b[d+1])
+                elif state.f[d] == 0 and state.j[d] == 1:
+                    ## lower level finished -- awaited can transition
+                    models.next[d-1].count((prevState.b[d], state.a[d-1]), state.b[d-1])
+                         
+        
+            ## Count G
+            awa_depth = state.max_awa_depth()       
+            models.pos.count(state.b[awa_depth], state.g)
+        else:
+            models.pos.count(0, state.g)
+                    
         ## Count w
         models.lex.count(state.g, word)
         
