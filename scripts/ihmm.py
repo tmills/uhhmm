@@ -805,7 +805,10 @@ def increment_counts(hid_seq, sent, models, sent_index):
                     models.exp[d+1]((prevState.g, state.a[d+1]), state.b[d+1])
                 elif state.f[d] == 0 and state.j[d] == 1:
                     ## lower level finished -- awaited can transition
+                    ## Made the following deciison in a confusing rebase -- left other version
+                    ## commented in in case I decided wrong.
                     models.next[d-1].count((prevState.b[d-1], state.a[d]), state.b[d-1])
+#                     models.next[d-1].count((prevState.b[d], state.a[d-1]), state.b[d-1])
                          
         
             ## Count G
