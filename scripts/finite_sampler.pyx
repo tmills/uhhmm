@@ -71,12 +71,12 @@ def compile_models(models):
                     for a in range(1,a_max-1):
                         if f == 0 and j == 0:
                             ## active transition:
-                            cumProbs[2] = cumProbs[1] * (act[prevA,a])
+                            cumProbs[2] = cumProbs[1] * (act[prevA,0,a])
                         elif f == 1 and j == 0:
                             ## root -- technically depends on prevA and prevG
                             ## but in depth 1 this case only comes up at start
                             ## of sentence and prevA will always be 0
-                            cumProbs[2] = cumProbs[1] * (root[prevG,a])
+                            cumProbs[2] = cumProbs[1] * (root[0,prevG,a])
                         elif f == 1 and j == 1 and prevA == a:
                             cumProbs[2] = cumProbs[1]
                         else:
@@ -108,11 +108,11 @@ def compile_models(models):
     return (np.matrix(pi,copy=False), np.matrix(phi,copy=False))
     
 def unlog_models(models):
-    fork = 10**models.fork.dist
-    act = 10**models.act.dist
-    root = 10**models.root.dist
-    cont = 10**models.cont.dist
-    start = 10**models.start.dist
+    fork = 10**models.fork[0].dist
+    act = 10**models.act[0].dist
+    root = 10**models.root[0].dist
+    cont = 10**models.cont[0].dist
+    start = 10**models.start[0].dist
     pos = 10**models.pos.dist
    
     return (fork,act,root,cont,start,pos)
@@ -222,8 +222,8 @@ class FiniteSampler(Sampler):
         ## normalize after multiplying in the transition out probabilities
         dyn_prog[:,last_index] /= dyn_prog[:,last_index].sum()
         sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,last_index]))
-                
-        sample_seq.append(ihmm.State(extractStates(sample_t, totalK, maxes)))
+                        
+        sample_seq.append(ihmm.State(1, extractStates(sample_t, totalK, maxes)))
         if last_index > 0 and (sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0):
             logging.error("Error: First sample has a|b|g = 0")
             sys.exit(-1)
@@ -255,23 +255,23 @@ class FiniteSampler(Sampler):
                 trans_prob = 1.0
                 
                 if t > 0:
-                    trans_prob *= 10**self.models.fork.dist[pb, pg, nf]
+                    trans_prob *= 10**self.models.fork[0].dist[pb, pg, nf]
 
 #                if nf == 0:
 #                    trans_prob *= (10**self.models.reduce.dist[pa,nj])
       
                 if nf == 0 and nj == 0:
-                    trans_prob *= (10**self.models.act.dist[pa,na])
+                    trans_prob *= (10**self.models.act[0].dist[pa,0,na])
                 elif nf == 1 and nj == 0:
-                    trans_prob *= (10**self.models.root.dist[pg,na])
+                    trans_prob *= (10**self.models.root[0].dist[0,pg,na])
                 elif nf == 1 and nj == 1:
                     if na != pa:
                         trans_prob = 0
       
                 if nj == 0:
-                    trans_prob *= (10**self.models.start.dist[pa,na,nb])
+                    trans_prob *= (10**self.models.start[0].dist[pa,na,nb])
                 else:
-                    trans_prob *= (10**self.models.cont.dist[pb,pg,nb])
+                    trans_prob *= (10**self.models.cont[0].dist[pb,pg,nb])
       
                 trans_prob *= (10**self.models.pos.dist[nb,ng])
                               
@@ -281,9 +281,10 @@ class FiniteSampler(Sampler):
             sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,t]))
             state_list = extractStates(sample_t, totalK, getVariableMaxes(self.models))
             
-            sample_state = ihmm.State(state_list)
+            sample_state = ihmm.State(1, state_list)
             if t > 0 and sample_state.g == 0:
                 logging.error("Error: Sampled a g=0 state in backwards pass! {0}".format(sample_state.str()))
+                
             sample_seq.append(sample_state)
             
         sample_seq.reverse()

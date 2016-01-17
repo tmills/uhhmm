@@ -10,15 +10,16 @@ import pyximport; pyximport.install()
 import log_math as lm
 
 def getVariableMaxes(models):
-    a_max = models.act.dist.shape[-1]
-    b_max = models.start.dist.shape[-1]
+    a_max = models.act[0].dist.shape[-1]
+    b_max = models.start[0].dist.shape[-1]
     g_max = models.pos.dist.shape[-1]
     return (a_max, b_max, g_max)
 
 def get_state_size(models):
     maxes = getVariableMaxes(models)
     (a_max,b_max,g_max) = maxes
-    return 2 * 2 * a_max * b_max * g_max            
+    depth = len(models.fork)
+    return ((2 * 2 * a_max * b_max) ** depth) * g_max            
 
 class Sampler:
     def sample(self, sent, sent_index):
