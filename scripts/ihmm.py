@@ -44,8 +44,9 @@ class State:
                 string += f_str
                 j_str = '+' if self.j[d]==1 else '-'
                 string += j_str
-                break
-                
+            else:
+                string += "-1/-1"
+
         string += "::"
         
         for d in range(0, self.depth):
@@ -176,8 +177,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         logging.info('profile is set to %s, importing and installing pyx' % profile)    
         import pyximport; pyximport.install()
 
-    import beam_sampler
-    import finite_sampler
+    import DepthOneInfiniteSampler
+    import HmmSampler
+    import FullDepthCompiler
 
     samples = []
     
@@ -341,7 +343,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## workers but is harder when you need to coordinate timing of reading new models in every pass)
         t0 = time.time()
         if finite:
-            (trans_mat, obs_mat) = finite_sampler.compile_models(models)
+            (trans_mat, obs_mat) = FullDepthCompiler.FullDepthCompiler(1).compile_models(models)
             workDistributer.run_one_iteration((models, trans_mat, obs_mat), finite)
         else:
             workDistributer.run_one_iteration(models, finite)
@@ -799,7 +801,7 @@ def increment_counts(hid_seq, sent, models, sent_index):
                     models.exp[d+1]((prevState.g, state.a[d+1]), state.b[d+1])
                 elif state.f[d] == 0 and state.j[d] == 1:
                     ## lower level finished -- awaited can transition
-                    models.next[d-1].count((prevState.b[d], state.a[d-1]), state.b[d-1])
+                    models.next[d-1].count((prevState.b[d-1], state.a[d]), state.b[d-1])
                          
         
             ## Count G

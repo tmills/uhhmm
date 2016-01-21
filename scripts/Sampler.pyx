@@ -28,4 +28,3 @@ class Sampler:
         sent_sample = self.reverse_sample(self.dyn_prog, sent, sent_index)
         
         return (sent_sample, log_prob)
-    
