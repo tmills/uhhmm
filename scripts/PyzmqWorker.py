@@ -72,9 +72,9 @@ class PyzmqWorker(Process):
             finite = model_obj.finite
             
             if finite:
-                sampler = HmmSampler.HmmSampler()
+                sampler = HmmSampler.HmmSampler(self.seed)
             else:
-                sampler = DepthOneInfiniteSample.InfiniteSampler()
+                sampler = DepthOneInfiniteSample.InfiniteSampler(self.seed)
             
             sampler.set_models(models)
                        
