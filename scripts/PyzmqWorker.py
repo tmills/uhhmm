@@ -13,8 +13,8 @@ import sys
 import time
 import pdb, traceback
 import pyximport; pyximport.install()
-import beam_sampler
-import finite_sampler
+import DepthOneInfiniteSampler
+import HmmSampler
 from Sampler import *
 
 def start_workers(work_distributer, cluster_cmd, maxLen):
@@ -72,9 +72,9 @@ class PyzmqWorker(Process):
             finite = model_obj.finite
             
             if finite:
-                sampler = finite_sampler.FiniteSampler(self.seed)
+                sampler = HmmSampler.HmmSampler()
             else:
-                sampler = beam_sampler.InfiniteSampler(self.seed)
+                sampler = DepthOneInfiniteSample.InfiniteSampler()
             
             sampler.set_models(models)
                        

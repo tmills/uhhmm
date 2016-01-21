@@ -44,4 +44,3 @@ class Sampler:
             raise e
                 
         return (sent_sample, log_prob)
-    

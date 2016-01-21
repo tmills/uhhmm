@@ -13,3 +13,4 @@ data/*morf.txt
 data/*.dict
 outputs
 starcluster
+analysis
