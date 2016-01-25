@@ -86,8 +86,8 @@ class PyzmqWorker(Process):
             if self.quit:
                 break
 
+            longest_time = 4
             while True: 
-                longest_time = 4
                 logging.log(logging.DEBUG-1, "Worker %d waiting for job" % self.tid)
                 try:
                     ret_val = jobs_socket.send_pyobj(model_file_sig)
