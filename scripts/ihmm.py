@@ -116,21 +116,22 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     start_b = int(params.get('startb'))
     start_g = int(params.get('startg'))
 
-    logging.basicConfig(level=logging.INFO)
-    logging.info("Starting beam sampling")
     
     num_samples = 0
     burnin = int(params.get('burnin'))
     iters = int(params.get('sample_iters'))
     max_samples = int(params.get('num_samples'))
     num_procs = int(params.get('num_procs', 0))
-    debug = bool(int(params.get('debug', 0)))
+    debug = params.get('debug', 'INFO')
     profile = bool(int(params.get('profile', 0)))
     finite = bool(int(params.get('finite', 0)))
     cluster_cmd = params.get('cluster_cmd', None)
     infinite_sample_prob = float(params.get('infinite_prob', 0.0))
     return_to_finite = False
     
+    logging.basicConfig(level=getattr(logging, debug))
+    logging.info("Starting beam sampling")
+
     seed = int(params.get('seed', -1))
     if seed > 0:
         logging.info("Using seed %d for random number generator." % (seed))
@@ -230,7 +231,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     if num_procs > 0:
         for cur_proc in range(0,num_procs):
             ## Initialize and start the sub-process
-            inf_procs[cur_proc] = PyzmqWorker(workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, out_freq=100)
+            inf_procs[cur_proc] = PyzmqWorker(workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, out_freq=100, tid=cur_proc)
             inf_procs[cur_proc].start()
     
     elif cluster_cmd != None:
@@ -269,7 +270,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 a_max = models.act.dist.shape[-1]
                 
             if a_max >= 20:
-                logging.warn('Stick-breaking (a) terminated due to hard limit and not gracefully.')
+                logging.warning('Stick-breaking (a) terminated due to hard limit and not gracefully.')
         
             while b_max < 20 and models.cont.u.min() < max(models.cont.dist[...,-1].max(), models.start.dist[...,-1].max()):
                 logging.info('Breaking b stick')
@@ -277,7 +278,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 b_max = models.cont.dist.shape[-1]
 
             if b_max >= 50:
-                logging.warn('Stick-breaking (b) terminated due to hard limit and not gracefully.')
+                logging.warning('Stick-breaking (b) terminated due to hard limit and not gracefully.')
 
             while g_max < 50 and models.pos.u.min() < models.pos.dist[...,-1].max():
                 logging.info('Breaking g stick')
@@ -287,7 +288,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     logging.error("Breaking the g stick resulted in a nan in the output distribution")
             
             if g_max >= 50:
-                logging.warn('Stick-breaking (g) terminated due to hard limit and not gracefully.')
+                logging.warning('Stick-breaking (g) terminated due to hard limit and not gracefully.')
 
 
         ## These values keep track of actual maxes not user-specified --
@@ -333,6 +334,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             
             sample_map[parse.index] = parse.state_list
 
+        if num_processed < len(ev_seqs):
+            logging.warning("Didn't receive the correct number of parses at iteration %d" % iter)
+        
         ## samples got unsorted by queueing them so resort them just for the purpose 
         ## of debugging.
         for key in sorted(sample_map.keys()):
@@ -596,7 +600,7 @@ def resample_beta_g(models, gamma):
                     m[b][g] += (dart < (alpha_beta / (alpha_beta + l - 1)))
 
     if 0 in m.sum(0)[1:]:
-        logging.warn("There seems to be an illegal value here:")
+        logging.warning("There seems to be an illegal value here:")
         
     params = np.append(m.sum(0)[1:], gamma)
     models.pos.beta[1:] = 0

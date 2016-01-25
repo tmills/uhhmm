@@ -8,6 +8,23 @@ import zmq
 from PyzmqMessage import *
 from threading import Thread, Lock
 
+class VerboseLock():
+    def __init__(self, name):
+        self.name = name
+        self._lock = Lock()
+        
+    def acquire(self):
+        logging.debug("Acquiring %s lock" % self.name)
+        t0 = time.time()
+        self._lock.acquire()
+        t1 = time.time()
+        if t1-t0 > 1:
+            logging.warning("Acquiring %s lock took %d seconds" % (self.name, t1-t0))
+            
+    def release(self):
+        logging.debug("Releasing %s lock" % self.name)
+        self._lock.release()
+            
 class Ventilator(Thread):
     def __init__(self, host, sync_port, sent_list):
         Thread.__init__(self)
@@ -51,7 +68,6 @@ class Ventilator(Thread):
                 self.socket.send_pyobj(PyzmqJob(PyzmqJob.SENTENCE, ind, sent))
                 logging.log(logging.DEBUG-1, "Ventilator has pushed job %d" % ind)
                 
-            time.sleep(1)
             logging.debug("Ventilator iteration finishing")
         
         logging.debug("Ventilator thread finishing")
@@ -68,7 +84,8 @@ class Sink(Thread):
         logging.debug("Parse accumulator attempting to bind to PULL socket...")
         context = zmq.Context()
         self.socket = context.socket(zmq.PULL)
-        
+        self.socket.setsockopt(zmq.RCVTIMEO, 5000)
+
         self.port = self.socket.bind_to_random_port("tcp://"+self.host)
         
         logging.debug("Parse accumulator successfully bound to PULL socket.")
@@ -77,7 +94,7 @@ class Sink(Thread):
         self.sync_socket.connect("tcp://%s:%s" % (self.host, sync_port))
         logging.debug("Sink connected to sync socket.")
         
-        self.work_lock = Lock()
+        self.work_lock = VerboseLock("Sink")
         self.processing = False
 
     def run(self):
@@ -96,12 +113,17 @@ class Sink(Thread):
             num_done = 0
             self.outputs = list()
                   
-            while len(self.outputs) < self.num_sents:      
-                parse = self.socket.recv_pyobj()
-                logging.log(logging.DEBUG-1, "Sink received parse %d" % parse.index)
-                if parse.index >= 0:
+            while len(self.outputs) < self.num_sents:
+                try:   
+                    parse = self.socket.recv_pyobj()
+                    logging.log(logging.DEBUG-1, "Sink received parse %d" % parse.index)
                     self.outputs.append(parse)
-        
+                except:
+                    logging.error("Sink timed out waiting for remaining parse... exiting this iteration...")
+                    break
+
+            logging.debug("Sink finished processing this batch of sentences")
+
             self.setProcessing(False)
 
         logging.debug("Sink thread finishing")
@@ -116,9 +138,7 @@ class Sink(Thread):
         self.work_lock.release()
 
     def getProcessing(self):
-        self.work_lock.acquire()
         val = self.processing
-        self.work_lock.release()
         return val
 
     def get_parses(self):
@@ -130,14 +150,16 @@ class ModelDistributer(Thread):
         self.host = host
         context = zmq.Context()
         self.socket = context.socket(zmq.REP)
+        self.quit_socket = context.socket(zmq.REQ)
+        
         ## disconnect every TO ms to check for quit flag.
-        TO = 10000
-        self.socket.setsockopt(zmq.RCVTIMEO, TO)
         self.port = self.socket.bind_to_random_port("tcp://"+self.host)
+        self.quit_socket.connect("tcp://%s:%s" % (self.host, self.port))
+        
         logging.debug("Model server successfully bound to REP socket")
         self.working_dir = working_dir
         self.model_sig = None
-        self.model_lock = Lock()
+        self.model_lock = VerboseLock("Model")
         self.quit = False
         
     ## All this method does is wait for requests for the model and send them,
@@ -154,7 +176,10 @@ class ModelDistributer(Thread):
             ## quit flag regularly
             try:
                 sync = self.socket.recv()
-                logging.log(logging.DEBUG, 'Sending worker a model')
+                if sync == b'-1':
+                    logging.info("Model server received quit signal")
+                    break
+                logging.log(logging.DEBUG, 'Sending worker a model in response to signal %s' % str(sync))
                 self.model_lock.acquire()
                 self.socket.send_pyobj(model_loc)
                 self.model_lock.release()
@@ -162,14 +187,10 @@ class ModelDistributer(Thread):
                 ## and just need to check the quit value regularly. Don't know when
                 ## to quit otherwise because we can't be sure of how many workers there
                 ## are and that they've all quit.
-            except:
-                logging.debug("Model server timeout... checking quit flag.")
+            except e:
+                logging.debug("Model server exception %s... checking quit flag." % str(e))
+                raise
 
-            time.sleep(1)
-            
-            if self.quit:
-                break
-            
         self.socket.close()
 
     def send_models(self, models, finite):
@@ -183,7 +204,7 @@ class ModelDistributer(Thread):
         self.model_lock.release()
 
     def send_quit(self):
-        self.quit = True
+        self.quit_socket.send(b'-1')
             
 class PyzmqSentenceDistributerServer():
    
@@ -235,7 +256,7 @@ class PyzmqSentenceDistributerServer():
         self.sync_socket.send_pyobj(model_sig)
         
         while self.sink.getProcessing():
-            time.sleep(1)
+            time.sleep(2)
 
         logging.debug("Sentence distributer server finished with one iteration.")
 

@@ -174,7 +174,7 @@ class FiniteSampler(Sampler):
         ## array -- we don't have to copy it into a matrix and recopy back to array
         ## to get the return value
         forward = np.matrix(dyn_prog, copy=False)
-        for index,token in enumerate(sent):     
+        for index,token in enumerate(sent):
             ## Still use special case for 0
             if index == 0:
                 g0_ind = getStateIndex(0,0,0,0,0,maxes)
@@ -188,7 +188,7 @@ class FiniteSampler(Sampler):
             
             ## Normalizer is p(y_t)
             sentence_log_prob += np.log10(normalizer)
-        
+            
         ## For the last token, multiply in the probability
         ## of transitioning to the end state. also can add up
         ## total probability of data given model here.      
@@ -204,7 +204,7 @@ class FiniteSampler(Sampler):
         
         if np.argwhere(forward.max(0)[:,0:last_index+1] == 0).size > 0:
             logging.error("Error; There is a word with no positive probabilities for its generation")
-            sys.exit(-1)
+            raise ParseException("Error; There is a word with no positive probabilities for its generation")
 
 #        sentence_log_prob += np.log10( forward[:,last_index].sum() )
         
@@ -226,7 +226,7 @@ class FiniteSampler(Sampler):
         sample_seq.append(ihmm.State(extractStates(sample_t, totalK, maxes)))
         if last_index > 0 and (sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0):
             logging.error("Error: First sample has a|b|g = 0")
-            sys.exit(-1)
+            raise ParseException("Error: First sample has a|b|g = 0")
   
         for t in range(len(sent)-2,-1,-1):
             for ind in range(0,dyn_prog.shape[0]):
@@ -238,17 +238,17 @@ class FiniteSampler(Sampler):
                 
                 ## shouldn't be necessary, put in debugs:
                 if pf == 0 and t == 1:
-                    logging.warn("Found a positive probability where there shouldn't be one -- pf == 0 and t == 1")
+                    logging.warning("Found a positive probability where there shouldn't be one -- pf == 0 and t == 1")
                     dyn_prog[ind,t] = 0
                     continue
                     
                 if pj == 1 and t == 1:
-                    logging.warn("Found a positive probability where there shouldn't be one -- pj == 1 and t == 1")
+                    logging.warning("Found a positive probability where there shouldn't be one -- pj == 1 and t == 1")
                     dyn_prog[ind,t] = 0
                     continue
                     
                 if t != 1 and pf != pj:
-                    logging.warn("Found a positive probability where there shouldn't be one -- pf != pj")
+                    logging.warning("Found a positive probability where there shouldn't be one -- pf != pj")
                     dyn_prog[ind,t] = 0
                     continue
                 
