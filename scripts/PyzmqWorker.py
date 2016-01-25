@@ -132,7 +132,7 @@ class PyzmqWorker(Process):
                 logging.log(logging.DEBUG-1, "Worker %d has parsed sentence %d" % (self.tid, sent_index))                
                 if (t1-t0) > longest_time:
                     longest_time = t1-t0
-                    logging.warning("Sentence %d was my slowest sentence to parse at %s s" % longest_time)
+                    logging.warning("Sentence %d was my slowest sentence to parse at %d s" % (sent_index, longest_time) )
 
                 sents_processed +=1 
                 parse = PyzmqParse(sent_index, sent_sample, log_prob, success)
