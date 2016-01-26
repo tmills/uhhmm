@@ -8,6 +8,7 @@ import numpy as np
 import sys
 import pyximport; pyximport.install()
 from Sampler import *
+from HmmSampler import *
 
 class FullDepthCompiler():
     def __init__(self, depth):
@@ -21,21 +22,21 @@ class FullDepthCompiler():
         t0 = time.time()
         pi = np.zeros((totalK, totalK))
         phi = np.zeros((totalK, models.lex.dist.shape[1]))
-
+        
         ## Take exponent out of inner loop:
         word_dist = 10**models.lex.dist
     
         unlog_models(models, self.depth)
-
+    
         for prevState in range(0,totalK):
-            (prevF, prevJ, prevA, prevB, prevG) = extract_states(prevState, totalK, self.depth, getVariableMaxes(models))
+            (prevF, prevJ, prevA, prevB, prevG) = extractStates(prevState, totalK, self.depth, getVariableMaxes(models))
             cumProbs = np.zeros(5)
-            next_state = ihmm.State(self.depth)
+            nextState = ihmm.State(self.depth)
             
             ## Some of the transitions look at above states, but in the d=0 special
             ## case there is nowhere to look so just assign the variable here and
             ## handle the special case outside of the loop:
-            start_depth = ihmm.max_awa_depth()
+            start_depth = get_cur_awa_depth(prevB)
             if start_depth == 0:
                 above_act = 0
                 above_awa = 0
@@ -54,7 +55,7 @@ class FullDepthCompiler():
                     if f == 0:
                         cumProbs[1] = cumProbs[0] * models.reduce[start_depth].dist[ prevA[start_depth], j ]
                     else:
-                        cumProbs[1] = cumProbs[0] * models.trans[start_depth].dist[ prevB[start_depth], j ]
+                        cumProbs[1] = cumProbs[0] * models.trans[start_depth].dist[ prevB[start_depth], prevG, j ]
                     
                     for a in range(1, a_max-1):
                         for b in range(1, b_max-1):
@@ -69,7 +70,7 @@ class FullDepthCompiler():
                                         nextState.b[d] = prevB[d]
                                     nextState.a[start_depth] = a
                                     
-                                    cumProbs[3] = cumProbs[2] * models.cont[start_depth].dist[ prevB[d], prevG, b]
+                                    cumProbs[3] = cumProbs[2] * models.cont[start_depth].dist[ prevB[start_depth], prevG, b]
                                     nextState.b[start_depth] = b
                                     
                                 else:
@@ -111,15 +112,16 @@ class FullDepthCompiler():
                                 
                                 nextState.b[start_depth+1] = b
                                 cumProbs[3] = cumProbs[2] * models.exp[start_depth+1].dist[ a, prevG, b ]
-                            
+                                                        
                             ## Now multiply in the pos tag probability:
-                            state_range = getStateRange(f, j, a, b, getVariableMaxes(models))         
-                            range_probs = cumProbs[3] * (pos[b,:-1])
+                            state_range = getStateRange(nextState.f, nextState.j, nextState.a, nextState.b, getVariableMaxes(models))         
+                            range_probs = cumProbs[3] * (models.pos.dist[b,:-1])
                             pi[prevState, state_range] = range_probs            
                             
         time_spent = time.time() - t0
         logging.info("Done in %d s" % time_spent)
         relog_models(models, self.depth)
+        return (pi, phi)
 
 def unlog_models(models, depth):
 
@@ -143,7 +145,7 @@ def relog_models(models, depth):
     for d in range(0, depth):
         models.fork[d].dist = np.log10(models.fork[d].dist)
         
-        models.reduct[d].dist = np.log10(models.reduce[d].dist)
+        models.reduce[d].dist = np.log10(models.reduce[d].dist)
         models.trans[d].dist = np.log10(models.trans[d].dist)
         
         models.act[d].dist = np.log10(models.act[d].dist)
@@ -156,5 +158,9 @@ def relog_models(models, depth):
         
     pos = np.log10(models.pos.dist)
 
-def extract_states(index, totalK, depth, (a_max, b_max, g_max)):
-    
+def get_cur_awa_depth(stack):
+    for d in range(len(stack)):
+        if stack[d] > 0:
+            return d
+
+    return 0
