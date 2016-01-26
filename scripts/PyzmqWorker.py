@@ -45,7 +45,9 @@ class PyzmqWorker(Process):
         logging.debug("Worker %d connecting to work distribution server..." % self.tid)
         jobs_socket = context.socket(zmq.REQ)        
         jobs_socket.connect("tcp://%s:%s" % (self.host, self.jobs_port))
-        jobs_socket.setsockopt(zmq.SNDTIMEO, 10000)
+        jobs_socket.setsockopt(zmq.SNDTIMEO, 5000)
+        ## Make receive timeout longer -- if there are a lot of workers it may be slow,
+        ## and it won't happen unless the send was already successful
         jobs_socket.setsockopt(zmq.RCVTIMEO, 30000)
         
         results_socket = context.socket(zmq.PUSH)
