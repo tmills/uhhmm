@@ -14,52 +14,49 @@ import pyximport; pyximport.install()
 from Sampler import *
 import subprocess
 
-def unlog_models(models):
-    fork = 10**models.fork[0].dist
-    act = 10**models.act[0].dist
-    root = 10**models.root[0].dist
-    cont = 10**models.cont[0].dist
-    start = 10**models.start[0].dist
-    pos = 10**models.pos.dist
-   
-    return (fork,act,root,cont,start,pos)
-
-def extractStates(index, totalK, maxes):
+def extractStates(index, totalK, depth, maxes):
     (a_max, b_max, g_max) = maxes
-    ## First -- we only care about a,b,g for computing next state so factor
-    ## out the a,b,g
-    f_ind = 0
-    f_split = totalK / 2
-    if index > f_split:
-        index = index - f_split
-        f_ind = 1
     
-    j_ind = 0
-    j_split = f_split / 2
-    if index > j_split:
-        index = index - j_split
-        j_ind = 1
+    (fj_ind, a_ind, b_ind, g) = np.unravel_index(index, (4*depth, a_max**depth, b_max**depth, g_max))
     
-    g_ind = index % g_max
-    index = (index-g_ind) / g_max
+    f = [-1] * depth
+    j = [-1] * depth
     
-    b_ind = index % b_max
-    index = (index-b_ind) / b_max
+    (max_d, f_val, j_val) = np.unravel_index(fj_ind, (depth, 2, 2))
+    f[max_d] = f_val
+    j[max_d] = j_val
     
-    a_ind = index % a_max
+    a = np.unravel_index(a_ind, [a_max] * depth)
+    b = np.unravel_index(b_ind, [b_max] * depth)
     
-    ## Make sure all returned values are ints:
-    return map(int, (f_ind,j_ind,a_ind, b_ind, g_ind))
+    return f, j, a, b, g
 
-def getStateIndex(f,j,a,b,g, maxes):
+def getStateIndex(f, j, a, b, g, maxes):
     (a_max, b_max, g_max) = maxes
-    return (((f*2 + j)*a_max + a) * b_max + b)*g_max + g
-
+    depth = len(f)
+    for d in range(0, depth):
+        if f[d] >= 0:
+            cur_depth = d
+            break
+            
+    fj_stack = np.ravel_multi_index((cur_depth, f[cur_depth], j[cur_depth]), (depth, 2, 2))
+    
+    a_stack  = np.ravel_multi_index(a, [a_max] * depth)
+    b_stack = np.ravel_multi_index(b, [b_max] * depth)
+        
+    index = np.ravel_multi_index((fj_stack, a_stack, b_stack, g), (depth * 4, a_max**depth, b_max**depth, g_max))
+    
+    return index
+    
 def getStateRange(f,j,a,b, maxes):
     (a_max, b_max, g_max) = maxes
     start = getStateIndex(f,j,a,b,0,maxes)
     return range(start,start+g_max-1)
 
+def boolean_depth(l):
+    for index,val in enumerate(l):
+        if val >= 0:
+            return index
 
 class HmmSampler(Sampler):
     
@@ -135,6 +132,7 @@ class HmmSampler(Sampler):
         sample_log_prob = 0
         maxes = getVariableMaxes(self.models)
         totalK = get_state_size(self.models)
+        depth = len(self.models.fork.dist)
         
         ## Normalize and grab the sample from the forward probs at the end of the sentence
         last_index = len(sent)-1
@@ -143,7 +141,7 @@ class HmmSampler(Sampler):
         dyn_prog[:,last_index] /= dyn_prog[:,last_index].sum()
         sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,last_index]))
                         
-        sample_seq.append(ihmm.State(1, extractStates(sample_t, totalK, maxes)))
+        sample_seq.append(ihmm.State(1, extractStates(sample_t, totalK, depth, maxes)))
         if last_index > 0 and (sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0):
             logging.error("Error: First sample has a|b|g = 0")
             raise ParseException("Error: First sample has a|b|g = 0")
@@ -153,7 +151,7 @@ class HmmSampler(Sampler):
                 if dyn_prog[ind,t] == 0:
                     continue
 
-                (pf,pj,pa,pb,pg) = extractStates(ind, totalK, getVariableMaxes(self.models))
+                (pf,pj,pa,pb,pg) = extractStates(ind, totalK, depth, getVariableMaxes(self.models))
                 (nf,nj,na,nb,ng) = sample_seq[-1].to_list()
                 
                 ## shouldn't be necessary, put in debugs:
@@ -199,7 +197,7 @@ class HmmSampler(Sampler):
 
             dyn_prog[:,t] /= dyn_prog[:,t].sum()
             sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,t]))
-            state_list = extractStates(sample_t, totalK, getVariableMaxes(self.models))
+            state_list = extractStates(sample_t, totalK, depth, getVariableMaxes(self.models))
             
             sample_state = ihmm.State(1, state_list)
             if t > 0 and sample_state.g == 0:

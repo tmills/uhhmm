@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+import pyximport; pyximport.install()
+from Sampler import *
+
 class DepthOneCompiler():
     def compile_models(models):
         logging.info("Compiling component models into mega-HMM transition and observation matrices")
@@ -7,8 +10,6 @@ class DepthOneCompiler():
         totalK = get_state_size(models)
     
         t0 = time.time()
-    #    pi = np.zeros((totalK, totalK))
-    #    phi = np.zeros((totalK, models.lex.dist.shape[1]))
         pi = np.zeros((totalK, totalK))
         phi = np.zeros((totalK, models.lex.dist.shape[1]))
         cache = np.zeros((a_max, b_max, g_max, totalK)) - 1

@@ -33,7 +33,7 @@ class State:
                 self.b[d] = 0
             self.g = 0
         else:
-            (self.f[0], self.j[0], self.a[0], self.b[0], self.g) = state
+            (self.f, self.j, self.a, self.b, self.g) = state.f, state.j, state.a, state.b, state.g
 
     def str(self):
         string = ''
