@@ -27,11 +27,11 @@ class FullDepthCompiler():
         word_dist = 10**models.lex.dist
     
         unlog_models(models, self.depth)
-
+    
         for prevState in range(0,totalK):
-            (prevF, prevJ, prevA, prevB, prevG) = extract_states(prevState, totalK, self.depth, getVariableMaxes(models))
+            (prevF, prevJ, prevA, prevB, prevG) = extractStates(prevState, totalK, self.depth, getVariableMaxes(models))
             cumProbs = np.zeros(5)
-            next_state = ihmm.State(self.depth)
+            nextState = ihmm.State(self.depth)
             
             ## Some of the transitions look at above states, but in the d=0 special
             ## case there is nowhere to look so just assign the variable here and
