@@ -47,7 +47,9 @@ class PyzmqWorker(Process):
         jobs_socket = context.socket(zmq.REQ)        
         jobs_socket.connect("tcp://%s:%s" % (self.host, self.jobs_port))
         jobs_socket.setsockopt(zmq.SNDTIMEO, 5000)
-        jobs_socket.setsockopt(zmq.RCVTIMEO, 5000)
+        ## Make receive timeout longer -- if there are a lot of workers it may be slow,
+        ## and it won't happen unless the send was already successful
+        jobs_socket.setsockopt(zmq.RCVTIMEO, 60000)
         
         results_socket = context.socket(zmq.PUSH)
         results_socket.connect("tcp://%s:%s" % (self.host, self.results_port))
@@ -113,6 +115,8 @@ class PyzmqWorker(Process):
                 try:
                     (sent_sample, log_prob) = sampler.sample(sent, sent_index)
                 except:
+                    e = sys.exc_info()[0]
+                    logging.warn("Bad parse in iteration %d threw exception %s" % (sent_index, e))
                     sent_sample = None
                     log_prob = 0
                     success = False
