@@ -108,7 +108,7 @@ class Models(list):
 # Arg 1: ev_seqs : a list of lists of integers, representing
 # the EVidence SEQuenceS seen by the user (e.g., words in a sentence
 # mapped to ints).
-def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_dir, pickle_file=None):    
+def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_dir, pickle_file=None, gold_seqs={}):    
     
     global start_a, start_b, start_g
     global a_max, b_max, g_max
@@ -162,7 +162,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         g_max = start_g+2
 
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), a_max, b_max, g_max)
-        hid_seqs = initialize_state(ev_seqs, models)
+        hid_seqs = initialize_state(ev_seqs, models, gold_seqs)
 
         sample = Sample()
     #    sample.hid_seqs = hid_seqs
@@ -641,12 +641,16 @@ def initialize_models(models, max_output, params, corpus_shape, a_max, b_max, g_
 # Randomly initialize all the values for the hidden variables in the 
 # sequence. Obeys constraints (e.g., when f=1,j=1 a=a_{t-1}) but otherwise
 # samples randomly.
-def initialize_state(ev_seqs, models):
+def initialize_state(ev_seqs, models, gold_seqs={}):
     global a_max, b_max, g_max
     
     state_seqs = list()
     for sent_index,sent in enumerate(ev_seqs):
         hid_seq = list()
+        if sent_index in gold_seqs:
+          gold_tags=gold_seqs[sent_index]
+        else:
+          gold_tags=None
         for index,word in enumerate(sent):
             state = State()
             ## special case for first word
@@ -674,7 +678,10 @@ def initialize_state(ev_seqs, models):
 
                 state.b = np.random.randint(1,b_max-1)
 
-            state.g = np.random.randint(1,g_max-1)
+            if gold_tags:
+              state.g = gold_tags[index]
+            else:
+              state.g = np.random.randint(1,g_max-1)
                     
             prev_state = state  
                             
