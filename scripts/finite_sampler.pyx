@@ -8,104 +8,105 @@ import time
 import numpy as np
 import sys
 import zmq
-#from scipy.sparse import *
+import scipy.sparse
+from PyzmqMessage import PyzmqModel
 import pyximport; pyximport.install()
 from Sampler import *
 import subprocess
 
-def compile_models(models):
+def compile_and_store_models(models, working_dir):
+    scipy = True
+    try:
+        import scipy.sparse
+    except:
+        logging.warn("Could not find scipy! Using numpy will be much less memory efficient!")
+        scipy = False
+
     logging.info("Compiling component models into mega-HMM transition and observation matrices")
     (a_max, b_max, g_max) = getVariableMaxes(models)
     totalK = get_state_size(models)
     
     t0 = time.time()
-#    pi = np.zeros((totalK, totalK))
-#    phi = np.zeros((totalK, models.lex.dist.shape[1]))
     pi = np.zeros((totalK, totalK))
-    phi = np.zeros((totalK, models.lex.dist.shape[1]))
-    cache = np.zeros((a_max, b_max, g_max, totalK)) - 1
         
     ## Take exponent out of inner loop:
     word_dist = 10**models.lex.dist
     
     (fork,act,root,cont,start,pos) = unlog_models(models)
 
-    ## Build the observation matrix first:
-    for state in range(0,totalK):
-        (f,j,a,b,g) = extractStates(state, totalK, getVariableMaxes(models))
-        phi[state] = word_dist[g,:]
-
     ## For previous state i:
     for prevState in range(0,totalK):
         (prevF, prevJ, prevA, prevB, prevG) = extractStates(prevState, totalK, getVariableMaxes(models))
         cumProbs = np.zeros(5)
         
-        if cache[prevA][prevB][prevG].sum() > 0:
-            pi[prevState] = cache[prevA][prevB][prevG]
-        
-        else:
-            ## Sample f & j:
-            for f in (0,1):
-                if prevA == 0 and prevB == 0 and f == 0:
-                    continue
+        ## Sample f & j:
+        for f in (0,1):
+            if prevA == 0 and prevB == 0 and f == 0:
+                continue
     
-                cumProbs[0] = (fork[prevB, prevG,f])
+            cumProbs[0] = (fork[prevB, prevG,f])
     
-                for j in (0,1):
-                    ## At depth 1 -- no probability model for j
-                    if prevA == 0 and prevB == 0:
-                        ## index 1:
-                        if j == 0:
-                            cumProbs[1] = cumProbs[0]
-                        else:
-                            cumProbs[1] = 0
-                            ## No point in continuing -- matrix is zero'd to start
-                            continue
-                
-                    elif f == j:
+            for j in (0,1):
+                ## At depth 1 -- no probability model for j
+                if prevA == 0 and prevB == 0:
+                    ## index 1:
+                    if j == 0:
                         cumProbs[1] = cumProbs[0]
                     else:
                         cumProbs[1] = 0
-                        continue    
+                        ## No point in continuing -- matrix is zero'd to start
+                        continue
+                
+                elif f == j:
+                    cumProbs[1] = cumProbs[0]
+                else:
+                    cumProbs[1] = 0
+                    continue    
         
-                    for a in range(1,a_max-1):
-                        if f == 0 and j == 0:
-                            ## active transition:
-                            cumProbs[2] = cumProbs[1] * (act[prevA,a])
-                        elif f == 1 and j == 0:
-                            ## root -- technically depends on prevA and prevG
-                            ## but in depth 1 this case only comes up at start
-                            ## of sentence and prevA will always be 0
-                            cumProbs[2] = cumProbs[1] * (root[prevG,a])
-                        elif f == 1 and j == 1 and prevA == a:
-                            cumProbs[2] = cumProbs[1]
+                for a in range(1,a_max-1):
+                    if f == 0 and j == 0:
+                        ## active transition:
+                        cumProbs[2] = cumProbs[1] * (act[prevA,a])
+                    elif f == 1 and j == 0:
+                        ## root -- technically depends on prevA and prevG
+                        ## but in depth 1 this case only comes up at start
+                        ## of sentence and prevA will always be 0
+                        cumProbs[2] = cumProbs[1] * (root[prevG,a])
+                    elif f == 1 and j == 1 and prevA == a:
+                        cumProbs[2] = cumProbs[1]
+                    else:
+                        ## zero probability here
+                        continue
+        
+                    if cumProbs[2] == 0:
+                        continue
+
+                    for b in range(1,b_max-1):
+                        if j == 1:
+                            cumProbs[3] = cumProbs[2] * (cont[prevB, prevG, b])
                         else:
-                            ## zero probability here
-                            continue
-        
-                        if cumProbs[2] == 0:
-                            continue
-
-                        for b in range(1,b_max-1):
-                            if j == 1:
-                                cumProbs[3] = cumProbs[2] * (cont[prevB, prevG, b])
-                            else:
-                                cumProbs[3] = cumProbs[2] * (start[prevA, a, b])
+                            cumProbs[3] = cumProbs[2] * (start[prevA, a, b])
             
-                            # Multiply all the g's in one pass:
-                            ## range gets the range of indices in the forward pass
-                            ## that are contiguous in the state space
-                            state_range = getStateRange(f,j,a,b, getVariableMaxes(models))
+                        # Multiply all the g's in one pass:
+                        ## range gets the range of indices in the forward pass
+                        ## that are contiguous in the state space
+                        state_range = getStateRange(f,j,a,b, getVariableMaxes(models))
                                      
-                            range_probs = cumProbs[3] * (pos[b,:-1])
-                            pi[prevState, state_range] = range_probs
-
-            cache[prevA][prevB][prevG] = pi[prevState,:]
-                            
+                        range_probs = cumProbs[3] * (pos[b,:-1])
+                        pi[prevState, state_range] = range_probs
+                           
     time_spent = time.time() - t0
     logging.info("Done in %d s" % time_spent)
-#    return (np.matrix(pi, copy=False), np.matrix(phi, copy=False))
-    return (np.matrix(pi,copy=False), np.matrix(phi,copy=False))
+    if scipy:
+        trans_mat = (scipy.sparse.csc_matrix(pi,copy=False)) #, np.matrix(phi,copy=False))
+    else:
+        trans_mat = (np.matrix(pi, copy=False), np.matrix(phi, copy=False))
+
+    fn = working_dir+'/models.bin'
+    out_file = open(fn, 'wb')
+    model = PyzmqModel((models,trans_mat), finite=True)
+    pickle.dump(model, out_file)
+    out_file.close()
     
 def unlog_models(models):
     fork = 10**models.fork.dist
@@ -157,7 +158,18 @@ def getStateRange(f,j,a,b, maxes):
 class FiniteSampler(Sampler):
                     
     def set_models(self, models):
-        (self.models, self.pi, self.phi) = models
+        (self.models, self.pi) = models
+        self.lexMatrix = np.matrix(10**self.models.lex.dist)
+        g_len = self.models.pos.dist.shape[-1]
+        w_len = self.models.lex.dist.shape[-1]
+        scipy = True
+        try:
+            import scipy.sparse
+            self.lexMultipler = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, get_state_size(self.models) / g_len)))
+        except:
+            logging.warn("Could not find scipy! Using numpy will be much less memory efficient!")
+            self.lexMultipler = np.tile(np.identity(g_len), (1, get_state_size(self.models) / g_len))
+            scipy = False
         
     def initialize_dynprog(self, maxLen):
         self.dyn_prog = np.zeros((get_state_size(self.models), maxLen))
@@ -181,7 +193,9 @@ class FiniteSampler(Sampler):
                 forward[g0_ind+1:g0_ind+g_max-1,0] = np.matrix(10**self.models.lex.dist[1:-1,token]).transpose()
             else:
                 forward[:,index] = self.pi.transpose() * forward[:,index-1]
-                forward[:,index] = np.multiply(forward[:,index], self.phi[:,token])
+                expanded_lex = self.lexMatrix[:,token].transpose() * self.lexMultipler
+                forward[:,index] = np.multiply(forward[:,index], expanded_lex.transpose())
+#                forward[:,index] = np.multiply(forward[:,index], self.phi[:,token])
 
             normalizer = forward[:,index].sum()
             forward[:,index] /= normalizer

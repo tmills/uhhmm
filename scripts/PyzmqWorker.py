@@ -11,6 +11,7 @@ import signal
 import subprocess
 import sys
 import time
+import pdb, traceback
 import pyximport; pyximport.install()
 import beam_sampler
 import finite_sampler

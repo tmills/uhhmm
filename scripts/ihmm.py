@@ -307,10 +307,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## workers but is harder when you need to coordinate timing of reading new models in every pass)
         t0 = time.time()
         if finite:
-            (trans_mat, obs_mat) = finite_sampler.compile_models(models)
-            workDistributer.run_one_iteration((models, trans_mat, obs_mat), finite)
+            finite_sampler.compile_and_store_models(models, working_dir)
+            workDistributer.run_one_iteration(finite)
         else:
-            workDistributer.run_one_iteration(models, finite)
+            workDistributer.run_one_iteration(finite)
         
         ## Wait for server to finish distributing sentences for this iteration:
         t1 = time.time()

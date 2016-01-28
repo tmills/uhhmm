@@ -84,7 +84,7 @@ class Sink(Thread):
         logging.debug("Parse accumulator attempting to bind to PULL socket...")
         context = zmq.Context()
         self.socket = context.socket(zmq.PULL)
-        self.socket.setsockopt(zmq.RCVTIMEO, 5000)
+        self.socket.setsockopt(zmq.RCVTIMEO, 60000)
 
         self.port = self.socket.bind_to_random_port("tcp://"+self.host)
         
@@ -193,15 +193,9 @@ class ModelDistributer(Thread):
 
         self.socket.close()
 
-    def send_models(self, models, finite):
+    def reset_models(self, finite):
         fn = self.working_dir+'/models.bin'
-        self.model_lock.acquire()
-        out_file = open(fn, 'wb')
-        model = PyzmqModel(models, finite)
-        pickle.dump(model, out_file)
-        out_file.close()
         self.model_sig = get_file_signature(fn)
-        self.model_lock.release()
 
     def send_quit(self):
         self.quit_socket.send(b'-1')
@@ -236,11 +230,11 @@ class PyzmqSentenceDistributerServer():
         self.models = None
         self.model_server.start()
         
-    def run_one_iteration(self, models, finite):
+    def run_one_iteration(self, finite):
         ind = 0
         num_done = 0
         
-        self.model_server.send_models(models, finite)
+        self.model_server.reset_models(finite)
         model_sig = self.model_server.model_sig
         
         self.sink.setProcessing(True)
