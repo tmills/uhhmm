@@ -20,10 +20,10 @@ from PyzmqWorker import *
 class State:
     def __init__(self, depth, state=None):
         self.depth = depth
-        self.f = [None] * depth
-        self.j = [None] * depth
-        self.a = [None] * depth
-        self.b = [None] * depth
+        self.f = np.zeros(depth) - 1
+        self.j = np.zeros(depth) - 1
+        self.a = np.zeros(depth)
+        self.b = np.zeros(depth)
         
         if state == None:
             for d in range(0,depth):
@@ -38,6 +38,8 @@ class State:
     def str(self):
         string = ''
         for d in range(0, self.depth):
+            if d > 0:
+                string += ";"
             ## only one depth position of f and j will be active:
             if self.f[d] >= 0 and self.j[d] >= 0:
                 f_str = '+/' if self.f[d]==1 else '-/'        
@@ -174,13 +176,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     else:
         logging.info("Using default seed for random number generator.")
  
+    import FullDepthCompiler
     if not profile:
         logging.info('profile is set to %s, importing and installing pyx' % profile)    
         import pyximport; pyximport.install()
 
     import DepthOneInfiniteSampler
     import HmmSampler
-    import FullDepthCompiler
 
     samples = []
     
@@ -229,7 +231,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         
         for d in range(0, depth):
             models.start[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
+            models.exp[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
             models.cont[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
+            models.next[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
             models.act[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
             models.root[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
             models.reduce[d].sampleBernoulli(sample.alpha_j * sample.beta_j)
@@ -336,16 +340,16 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         
         ## How many total states are there?
         ## 2*2*|Act|*|Awa|*|G|
-        totalK = 2 * 2 * a_max * b_max * g_max
+        totalK = get_state_size(models)
 
-        logging.info("Number of a states=%d, b states=%d, g states=%d, total=%d" % (a_max-2, b_max-2, g_max-2, totalK))
+        logging.info("Number of a states=%d, b states=%d, g states=%d, depth=%d, total=%d" % (a_max-2, b_max-2, g_max-2, depth, totalK))
         
         ## Give the models to the model server. (Note: We used to pass them to workers via temp files which works when you create new
         ## workers but is harder when you need to coordinate timing of reading new models in every pass)
         t0 = time.time()
         if finite:
-            (trans_mat, obs_mat) = FullDepthCompiler.FullDepthCompiler(1).compile_models(models)
-            workDistributer.run_one_iteration((models, trans_mat, obs_mat), finite)
+            trans_mat = FullDepthCompiler.FullDepthCompiler(depth).compile_models(models)
+            workDistributer.run_one_iteration((models, trans_mat), finite)
         else:
             workDistributer.run_one_iteration(finite)
         
@@ -427,7 +431,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         for d in range(0, depth):        
             models.start[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
+            models.exp[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
             models.cont[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
+            models.next[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
             models.act[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
             models.root[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
             models.reduce[d].sampleBernoulli(sample.alpha_j * sample.beta_j)
@@ -463,14 +469,16 @@ def remove_unused_variables(models):
 
 def remove_pos_from_models(models, pos):
     ## delete the 1st dimension from the fork distribution:
-    models.fork.pairCounts = np.delete(models.fork.pairCounts, pos, 1)
-    models.fork.dist = np.delete(models.fork.dist, pos, 1)
+    depth = len(models.fork)
+    for d in range(depth):
+        models.fork[d].pairCounts = np.delete(models.fork[d].pairCounts, pos, 1)
+        models.fork[d].dist = np.delete(models.fork[d].dist, pos, 1)
     
-    models.root.pairCounts = np.delete(models.root.pairCounts, pos, 0)
-    models.root.dist = np.delete(models.root.dist, pos, 0)
+        models.root[d].pairCounts = np.delete(models.root[d].pairCounts, pos, 0)
+        models.root[d].dist = np.delete(models.root[d].dist, pos, 0)
     
-    models.cont.pairCounts = np.delete(models.cont.pairCounts, pos, 1)
-    models.cont.dist = np.delete(models.cont.dist, pos, 1)
+        models.cont[d].pairCounts = np.delete(models.cont[d].pairCounts, pos, 1)
+        models.cont[d].dist = np.delete(models.cont[d].dist, pos, 1)
     
     ## for the given POS index, delete the 1st (output) dimension from the
     ## counts and distribution of p(pos | awa)
@@ -666,7 +674,7 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
     
         ## Two join models:
         models.trans[d] = Model((b_max, g_max, 2))
-        models.reduce[d] = Model((a_max, 2))
+        models.reduce[d] = Model((a_max, b_max, 2))
     
         ## TODO -- set d > 0 beta to the value of the model at d (can probably do this later)
         ## One active model:
@@ -723,7 +731,7 @@ def initialize_state(ev_seqs, models, depth):
                     ## j is deterministic in the middle of the sentence
                     state.j[0] = state.f[0]
                     
-                if state.f == 1 and state.j == 1:
+                if state.f[0] == 1 and state.j[0] == 1:
                     state.a[0] = prev_state.a[0]
                 else:
                     state.a[0] = np.random.randint(1,a_max-1)
@@ -761,7 +769,7 @@ def collect_trans_probs(hid_seqs, models):
                         models.act[d].trans_prob[sent_index, index] = models.root[d].trans_prob[sent_index, index] = 0
                         models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.cont[d].dist[ prevState.b[d], prevState.g, state.b[d] ]
                     elif state.f[d] == 1 and state.j[d] == 0:
-                        models.root[d+1].trans_prob[sent_index, index] = models.act[d].trans_prob[sent_index, index]  = models.root[d+1].dist[ prevState.a[d], prevState.g, state.a[d+1] ]
+                        models.root[d+1].trans_prob[sent_index, index] = models.act[d].trans_prob[sent_index, index]  = models.root[d+1].dist[ prevState.b[d], prevState.g, state.a[d+1] ]
                     elif state.f[d] == 0 and state.j[d] == 1:
                         models.act[d-1].trans_prob[sent_index, index] = models.root[d-1].trans_prob[sent_index, index] = 0
                         models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.cont[d-1].dist[ prevState.b[d-1], prevState.g, state.b[d] ]
@@ -776,7 +784,12 @@ def increment_counts(hid_seq, sent, models, sent_index):
     for index,word in enumerate(sent):
         state = hid_seq[index]
         d = state.max_fork_depth()
-        
+        awa_depth = state.max_awa_depth()
+        if awa_depth == 0:
+            above_awa = 0
+        else:
+            above_awa = state.b[awa_depth-1]
+
         if index != 0:
             ## Count F & J
             if index == 1:
@@ -787,21 +800,20 @@ def increment_counts(hid_seq, sent, models, sent_index):
                 models.fork[d].count((prevState.b[d], prevState.g), state.f[d])
 
                 if state.f[d] == 0:
-                    models.reduce[d].count(prevState.a[d], state.j[d])
+                    models.reduce[d].count((prevState.a[d], above_awa), state.j[d])
                 elif state.f[d] == 1:
-                    models.trans[d].count((prevState.b[d], prevState.g), state.j[d])
+                    models.trans[d].count((above_awa, prevState.g), state.j[d])
                             
                 ## Count A & B
                 if state.f[d] == 0 and state.j[d] == 0:
-                    prevB = prevState.b[d-1] if d > 0 else 0
-                    models.act[d].count((prevState.a[d], prevB), state.a[d])
+                    models.act[d].count((prevState.a[d], above_awa), state.a[d])
                     models.start[d].count((prevState.a[d], state.a[d]), state.b[d])
                 elif state.f[d] == 1 and state.j[d] == 1:
                     ## no change to act, awa increments cont model
                     models.cont[d].count((prevState.b[d], prevState.g), state.b[d])
                 elif state.f[d] == 1 and state.j[d] == 0:
                     ## run root and exp models at depth d+1
-                    models.root[d+1].count((prevState.b[d-1], prevState.g), state.a[d+1])
+                    models.root[d+1].count((prevState.b[d], prevState.g), state.a[d+1])
                     models.exp[d+1]((prevState.g, state.a[d+1]), state.b[d+1])
                 elif state.f[d] == 0 and state.j[d] == 1:
                     ## lower level finished -- awaited can transition
@@ -809,10 +821,10 @@ def increment_counts(hid_seq, sent, models, sent_index):
                     ## commented in in case I decided wrong.
                     models.next[d-1].count((prevState.b[d-1], state.a[d]), state.b[d-1])
 #                     models.next[d-1].count((prevState.b[d], state.a[d-1]), state.b[d-1])
+#                    models.next[d-1].count((prevState.b[d-1], state.a[d-1]), state.b[d-1])
                          
         
             ## Count G
-            awa_depth = state.max_awa_depth()       
             models.pos.count(state.b[awa_depth], state.g)
         else:
             models.pos.count(0, state.g)
