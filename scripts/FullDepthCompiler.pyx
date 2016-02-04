@@ -17,24 +17,26 @@ class FullDepthCompiler():
         
     def compile_models(self, models):
         logging.info("Compiling component models into mega-HMM transition and observation matrices")
-        (a_max, b_max, g_max) = getVariableMaxes(models)
+        maxes = getVariableMaxes(models)
+        (a_max, b_max, g_max) = maxes
         totalK = get_state_size(models)
         
         cache_hits = 0
         t0 = time.time()
         #pi = np.zeros((totalK, totalK))
-        pi = scipy.sparse.lil_matrix((totalK, totalK))
+        #pi = scipy.sparse.csr_matrix((totalK, totalK))
+        indptr = np.zeros(totalK+1)
+        indices =  []
+        data = []
         
         ## Take exponent out of inner loop:
         word_dist = 10**models.lex.dist
-    
         unlog_models(models, self.depth)
-        cache = {}
-        
+                
         for prevIndex in range(0,totalK):
-            if prevIndex % 1000 == 0:
-                logging.info("prevIndex index=%d after %d s"  % (prevIndex, time.time()-t0))
-            (prevF, prevJ, prevA, prevB, prevG) = extractStacks(prevIndex, totalK, self.depth, getVariableMaxes(models))
+#             if prevIndex % 1000 == 0:
+#                 logging.info("prevIndex index=%d after %d s for %f"  % (prevIndex, time.time()-t0, prevIndex/totalK))
+            (prevF, prevJ, prevA, prevB, prevG) = extractStacks(prevIndex, totalK, self.depth, maxes)
             
             ## Skip invalid start states
             if self.depth > 1:
@@ -50,7 +52,7 @@ class FullDepthCompiler():
                 ## 2) where one of A and B has a placeholder at the same depth level
                 lowest_depth = -1
                 for d in range(self.depth-1, -1, -1):
-                    if (prevA[d] == 0 and prevB[d] != 0) or (prevA[d] != 0 and prevB[d] == 0):
+                    if(prevA[d] * prevB[d] == 0 and prevA[d] + prevB[d] != 0):
                         continue
                     if lowest_depth == -1 and prevA[d] > 0:
                         ## Until we find a non-zero value move the depth up
@@ -74,25 +76,31 @@ class FullDepthCompiler():
                 above_act = prevA[start_depth-1]
                 above_awa = prevB[start_depth-1]
             
-            cache_key = (start_depth, above_awa, prevA[start_depth], prevB[start_depth], prevG)
-            
-            if cache_key in cache:
-                cache_hits += 1
-                if cache_hits % 1000 == 0:
-                    logging.info("%d cache hits" % cache_hits)
-                pi[prevIndex] = cache[cache_key]
-                continue
+#             cache_key = (start_depth, above_awa, prevA[start_depth], prevB[start_depth], prevG)
+#             
+#             if cache_key in cache:
+#            if cache_index[start_depth][above_awa][ prevA[start_depth] ][ prevB[start_depth] ][prevG] == 1:
+#                cache_hits += 1
+#                if cache_hits % 1000 == 0:
+#                    logging.info("%d cache hits" % cache_hits)
+#                t00 = time.time()
+#                pi[prevIndex] = cache[start_depth][above_awa][ prevA[start_depth] ][ prevB[start_depth] ][prevG]
+#                pi[prevIndex] = cache[cache_key]
+#                pi[prevIndex] = pi[ cache[start_depth][above_awa][ prevA[start_depth] ][ prevB[start_depth] ][prevG] ]
+#                t01 = time.time()
+#                #logging.info("Cache fill at prevIndex took %f s" % (t01-t00))
+#                continue
 
+            t00 = time.time()
             for f in (0,1):
-                nextState.f = [-1 for x in nextState.f]
+                nextState.f[:] = -1
                 nextState.f[start_depth] = f
                 cumProbs[0] = models.fork[start_depth].dist[ prevB[start_depth], prevG, f ]
-                
                 for j in (0,1):
                     if prevG == 0 and not (f == 1 and j == 0):
                         continue
                         
-                    nextState.j = [-1 for x in nextState.j]
+                    nextState.j[:] = -1
                     nextState.j[start_depth] = j
                     if f == 0:
                         cumProbs[1] = cumProbs[0] * models.reduce[start_depth].dist[ prevA[start_depth], above_awa, j ]
@@ -100,16 +108,16 @@ class FullDepthCompiler():
                         cumProbs[1] = cumProbs[0] * models.trans[start_depth].dist[ above_awa, prevG, j ]
                     
                     for a in range(1, a_max-1):
-                        nextState.a = [0 for x in nextState.a]
+                        nextState.a[:] = 0
                         for b in range(1, b_max-1):
-                            nextState.b = [0 for x in nextState.b]
+                            nextState.b[:] = 0
                             
                             if f == 1 and j == 1:
                                 if a == prevA[start_depth]:
                                     cumProbs[2] = cumProbs[1]
-                                    for d in range(0, start_depth):
-                                        nextState.a[d] = prevA[d]
-                                        nextState.b[d] = prevB[d]
+                                    nextState.a[0:start_depth] = prevA[0:start_depth]
+                                    nextState.b[0:start_depth] = prevB[0:start_depth]
+                                    
                                     nextState.a[start_depth] = a
                                     
                                     cumProbs[3] = cumProbs[2] * models.cont[start_depth].dist[ prevB[start_depth], prevG, b]
@@ -121,9 +129,8 @@ class FullDepthCompiler():
                                 ## -/+ case, reducing a level
                                 if start_depth <= 0:
                                     continue
-                                for d in range(0, start_depth-1):
-                                    nextState.a[d] = prevA[d]
-                                    nextState.b[d] = prevB[d]
+                                nextState.a[0:start_depth-1] = prevA[0:start_depth-1]
+                                nextState.b[0:start_depth-1] = prevB[0:start_depth-1]
                                 
                                 if a == prevA[start_depth-1]:
                                     cumProbs[2] = cumProbs[1]
@@ -133,9 +140,8 @@ class FullDepthCompiler():
                                     continue
                             elif f == 0 and j == 0:
                                 ## -/-, reduce in place
-                                for d in range(0, start_depth):
-                                    nextState.a[d] = prevA[d]
-                                    nextState.b[d] = prevB[d]
+                                nextState.a[0:start_depth] = prevA[0:start_depth]
+                                nextState.b[0:start_depth] = prevB[0:start_depth]
                                 nextState.a[start_depth] = a
                                 cumProbs[2] = cumProbs[1] * models.act[start_depth].dist[ prevA[start_depth], above_awa, a]
                                 
@@ -146,9 +152,8 @@ class FullDepthCompiler():
                                 if start_depth+1 == self.depth:
                                     continue
                             
-                                for d in range(0, start_depth+1):
-                                    nextState.a[d] = prevA[d]
-                                    nextState.b[d] = prevB[d]
+                                nextState.a[0:start_depth+1] = prevA[0:start_depth+1]
+                                nextState.b[0:start_depth+1] = prevB[0:start_depth+1]
                                 nextState.a[start_depth+1] = a
                                 cumProbs[2] = cumProbs[1] * models.root[start_depth+1].dist[ prevB[start_depth], prevG, a ]
                                 
@@ -156,20 +161,28 @@ class FullDepthCompiler():
                                 cumProbs[3] = cumProbs[2] * models.exp[start_depth+1].dist[ prevG, nextState.a[start_depth+1], b ]
                                                         
                             ## Now multiply in the pos tag probability:
-                            state_range = getStateRange(nextState.f, nextState.j, nextState.a, nextState.b, getVariableMaxes(models))         
+                            state_range = getStateRange(nextState.f, nextState.j, nextState.a, nextState.b, maxes)         
                             range_probs = cumProbs[3] * (models.pos.dist[b,:-1])
+                            indptr[prevIndex+1] += len(range_probs)
                             
-                            pi[prevIndex, state_range] = range_probs
+                            for g in range(0,len(range_probs)):
+                                indices.append(state_range[g])
+                                data.append(range_probs[g])
+                                
+                            #pi[prevIndex, state_range] = range_probs
 
             ## now that we've finished for this prevIndex cache it:
-            cache[cache_key] = pi[prevIndex,:]
-            
+            #cache[cache_key] = pi[prevIndex,:]
+#             cache[start_depth][above_awa][ prevA[start_depth] ][ prevB[start_depth] ][prevG] = prevIndex
+#             cache_index[start_depth][above_awa][ prevA[start_depth] ][ prevB[start_depth] ][prevG] = 1
+            t01 = time.time()
+#            if np.random.random() < 0.01:
+#                logging.info("non-cache filling took %f s" % (t01-t00))
+
         time_spent = time.time() - t0
         logging.info("Done in %d s with %d cache hits" % (time_spent, cache_hits))
         relog_models(models, self.depth)
-        return pi.tocsc()
-#        return scipy.sparse.csc_matrix(pi)
-#        return np.matrix(pi,copy=False)
+        return scipy.sparse.csr_matrix((data,indices,indptr), (totalK, totalK), dtype=np.float64)
 
 def unlog_models(models, depth):
 
