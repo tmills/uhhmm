@@ -20,10 +20,10 @@ from PyzmqWorker import *
 class State:
     def __init__(self, depth, state=None):
         self.depth = depth
-        self.f = np.zeros(depth) - 1
-        self.j = np.zeros(depth) - 1
-        self.a = np.zeros(depth)
-        self.b = np.zeros(depth)
+        self.f = np.zeros(depth, dtype=int) - 1
+        self.j = np.zeros(depth, dtype=int) - 1
+        self.a = np.zeros(depth, dtype=int)
+        self.b = np.zeros(depth, dtype=int)
         
         if state == None:
             for d in range(0,depth):
@@ -785,7 +785,7 @@ def increment_counts(hid_seq, sent, models, sent_index):
         state = hid_seq[index]
         d = state.max_fork_depth()
         awa_depth = state.max_awa_depth()
-        if awa_depth == 0:
+        if awa_depth == -1:
             above_awa = 0
         else:
             above_awa = state.b[awa_depth-1]

@@ -53,8 +53,8 @@ def main(argv):
     
     params = read_params(config)
     
-    if int(params.get('depth', 1)) > 1:
-        loggingerror("Error: this code can only be run with depth 1 configuration.")
+#    if int(params.get('depth', 1)) > 1:
+#        logging.warning("This code has only been tested with depth 1 configuration.")
     
     params['h'] = init_emission_base(num_types)
     
