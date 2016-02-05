@@ -15,6 +15,7 @@ import os
 import pickle
 import logging
 import signal
+from random import randint
 
 def main(argv):
     if len(argv) < 1:
@@ -50,12 +51,19 @@ def main(argv):
     ## Read in input file to get sequence for X
     (pos_seq, word_seq) = io.read_input_file(input_file)
     num_types = max(map(max,word_seq)) + 1
-    
+
     params = read_params(config)
     
     params['h'] = init_emission_base(num_types)
     
-    (samples, stats) = ihmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), working_dir, pickle_file)
+    ## Store tag sequences of gold tagged sentences
+    gold_seq = dict()
+    while len(gold_seq) < params['num_gold_sents']:
+      rand = randint(0,len(word_seq)-1)
+      if rand not in gold_seq.keys():
+        gold_seq[rand]=pos_seq[rand]
+    
+    (samples, stats) = ihmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), working_dir, pickle_file, gold_seq)
     
     if len(samples) > 0:
         io.write_output(samples[-1], stats, config, pos_seq)

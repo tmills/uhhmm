@@ -108,7 +108,7 @@ class Models(list):
 # Arg 1: ev_seqs : a list of lists of integers, representing
 # the EVidence SEQuenceS seen by the user (e.g., words in a sentence
 # mapped to ints).
-def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_dir, pickle_file=None, gold_seqs={}):    
+def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_dir, pickle_file=None, gold_seqs=None):    
     
     global start_a, start_b, start_g
     global a_max, b_max, g_max
@@ -641,13 +641,13 @@ def initialize_models(models, max_output, params, corpus_shape, a_max, b_max, g_
 # Randomly initialize all the values for the hidden variables in the 
 # sequence. Obeys constraints (e.g., when f=1,j=1 a=a_{t-1}) but otherwise
 # samples randomly.
-def initialize_state(ev_seqs, models, gold_seqs={}):
+def initialize_state(ev_seqs, models, gold_seqs=None):
     global a_max, b_max, g_max
     
     state_seqs = list()
     for sent_index,sent in enumerate(ev_seqs):
         hid_seq = list()
-        if sent_index in gold_seqs:
+        if gold_seqs not None and sent_index in gold_seqs.keys():
           gold_tags=gold_seqs[sent_index]
         else:
           gold_tags=None
