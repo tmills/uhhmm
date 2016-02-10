@@ -14,6 +14,7 @@ import zmq
 from PyzmqSentenceDistributerServer import *
 from PyzmqMessage import *
 from PyzmqWorker import *
+import multiprocessing as mp
 
 # The set of random variable values at one word
 # There will be one of these for every word in the training set
@@ -229,6 +230,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     ## Initialize all the sub-processes with their input-output queues
     ## and dimensions of matrix they'll need    
     if num_procs > 0:
+        mp.set_start_method('spawn')
         for cur_proc in range(0,num_procs):
             ## Initialize and start the sub-process
             inf_procs[cur_proc] = PyzmqWorker(workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, out_freq=100, tid=cur_proc)
@@ -644,6 +646,10 @@ def initialize_models(models, max_output, params, corpus_shape, a_max, b_max, g_
 def initialize_state(ev_seqs, models, gold_seqs=None):
     global a_max, b_max, g_max
     
+    max_gold_tags = max([max(el) for el in gold_seqs.values()]) if (not gold_seqs == None and not len(gold_seqs)==0) else 0
+    if not gold_seqs == None and max_gold_tags > g_max:
+        logging.warning("There are more gold tag types (%d) than the number of initial pos tag states (%d). Will randomly initialize any gold tags that are out of bounds" % (max_gold_tags, g_max))
+
     state_seqs = list()
     for sent_index,sent in enumerate(ev_seqs):
         hid_seq = list()
@@ -678,7 +684,7 @@ def initialize_state(ev_seqs, models, gold_seqs=None):
 
                 state.b = np.random.randint(1,b_max-1)
 
-            if gold_tags:
+            if gold_tags and gold_tags[index] < g_max:
               state.g = gold_tags[index]
             else:
               state.g = np.random.randint(1,g_max-1)
