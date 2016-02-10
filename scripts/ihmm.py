@@ -647,7 +647,7 @@ def initialize_state(ev_seqs, models, gold_seqs=None):
     state_seqs = list()
     for sent_index,sent in enumerate(ev_seqs):
         hid_seq = list()
-        if gold_seqs not None and sent_index in gold_seqs.keys():
+        if not gold_seqs == None and sent_index in gold_seqs.keys():
           gold_tags=gold_seqs[sent_index]
         else:
           gold_tags=None

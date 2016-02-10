@@ -58,7 +58,7 @@ def main(argv):
     
     ## Store tag sequences of gold tagged sentences
     gold_seq = dict()
-    while len(gold_seq) < params['num_gold_sents']:
+    while len(gold_seq) < int(params.get('num_gold_sents', 0)):
       rand = randint(0,len(word_seq)-1)
       if rand not in gold_seq.keys():
         gold_seq[rand]=pos_seq[rand]
