@@ -348,10 +348,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## workers but is harder when you need to coordinate timing of reading new models in every pass)
         t0 = time.time()
         if finite:
-            trans_mat = FullDepthCompiler.FullDepthCompiler(depth).compile_models(models)
-            workDistributer.run_one_iteration((models, trans_mat), finite)
-        else:
-            workDistributer.run_one_iteration(finite)
+            FullDepthCompiler.FullDepthCompiler(depth).compile_and_store_models(models, working_dir)
+
+        workDistributer.run_one_iteration(finite)
         
         ## Wait for server to finish distributing sentences for this iteration:
         t1 = time.time()
@@ -814,7 +813,7 @@ def increment_counts(hid_seq, sent, models, sent_index):
                 elif state.f[d] == 1 and state.j[d] == 0:
                     ## run root and exp models at depth d+1
                     models.root[d+1].count((prevState.b[d], prevState.g), state.a[d+1])
-                    models.exp[d+1]((prevState.g, state.a[d+1]), state.b[d+1])
+                    models.exp[d+1].count((prevState.g, state.a[d+1]), state.b[d+1])
                 elif state.f[d] == 0 and state.j[d] == 1:
                     ## lower level finished -- awaited can transition
                     ## Made the following deciison in a confusing rebase -- left other version

@@ -78,18 +78,11 @@ class HmmSampler(Sampler):
         scipy = True
         try:
             import scipy.sparse
-            self.lexMultipler = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, get_state_size(self.models) / g_len)))
+            self.lexMultiplier = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, get_state_size(self.models) / g_len)))
         except:
             logging.warn("Could not find scipy! Using numpy will be much less memory efficient!")
             self.lexMultipler = np.tile(np.identity(g_len), (1, get_state_size(self.models) / g_len))
             scipy = False
-
-        logging.info("Lexical matrix has size %s and lex multiplier is size %s" % (self.lexMatrix.shape, self.lexMultiplier.shape))
-        logging.info("Shape of the lex matrix multiplier for a single token is %s" % str(self.lexMatrix[:,1].transpose().shape))
-        print("Transition matrix: \n %s", self.pi)
-        
-        print("Lexical matrix: \n %s", self.lexMatrix)
-        print("Lexical multipler: \n %s", self.lexMultiplier)
         
     def initialize_dynprog(self, maxLen):
         self.dyn_prog = np.zeros((get_state_size(self.models), maxLen))
@@ -113,14 +106,11 @@ class HmmSampler(Sampler):
                     forward[1:g_max-1,0] = self.lexMatrix[1:-1,token]
                 else:
                     forward[:,index] = self.pi.transpose() * forward[:,index-1]
-                    #print("After transition %s" % forward[:,index])
                     expanded_lex = self.lexMatrix[:,token].transpose() * self.lexMultiplier  
-                    #print("Expanded lex matrix: %s" % expanded_lex)
                     forward[:,index] = np.multiply(forward[:,index], expanded_lex.transpose())
                     
                 normalizer = forward[:,index].sum()
                 forward[:,index] /= normalizer
-                #print("Matrix at index %d is %s" % (index, forward[:,index]))
                 
                 ## Normalizer is p(y_t)
                 sentence_log_prob += np.log10(normalizer)
@@ -175,9 +165,10 @@ class HmmSampler(Sampler):
                     if dyn_prog[ind,t] == 0:
                         continue
 
-                    prevState = extractState(ind, totalK, depth, getVariableMaxes(self.models))
-                    (pf,pj,pa,pb,pg) = prevState.to_list()
-                    (nf,nj,na,nb,ng) = sample_seq[-1].to_list()
+                    prevState = extractState(ind, totalK, depth, maxes)
+                    nextState = sample_seq[-1]
+                    (pf,pj,pa,pb,pg) = (prevState.f, prevState.j, prevState.a, prevState.b, prevState.g)
+                    (nf,nj,na,nb,ng) = (nextState.f, nextState.j, nextState.a, nextState.b, nextState.g)
                 
                     ## shouldn't be necessary, put in debugs:
                     if pf[0] == 0 and t == 1:
@@ -226,7 +217,7 @@ class HmmSampler(Sampler):
                         trans_prob *= (10**self.models.start[next_f_depth].dist[ pa[prev_depth], na[next_f_depth], nb[next_f_depth] ])
                     elif nf[next_f_depth] == 1 and nj[next_f_depth] == 0:
                         trans_prob *= (10**self.models.root[next_f_depth+1].dist[pb[prev_depth], pg, na[next_f_depth+1] ])
-                        trans_prob *= (10**self.models.exp[next_f_depth+1].dist[  na[next_f_depth+1], pg, nb[next_f_depth+1] ])
+                        trans_prob *= (10**self.models.exp[next_f_depth+1].dist[  pg, na[next_f_depth+1], nb[next_f_depth+1] ])
                     elif nf[next_f_depth] == 1 and nj[next_f_depth] == 1:
                         if na[next_f_depth] != pa[next_f_depth]:
                             trans_prob = 0

@@ -84,8 +84,8 @@ class Sink(Thread):
         logging.debug("Parse accumulator attempting to bind to PULL socket...")
         context = zmq.Context()
         self.socket = context.socket(zmq.PULL)
-        self.socket.setsockopt(zmq.SNDTIMEO, 30000)
-        self.socket.setsockopt(zmq.RCVTIMEO, 60000)
+#        self.socket.setsockopt(zmq.SNDTIMEO, 30000)
+#        self.socket.setsockopt(zmq.RCVTIMEO, 60000)
 
         self.port = self.socket.bind_to_random_port("tcp://"+self.host)
         
