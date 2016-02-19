@@ -156,10 +156,15 @@ def getStateRange(f,j,a,b, maxes):
 
 
 class FiniteSampler(Sampler):
-                    
+    def __init__(self, seed=-1):
+        Sampler.__init__(seed)
+        self.ff_time = 0
+        self.bs_time = 0
+        
     def set_models(self, models):
         (self.models, self.pi) = models
         self.lexMatrix = np.matrix(10**self.models.lex.dist)
+        self.lil_trans = self.pi.tolil()
         g_len = self.models.pos.dist.shape[-1]
         w_len = self.models.lex.dist.shape[-1]
         scipy = True
@@ -175,6 +180,7 @@ class FiniteSampler(Sampler):
         self.dyn_prog = np.zeros((get_state_size(self.models), maxLen))
         
     def forward_pass(self,dyn_prog,sent,sent_index):
+        t0 = time.time()
         ## keep track of forward probs for this sentence:
         maxes = getVariableMaxes(self.models)
         (a_max,b_max,g_max) = maxes
@@ -222,9 +228,12 @@ class FiniteSampler(Sampler):
 
 #        sentence_log_prob += np.log10( forward[:,last_index].sum() )
         
+        t1 = time.time()
+        self.ff_time += (t1-t0)
         return dyn_prog, sentence_log_prob
 
-    def reverse_sample(self, dyn_prog, sent, sent_index):            
+    def reverse_sample(self, dyn_prog, sent, sent_index):
+        t0 = time.time()
         sample_seq = []
         sample_log_prob = 0
         maxes = getVariableMaxes(self.models)
@@ -235,7 +244,7 @@ class FiniteSampler(Sampler):
         
         ## normalize after multiplying in the transition out probabilities
         dyn_prog[:,last_index] /= dyn_prog[:,last_index].sum()
-        sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,last_index]))
+        sample_t = get_sample(dyn_prog[:,last_index])
                 
         sample_seq.append(ihmm.State(extractStates(sample_t, totalK, maxes)))
         if last_index > 0 and (sample_seq[-1].a == 0 or sample_seq[-1].b == 0 or sample_seq[-1].g == 0):
@@ -246,53 +255,11 @@ class FiniteSampler(Sampler):
             for ind in range(0,dyn_prog.shape[0]):
                 if dyn_prog[ind,t] == 0:
                     continue
-
-                (pf,pj,pa,pb,pg) = extractStates(ind, totalK, getVariableMaxes(self.models))
-                (nf,nj,na,nb,ng) = sample_seq[-1].to_list()
-                
-                ## shouldn't be necessary, put in debugs:
-                if pf == 0 and t == 1:
-                    logging.warning("Found a positive probability where there shouldn't be one -- pf == 0 and t == 1")
-                    dyn_prog[ind,t] = 0
-                    continue
-                    
-                if pj == 1 and t == 1:
-                    logging.warning("Found a positive probability where there shouldn't be one -- pj == 1 and t == 1")
-                    dyn_prog[ind,t] = 0
-                    continue
-                    
-                if t != 1 and pf != pj:
-                    logging.warning("Found a positive probability where there shouldn't be one -- pf != pj")
-                    dyn_prog[ind,t] = 0
-                    continue
-                
-                trans_prob = 1.0
-                
-                if t > 0:
-                    trans_prob *= 10**self.models.fork.dist[pb, pg, nf]
-
-#                if nf == 0:
-#                    trans_prob *= (10**self.models.reduce.dist[pa,nj])
-      
-                if nf == 0 and nj == 0:
-                    trans_prob *= (10**self.models.act.dist[pa,na])
-                elif nf == 1 and nj == 0:
-                    trans_prob *= (10**self.models.root.dist[pg,na])
-                elif nf == 1 and nj == 1:
-                    if na != pa:
-                        trans_prob = 0
-      
-                if nj == 0:
-                    trans_prob *= (10**self.models.start.dist[pa,na,nb])
-                else:
-                    trans_prob *= (10**self.models.cont.dist[pb,pg,nb])
-      
-                trans_prob *= (10**self.models.pos.dist[nb,ng])
                               
-                dyn_prog[ind,t] *= trans_prob
+                dyn_prog[ind,t] *= self.lil_trans[ind, sample_t]
 
             dyn_prog[:,t] /= dyn_prog[:,t].sum()
-            sample_t = sum(np.random.random() > np.cumsum(dyn_prog[:,t]))
+            sample_t = get_sample(dyn_prog[:,t])
             state_list = extractStates(sample_t, totalK, getVariableMaxes(self.models))
             
             sample_state = ihmm.State(state_list)
@@ -302,5 +269,15 @@ class FiniteSampler(Sampler):
             
         sample_seq.reverse()
         logging.log(logging.DEBUG-1, "Sample sentence %s", list(map(lambda x: x.str(), sample_seq)))
+        t1 = time.time()
+        self.bs_time += (t1-t0)
         return sample_seq
+
+cdef get_sample(dist):
+    cdef int i = 0
+    sum_dist = np.cumsum(dist)
+    dart = np.random.random()
+    for i in range(0, len(dist)):
+        if dart < sum_dist[i]:
+            return i
 
