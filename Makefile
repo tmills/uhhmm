@@ -59,6 +59,15 @@ data/thailtf_tagwords.txt: user-lorelei-location.txt
 data/tamiltf_tagwords.txt: user-lorelei-location.txt
 	python3 scripts/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Tamil_LDC2015E83_V1.1/data/annotation/pos_tagged/ltf > $@
 
+data/%.words.txt: data/%.tagwords.txt
+	cat $^ | ./scripts/tagwords2words.sh > $@
+
+data/%-l10.words.txt: data/%.words.txt
+	cat $^ | ./scripts/words2l10words.sh > $@
+
+data/%.m2.words.txt: data/%.words.txt
+	cat $^ | perl scripts/removeInfrequent.pl 2 > $@
+
 #convert the output to bracketed trees. '.txt' is the output file, '.origSents' is the file of the original sentences
 %.brackets: MB=$(shell cat user-modelblocks-location.txt)
 %.brackets: %.txt user-modelblocks-location.txt
