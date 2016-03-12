@@ -1,0 +1,5 @@
+#!/bin/bash
+
+#perl -pe 's/<\/?t[rd][^>]*>//g' | perl -pe 's/<\/?[^>]+>//g' | perl -pe 's/\n/ /g' | perl -pe 's/.\|\s/|/gms' | perl -pe 's/ \/ /;/g' | perl -pe 's/; /;/g' | perl -pe 's/[^a-z](([a-z]{3}\|)*[a-z]{3}): (\S+)/\n\1: \3\n/g' | perl -pe 's/^\s*//g' | perl -ne 'if(m/^(([a-z]{3}\|)*[a-z]{3}): (\S+)/){ print "$1 $3\n";}' | perl -ne 'if(m/^eng/){ $eng = 1;} if($eng == 1){ print $_; }' | perl -ne 'chomp; @attVal = split / /; @codes = split /\|/, $attVal[0]; for $code (@codes){ @vars = split /;/, $attVal[1]; for $var (@vars){ print "$code $var GEO\n";} }'
+
+perl -pe 's/<(\/?td)[^>]*>/[\1]/g' | perl -pe 's/<(\/?table)[^>]*>/[\1]/g' | perl -pe 's/<\/?[^>]+>//g' | perl -pe 's/\n/ /g' | perl -pe 's/.\|\s/|/gms' | perl -pe 's/ \/ /;/g' | perl -pe 's/; /;/g' | perl -pe 's/\([^\)]+\)//g' | perl -pe 's/\[td\](([a-z-]+\|)*[a-z-]+):\[\/td\]\s*\[td\]([^\[]+)\[\/td\]/\n\1:\3\n/g' | perl -ne 'if(m/^eng/){ $eng = 1;} if($eng==1 && m/table/){ $table=1; } if($eng == 1 and $table != 1){ print $_; }' | perl -ne 'chomp; @attVal = split /:/; @codes = split /\|/, $attVal[0]; for $code (@codes){ @vars = split /;/, $attVal[1]; for $var (@vars){ print "$code GEO $var\n";} }'
