@@ -119,6 +119,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
     
     num_samples = 0
+    maxLen = max(map(len, ev_seqs))
+    max_output = max(map(max, ev_seqs))
+    num_sents = len(ev_seqs)
+
     burnin = int(params.get('burnin'))
     iters = int(params.get('sample_iters'))
     max_samples = int(params.get('num_samples'))
@@ -128,7 +132,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     finite = bool(int(params.get('finite', 0)))
     cluster_cmd = params.get('cluster_cmd', None)
     infinite_sample_prob = float(params.get('infinite_prob', 0.0))
+    batch_size = min(num_sents, int(params.get('batch_size', num_sents)))
+    
     return_to_finite = False
+    ready_for_sample = False
     
     logging.basicConfig(level=getattr(logging, debug))
     logging.info("Starting beam sampling")
@@ -140,17 +147,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     else:
         logging.info("Using default seed for random number generator.")
  
-    if not profile:
-        logging.info('profile is set to %s, importing and installing pyx' % profile)    
-        import pyximport; pyximport.install()
-
     import beam_sampler
     import finite_sampler
 
     samples = []
     
-    maxLen = max(map(len, ev_seqs))
-    max_output = max(map(max, ev_seqs))
+    start_ind = 0
+    end_ind = min(num_sents, batch_size)
     
     models = Models()
     
@@ -215,7 +218,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         
         iter = sample.iter+1
 
-    collect_trans_probs(hid_seqs, models)
+    collect_trans_probs(hid_seqs, models, 0, num_sents)
     
     stats = Stats()
     inf_procs = dict()
@@ -233,7 +236,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         mp.set_start_method('spawn')
         for cur_proc in range(0,num_procs):
             ## Initialize and start the sub-process
-            inf_procs[cur_proc] = PyzmqWorker(workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, out_freq=100, tid=cur_proc)
+            inf_procs[cur_proc] = PyzmqWorker(workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, out_freq=100, tid=cur_proc, level=logging.getLogger().getEffectiveLevel())
             inf_procs[cur_proc].start()
     
     elif cluster_cmd != None:
@@ -303,16 +306,15 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## 2*2*|Act|*|Awa|*|G|
         totalK = 2 * 2 * a_max * b_max * g_max
 
-        logging.info("Number of a states=%d, b states=%d, g states=%d, total=%d" % (a_max-2, b_max-2, g_max-2, totalK))
+        logging.info("Number of a states=%d, b states=%d, g states=%d, total=%d, start_ind=%d, end_ind=%d" % (a_max-2, b_max-2, g_max-2, totalK, start_ind, end_ind))
         
         ## Give the models to the model server. (Note: We used to pass them to workers via temp files which works when you create new
         ## workers but is harder when you need to coordinate timing of reading new models in every pass)
         t0 = time.time()
         if finite:
             finite_sampler.compile_and_store_models(models, working_dir)
-            workDistributer.run_one_iteration(finite)
-        else:
-            workDistributer.run_one_iteration(finite)
+            
+        workDistributer.run_one_iteration(finite, start_ind, end_ind)
         
         ## Wait for server to finish distributing sentences for this iteration:
         t1 = time.time()
@@ -327,7 +329,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         num_processed = 0
         parses = workDistributer.get_parses()
         sample_map = dict()
-        
+
         for parse in parses:
             num_processed += 1
             if parse.success:
@@ -336,50 +338,63 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             
             sample_map[parse.index] = parse.state_list
 
-        if num_processed < len(ev_seqs):
-            logging.warning("Didn't receive the correct number of parses at iteration %d" % iter)
-        
         ## samples got unsorted by queueing them so resort them just for the purpose 
         ## of debugging.
         for key in sorted(sample_map.keys()):
             sample.hid_seqs.append(sample_map[key])
 
+        if num_processed < batch_size and len(sample.hid_seqs) < num_sents:
+            logging.warning("Didn't receive the correct number of parses at iteration %d" % iter)
+        
+        logging.info("Parsed %d sentences this batch -- now have %d parses" % (len(sample_map), len(sample.hid_seqs) ) )
+        
         t1 = time.time()
         logging.info("Building counts tables took %d s" % (t1-t0))
         
-        checkpoint_function(sample) 
+
         if iter >= burnin and (iter-burnin) % iters == 0:
-            #samples.append(sample)
-            report_function(sample)
-            logging.info(".\n")
-            num_samples += 1
+            logging.info("Performed enough batches to collect a sample -- waiting for complete pass to finish")
+            ready_for_sample = True
         
-        t0 = time.time()
-
-        next_sample = Sample()
+        if len(sample.hid_seqs) >= num_sents:
+            if len(sample.hid_seqs) > num_sents:
+                logging.warning("There are more parses than input sentences!")
                 
-        ## Sample hyper-parameters
-        ## This is, e.g., where we might add categories to the a,b,g variables with
-        ## stick-breaking. Without that, the values will stay what they were 
-        next_sample.alpha_f = sample.alpha_f
-        next_sample.beta_f = sample.beta_f
-        next_sample.alpha_j = sample.alpha_j
-        next_sample.beta_j = sample.beta_j
-        
-        next_sample.alpha_a = models.root.alpha
-        next_sample.beta_a = models.root.beta
-        next_sample.alpha_b = models.cont.alpha
-        next_sample.beta_b = models.cont.beta
-#        next_sample.alpha_g = sample.alpha_g
-#        next_sample.beta_g = sample.beta_g
-        next_sample.alpha_g = models.pos.alpha
-        next_sample.beta_g = models.pos.beta
-        next_sample.gamma = sample.gamma
-        next_sample.ev_seqs = ev_seqs
-        
-        prev_sample = sample
-        sample = next_sample
+            logging.info("Finished complete pass through data -- calling checkpoint function and resampling hyperparameters")
+            checkpoint_function(sample)
+            if ready_for_sample:
+                logging.info("Collecting sample")
+                #samples.append(sample)
+                report_function(sample)
+                logging.info(".\n")
+                num_samples += 1
+                ready_for_sample = False
 
+            next_sample = Sample()
+                
+            ## Sample hyper-parameters
+            ## This is, e.g., where we might add categories to the a,b,g variables with
+            ## stick-breaking. Without that, the values will stay what they were 
+            next_sample.alpha_f = sample.alpha_f
+            next_sample.beta_f = sample.beta_f
+            next_sample.alpha_j = sample.alpha_j
+            next_sample.beta_j = sample.beta_j
+        
+            next_sample.alpha_a = models.root.alpha
+            next_sample.beta_a = models.root.beta
+            next_sample.alpha_b = models.cont.alpha
+            next_sample.beta_b = models.cont.beta
+    #        next_sample.alpha_g = sample.alpha_g
+    #        next_sample.beta_g = sample.beta_g
+            next_sample.alpha_g = models.pos.alpha
+            next_sample.beta_g = models.pos.beta
+            next_sample.gamma = sample.gamma
+            next_sample.ev_seqs = ev_seqs
+        
+            prev_sample = sample
+            sample = next_sample
+
+        t0 = time.time()
 
         ## Sample distributions for all the model params and emissions params
         ## TODO -- make the Models class do this in a resample_all() method
@@ -396,10 +411,20 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         models.reduce.sampleBernoulli(sample.alpha_j * sample.beta_j)
         models.fork.sampleBernoulli(sample.alpha_f * sample.beta_f)
         
-        collect_trans_probs(hid_seqs, models)
+        collect_trans_probs(hid_seqs, models, start_ind, end_ind)
 
         t1 = time.time()
-        
+
+        ## Update sentence indices for next batch:
+        if end_ind == len(ev_seqs):
+            start_ind = 0
+            end_ind = min(len(ev_seqs), batch_size)
+        else:
+            start_ind = end_ind
+            end_ind = start_ind + min(len(ev_seqs), batch_size)
+            if end_ind > num_sents:
+                end_ind = num_sents
+                    
         logging.debug("Resampling models took %d s" % (t1-t0))       
         
         sample.models = models
@@ -698,8 +723,9 @@ def initialize_state(ev_seqs, models, gold_seqs=None):
 
     return state_seqs
 
-def collect_trans_probs(hid_seqs, models):
-    for sent_index,hid_seq in enumerate(hid_seqs):
+def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
+    for sent_index in range(start_ind, end_ind):
+        hid_seq = hid_seqs[sent_index]
         ## for every state transition in the sentence increment the count
         ## for the condition and for the output
         for index, state in enumerate(hid_seq):

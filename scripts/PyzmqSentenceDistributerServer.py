@@ -40,7 +40,14 @@ class Ventilator(Thread):
         self.sync_socket = context.socket(zmq.REQ)
         self.sync_socket.connect("tcp://%s:%s" % (self.host, sync_port))
         logging.debug("Ventilator connected to sync socket.")
+    
+        self.start_ind = -1
+        self.end_ind = -1
         
+    def setSentenceRange(self, start, end):
+        self.start_ind = start
+        self.end_ind = end
+
     def run(self):
         while True:
             ## Wait for signal to start:
@@ -55,7 +62,8 @@ class Ventilator(Thread):
 
             logging.debug("Ventilator received model signature sync signal")
 
-            for ind,sent in enumerate(self.sent_list):
+            for ind in range(self.start_ind, self.end_ind):
+                sent = self.sent_list[ind]
                 logging.log(logging.DEBUG-1, "Ventilator pushing job %d" % ind)
                 
                 
@@ -69,6 +77,10 @@ class Ventilator(Thread):
                 logging.log(logging.DEBUG-1, "Ventilator has pushed job %d" % ind)
                 
             logging.debug("Ventilator iteration finishing")
+            ## Reset these to defaults -- whole sentence list -- controller will call method to change them
+            ## if it receives parameters from ihmm
+            self.start_ind = 0
+            self.end_ind = len(self.sent_list)
         
         logging.debug("Ventilator thread finishing")
         self.socket.close()
@@ -96,7 +108,8 @@ class Sink(Thread):
         
         self.work_lock = VerboseLock("Sink")
         self.processing = False
-
+        self.batch_size = self.num_sents
+        
     def run(self):
     
         while True:
@@ -113,7 +126,7 @@ class Sink(Thread):
             num_done = 0
             self.outputs = list()
                   
-            while len(self.outputs) < self.num_sents:
+            while len(self.outputs) < self.batch_size:
                 try:   
                     parse = self.socket.recv_pyobj()
                     logging.log(logging.DEBUG-1, "Sink received parse %d" % parse.index)
@@ -131,6 +144,9 @@ class Sink(Thread):
         self.sync_socket.close()
         logging.debug("All sink sockets closed.")
         self.setProcessing(False)
+    
+    def setBatchSize(self, batch_size):
+        self.batch_size = batch_size
 
     def setProcessing(self, val):
         self.work_lock.acquire()
@@ -230,13 +246,17 @@ class PyzmqSentenceDistributerServer():
         self.models = None
         self.model_server.start()
         
-    def run_one_iteration(self, finite):
+    def run_one_iteration(self, finite, start=-1, end=-1):
         ind = 0
         num_done = 0
         
         self.model_server.reset_models(finite)
         model_sig = self.model_server.model_sig
         
+        if start >= 0 and end >= 0:
+            self.vent.setSentenceRange(start, end)
+            self.sink.setBatchSize(end-start)
+
         self.sink.setProcessing(True)
         
         ## Wait a bit for sink to process signal and set processing to true for the first time
