@@ -148,7 +148,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
     profile = bool(int(params.get('profile', 0)))
     finite = bool(int(params.get('finite', 0)))
     cluster_cmd = params.get('cluster_cmd', None)
-    sm_proposal = None
     sm_burnin = int(params.get('split_merge_burnin', 10))
     
     seed = int(params.get('seed', -1))
@@ -349,82 +348,123 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, pickle_fi
         
         t0 = time.time()
 
-        if sm_proposal != None and (sample.iter - sm_proposal.iter) >= sm_burnin:
-            ## we are in a split-merge sampling regime and have done enough iterations to
-            ## reach a reasonable state: Now look at the probability of the sample compared
-            ## to the probability of the start state and probabilistically choose to
-            ## keep the new split or take the last checkpoint.
-            accept_prob = min(1.0, sm_proposal.getAcceptanceProbability())
-                        
-            if np.random.random() > accept_prob:
-                ## Don't accept -- revert to old sample
-                logging.info("Reverting to saved state from before attempted split/merge")
-                models = sm_proposal.models
-                sample = sm_proposal.sample
-            else:
-                logging.info("Split/merge proposal was accepted.")
-
-            sm_proposal = None
-
-        if split_merge:
+        if split_merge and (sample.iter - iter) >= sm_burnin: 
             ## Need to copy the models otherwise we'll just have another pointer
-            models = models.copy()
+            new_models = models.copy()
+            new_sample = sample.copy()
+            
+            # sentence and word indices at given position in sequence
+            def indices (ind):
+              sent_ind = np.where(cum_length > ind)[0][0]
+              word_ind = ind if sent_ind == 0 else ind - cum_length[sent_ind-1]
+              return sent_ind, word_ind
+            
+            # log emission posterior normalizing constant given word counts in given state
+            # assumes multinomial-dirichlet model
+            def norm_const(obs_counts, alpha=.01):
+              return sum(gammaln(obs_counts+alpha)) - gammaln(sum(obs_counts+alpha))
+            
+            # log probability of HMM state partition 
+            # assumes multinomial-dirichlet model for transition matrix rows
+            # assumes pos tags are consecutive integers starting at 0
+            def trans_term (sample, models, alpha=1):
+              nstates = models.pos.dist.shape[1]-2              
+              counts = np.zeros((nstates, nstates))
+              for seq in sample.hid_seqs:
+                for word_index in len(seq):
+                  counts[seq[word_index].g, seq[word_index+1].g] += 1
+              term = 0
+              for state in range(nstates):
+                term += gammaln(nstates*alpha) - gammaln(nstates*alpha + np.sum(counts, 1)[state])
+                for state1 in range(nstates):
+                  term += gammaln(alpha + counts[state, state1]) - gammaln(alpha)
+              return term
 
             ## Split-merge for pos tags:            
-            ind1 = np.random.randint(num_tokens)
-            ind2 = np.random.randint(num_tokens)
-            
-            sent1_ind = np.where(cum_length > ind1)[0][0]
-            sent2_ind = np.where(cum_length > ind2)[0][0]
-            
-            word1_ind = ind1 if sent1_ind == 0 else ind1 - cum_length[sent1_ind-1]
-            word2_ind = ind2 if sent2_ind == 0 else ind2 - cum_length[sent2_ind-1]
-            
+            ind0 = np.random.randint(num_tokens) # anchor 0
+            ind1 = np.random.randint(num_tokens) # anchor 1
+            sent0_ind, word0_ind = indices(ind0)
+            sent1_ind, word1_ind = indices(ind1)
+            pos0 = sample.hid_seqs[sent0_ind][word0_ind].g
             pos1 = sample.hid_seqs[sent1_ind][word1_ind].g
-            pos2 = sample.hid_seqs[sent2_ind][word2_ind].g
             
-            if pos1 == pos2:
-                logging.info("Performing split operation of pos tag %d at iteration %d" % (pos1,iter))
-                
-                ## split operation
-                sm_proposal = Split(pos1, pos2, sample, models, iter)
-                
-                ## Add new pos tag variable:
-                break_g_stick(models, sample, params)
-                
-                ## Randomly assign states from pos1/pos2 to the new state:
-                ## Jain and Neal suggest independently and with equal probability
-                for seq in sample.hid_seqs:
-                    for state in seq:
-                        if state.g == pos1:
-                            if np.random.random() > 0.5:
-                                state.g = models.pos.dist.shape[1]-2
-                                models.pos.pairCounts[state.b][pos1] -= 1
-                                models.pos.pairCounts[state.b][state.g] += 1
-                            
+            split = (pos0 == pos1) # whether to split or merge
+            
+            # indices with state pos0 or pos1
+            subset = np.array([]) 
+            for ind in num_tokens:
+              sent_ind, word_ind = indices(ind)
+              pos = sample.hid_seqs[sent_ind][word_ind].g
+              if ((pos == pos0) | (pos == pos1)):
+                subset = np.append(subset, ind)
+            np.random.shuffle(subset)
+            # indices with state pos0 or pos1, excluding anchors
+            subset1 = np.delete(subset, np.where(subset == ind0)[0])
+            subset1 = np.delete(subset1, np.where(subset1 == ind1)[0])
+            
+            sets = [[ind0], [ind1]]
+            logprob_prop = 0
+            if not split:
+              st = {pos0: 0, pos1: 1}
+            
+            obs_counts = np.zeros((2, len(np.unique(ev_seqs))))
+            obs_counts[0, ev_seqs[sent0_ind][word0_ind]] = 1
+            obs_counts[1, ev_seqs[sent1_ind][word1_ind]] = 1
+            norm_consts = np.array([norm_const(obs_counts[0]), norm_const(obs_counts[1])])            
+            
+            for ind in subset1: 
+              sent_ind, word_ind = indices(ind)
+              newcounts = np.copy(obs_counts)
+              newcounts[:, ev_seqs[sent_ind][word_ind]] += 1
+              logterms = np.array([norm_const(newcounts[0]), norm_const(newcounts[1])]) - norm_consts
+              terms = [np.exp(logterms[0] - max(logterms)) * len(sets[0]), 
+                       np.exp(logterms[1] - max(logterms)) * len(sets[1])]
+              newstate = np.random.binomial(1, terms[1]/sum(terms)) if split \
+                else st[sample.hid_seqs[sent_ind][word_ind].g]
+              logprob_prop += logterms[newstate] - max(logterms) + \
+                np.log(len(sets[newstate])) - np.log(sum(terms))
+              sets[newstate].append(ind)
+              norm_consts[newstate] += logterms[newstate]
+              obs_counts[newstate] = newcounts[newstate]
+            
+            tt = trans_term(sample, models)
+            if split:
+              logging.info("Performing split operation of pos tag %d at iteration %d" % (pos0,iter))
+              break_g_stick(new_models, new_sample, params) # add new pos tag variable
+              for ind in sets[1]:
+                sent_ind, word_ind = indices(ind)
+                state = new_sample.hid_seqs[sent_ind][word_ind]
+                state.g = new_models.pos.dist.shape[1]-2
+                new_models.pos.pairCounts[state.b][pos0] -= 1
+                new_models.pos.pairCounts[state.b][state.g] += 1
+              tt = trans_term(new_sample, new_models) - tt
             else:
-                ## merge operation
-                (pos1, pos2) = (min(pos1, pos2), max(pos1, pos2))
-                logging.info("Performing merge operation between pos tags %d and %d at iteration %d" % (pos1, pos2, iter))
-                
-                sm_proposal = Merge(pos1, pos2, sample, models, iter)
-                if models.pos.dist.shape[1] == 3:
-                    logging.warn("Performing a merge with only 1 state left")
+              (pos0, pos1) = (min(pos0, pos1), max(pos0, pos1))
+              logging.info("Performing merge operation between pos tags" + \
+                "%d and %d at iteration %d" % (pos0, pos1, iter))
+              if new_models.pos.dist.shape[1] == 3:
+                  logging.warn("Performing a merge with only 1 state left")              
+              for ind in sets[st[pos1]]:
+                sent_ind, word_ind = indices(ind)
+                state = new_sample.hid_seqs[sent_ind][word_ind]
+                state.g = pos0
+                new_models.pos.pairCounts[state.b][pos0] += 1
+              remove_pos_from_models(new_models, pos1)
+              if new_models.pos.dist.shape[1] == 3:
+                logging.warn("POS now down to only 3 (1) states")
+              tt -= trans_term(new_sample, new_models)            
 
-                for seq in sample.hid_seqs:
-                    for state in seq:
-                        if state.g == pos2:
-                            state.g = pos1
-                            models.pos.pairCounts[state.b][pos1] += 1
-                
-                remove_pos_from_models(models, pos2)
-                if models.pos.dist.shape[1] == 3:
-                    logging.warn("POS now down to only 3 (1) states")
-                               
+            split_logprob_acc = norm_consts[0] + norm_consts[1] + tt - logprob_prop - \
+              norm_const(np.sum(obs_counts, 0)) - norm_const(np.zeros((np.shape(obs_counts)[1]))) 
+            if (split and (np.log(np.random.uniform()) < split_logprob_acc)) or \
+               ((not split) and (np.log(np.random.uniform()) < - split_logprob_acc)):
+              models = new_models
+              sample = new_sample
+              logging.info("Split/merge proposal was accepted.")
+                                          
             report_function(sample)
             split_merge = False
             
-
         next_sample = Sample()
                 
         ## Sample hyper-parameters
