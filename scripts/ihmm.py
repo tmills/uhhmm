@@ -241,7 +241,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     
     elif cluster_cmd != None:
         start_workers(workDistributer, cluster_cmd, maxLen)
-            
+    else:
+        with open(working_dir + '/masterConfig.txt', 'w') as masterconfig:
+            print( workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen, file=masterconfig)
+            print( 'OK', file=masterconfig)
+
     logging.info("Starting workers")
 
     ### Start doing actual sampling:

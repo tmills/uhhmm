@@ -165,6 +165,21 @@ class PyzmqWorker(Process):
 def main(args):
     logging.basicConfig(level=logging.INFO)
     
+    if len(args) != 1 and len(args) != 5:
+        print("ERROR: Wrong number of arguments! Two run modes -- One argument of a file with properties or 5 arguments with properties.")
+        sys.exit(-1)
+        
+    if len(args) == 1:
+        config_file = args[0] + "/masterConfig.txt"
+        while True:
+            if os.path.isfile(config_file):
+                configs = open(config_file).readlines()
+                if 'OK' in configs[1]:
+                    args = configs[0].strip().split(' ')
+                    break
+            else:
+                time.sleep(10)
+    
     fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]))
     signal.signal(signal.SIGINT, fs.handle_sigint)
     signal.signal(signal.SIGALRM, fs.handle_sigalarm)
