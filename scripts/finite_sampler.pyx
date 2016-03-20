@@ -164,7 +164,6 @@ class FiniteSampler(Sampler):
     def set_models(self, models):
         (self.models, self.pi) = models
         self.lexMatrix = np.matrix(10**self.models.lex.dist)
-        self.lil_trans = self.pi.tolil()
         g_len = self.models.pos.dist.shape[-1]
         w_len = self.models.lex.dist.shape[-1]
         scipy = True
@@ -252,11 +251,12 @@ class FiniteSampler(Sampler):
             raise ParseException("Error: First sample has a|b|g = 0")
   
         for t in range(len(sent)-2,-1,-1):
+            trans_slice = self.pi[:,sample_t].toarray()
             for ind in range(0,dyn_prog.shape[0]):
                 if dyn_prog[ind,t] == 0:
                     continue
                               
-                dyn_prog[ind,t] *= self.lil_trans[ind, sample_t]
+                dyn_prog[ind,t] *= trans_slice[ind]
 
             dyn_prog[:,t] /= dyn_prog[:,t].sum()
             sample_t = get_sample(dyn_prog[:,t])
