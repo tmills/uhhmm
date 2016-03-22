@@ -12,24 +12,27 @@ def main(args):
     files = glob.glob(args[0] + "/*.ltf.xml")
     for ltf_file in files:
         sys.stderr.write("Processing file %s\n" % ltf_file)
-        tree = ET.parse(ltf_file)
-        root = tree.getroot()
-        for seg in root.iter('SEG'):
-            cur_sent = list()
-            for token in seg.iter('TOKEN'):
-                tag = token.attrib.get('pos')
-                if tag == None:
-                    tag = 'UNK'
-                    #cur_sent = None
-                    #break
+        try:
+            tree = ET.parse(ltf_file)
+            root = tree.getroot()
+            for seg in root.iter('SEG'):
+                cur_sent = list()
+                for token in seg.iter('TOKEN'):
+                    tag = token.attrib.get('pos')
+                    if tag == None:
+                        tag = 'UNK'
+                        #cur_sent = None
+                        #break
                 
-                tag = tag.replace('/', '-slash-')
-                word = token.text
-                cur_sent.append("%s/%s" % (tag, word))
+                    tag = tag.replace('/', '-slash-')
+                    word = token.text
+                    cur_sent.append("%s/%s" % (tag, word))
                 
-            if cur_sent != None:
-                print(' '.join(cur_sent))
-    
+                if cur_sent != None:
+                    print(' '.join(cur_sent))
+        except:
+            sys.stderr.write("Error parsing file %s\n" % ltf_file)
+
 if __name__ == "__main__":
     main(sys.argv[1:])
 
