@@ -12,6 +12,7 @@ import finite_sampler
 from ihmm import State
 import time
 import logging
+import scipy.sparse
 
 class ImportanceSet:
     """ A class that represents a finite number of elements according to an importance 
@@ -51,29 +52,31 @@ class ImportanceSet:
     def __iter__(self):
         return iter(self.elements)
     
+    def __len__(self):
+        return len(self.elements)
+    
 class ParserCell:
     def __init__(self):
         self.prob = 0
         self.state_index = -1
         self.bp = None
 
-class HmmParser:
+class HmmParser:    
     def __init__(self, models):
         (self.models, self.pi) = models.model
         self.lil_trans = self.pi.tolil()
         unlog_models(self.models)
         self.totalK = Sampler.get_state_size(self.models)
         self.maxes = Sampler.getVariableMaxes(self.models)
+        self.lexMatrix = np.matrix(self.models.lex.dist, copy=False)
 
     def parse(self, sent):
-        self.lexMatrix = np.matrix(self.models.lex.dist, copy=False)
         (a_max, b_max, g_max) = self.maxes
         
         forward = []
         try:
-            for index,token in enumerate(sent):
+            for index,token in enumerate(sent):                    
                 t0 = time.time()
-                print("Index=%d" % (index))
                 ## Still use special case for 0
                 if index == 0:
                     cur_probs = ImportanceSet(100, lambda x: x.prob)
@@ -117,7 +120,7 @@ class HmmParser:
                     forward.append(cur_probs)
                 
                 t1 = time.time()
-                logging.info("Token %d took %f s" % (index, (t1-t0)) )
+                        
             ## Find the maximum value that is at depth 0:
             max_prob_cell = None
             max_prob_state = None
@@ -127,8 +130,12 @@ class HmmParser:
                     max_prob_cell = cell
                     max_prob_state = state
             
+            if max_prob_state == None or max_prob_cell == None:
+                logging.warning("No parse for this sentence -- size of forward is %d" % ( len(forward[-1]) ) )
+                return []
+
             reverse_cell_list = [max_prob_cell]
-            reverse_sent_list = [state]
+            reverse_sent_list = [max_prob_state]
             
             ## Backtrack through the sentence
             while reverse_cell_list[-1].bp != None:
