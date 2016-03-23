@@ -28,7 +28,7 @@
 ## be garbage.
 
 import numpy as np
-import ihmm_io as io
+import uhhmm_io as io
 import itertools
 import sys
 import pdb

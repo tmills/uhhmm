@@ -3,8 +3,8 @@
 import logging
 import time
 import numpy as np
-import ihmm_sampler as sampler
-import ihmm_io
+import distribution_sampler as sampler
+import uhhmm_io
 import pdb
 import socket
 import sys
@@ -184,7 +184,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         iter = 0
 
     else:
-        sample = ihmm_io.read_serialized_sample(pickle_file)
+        sample = uhhmm_io.read_serialized_sample(pickle_file)
         sample.log_prob = 0
         models = sample.models
         hid_seqs = sample.hid_seqs
@@ -264,7 +264,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             if b_max >= 50:
                 logging.warning('Stick-breaking (b) terminated due to hard limit and not gracefully.')
 
-            logging.warning("pos u min is %f and pos dist max is %f" % (models.pos.u.min(), models.pos.dist[...,-1].max() ) )
             while g_max < 50 and models.pos.u.min() < models.pos.dist[...,-1].max():
                 logging.info('Breaking g stick')
                 break_g_stick(models, sample, params)
@@ -574,7 +573,6 @@ def break_b_stick(models, sample, params):
     add_model_column(models.next[0])
     
     ## Add a row to the POS output distribution which depends only on b:
-    logging.info("POS Beta stick has %d values and is: %s" % (len(models.pos.beta), models.pos.beta) )
     add_model_row_simple(models.pos, models.pos.alpha * models.pos.beta[1:])
 
     ## Boolean models:
@@ -716,7 +714,6 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
     models.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape)
     models.pos.beta = np.zeros(g_max)
     models.pos.beta[1:] = np.ones(g_max-1) / (g_max-1)
-    logging.info("Pos beta is %s" % models.pos.beta)
     
     ## one lex model:
     models.lex = Model((g_max, max_output+1))
@@ -783,6 +780,7 @@ def initialize_state(ev_seqs, models, depth, gold_seqs=None):
 
 def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
     for sent_index in range(start_ind, end_ind):
+        hid_seq = hid_seqs[sent_index]
         ## for every state transition in the sentence increment the count
         ## for the condition and for the output
         for index, state in enumerate(hid_seq):            

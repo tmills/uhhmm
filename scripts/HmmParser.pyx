@@ -9,7 +9,7 @@ import numpy as np
 import sys, os, linecache
 import Sampler
 import finite_sampler
-from ihmm import State
+from State import State
 import time
 import logging
 import scipy.sparse

@@ -6,9 +6,9 @@ if sys.version_info[0] != 3:
     exit()
 
 import calcV
-import ihmm_io as io
+import uhhmm_io as io
 import configparser
-import ihmm
+import uhhmm
 import numpy as np
 import pdb
 import os
@@ -63,7 +63,7 @@ def main(argv):
       if rand not in gold_seq.keys():
         gold_seq[rand]=pos_seq[rand]
     
-    (samples, stats) = ihmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), working_dir, pickle_file, gold_seq)
+    (samples, stats) = uhhmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), working_dir, pickle_file, gold_seq)
     
     if len(samples) > 0:
         io.write_output(samples[-1], stats, config, pos_seq)

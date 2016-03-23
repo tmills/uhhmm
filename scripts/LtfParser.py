@@ -4,7 +4,7 @@ import glob
 import pickle
 import HmmParser
 import sys
-from ihmm import State
+from State import State
 import logging
 
 def main(args):

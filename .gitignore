@@ -13,3 +13,5 @@ data/*morf.txt
 data/*.dict
 outputs
 starcluster
+scripts/*.c
+scripts/*.so

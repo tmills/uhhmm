@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import ihmm
 import logging
 import time
 import numpy as np

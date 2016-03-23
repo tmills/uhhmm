@@ -78,7 +78,7 @@ class Ventilator(Thread):
                 
             logging.debug("Ventilator iteration finishing")
             ## Reset these to defaults -- whole sentence list -- controller will call method to change them
-            ## if it receives parameters from ihmm
+            ## if it receives parameters from uhhmm
             self.start_ind = 0
             self.end_ind = len(self.sent_list)
         
