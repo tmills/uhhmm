@@ -96,7 +96,6 @@ class Sink(Thread):
         logging.debug("Parse accumulator attempting to bind to PULL socket...")
         context = zmq.Context()
         self.socket = context.socket(zmq.PULL)
-        #self.socket.setsockopt(zmq.RCVTIMEO, 60000)
 
         self.port = self.socket.bind_to_random_port("tcp://"+self.host)
         
@@ -109,7 +108,7 @@ class Sink(Thread):
         self.work_lock = VerboseLock("Sink")
         self.processing = False
         self.batch_size = self.num_sents
-        
+
     def run(self):
     
         while True:
@@ -129,7 +128,7 @@ class Sink(Thread):
             while len(self.outputs) < self.batch_size:
                 try:   
                     parse = self.socket.recv_pyobj()
-                    logging.log(logging.DEBUG-1, "Sink received parse %d" % parse.index)
+                    logging.log(logging.DEBUG-1, "Sink received parse %d with result: %s" % (parse.index, list(map(lambda x: x.str(), parse.state_list))))
                     self.outputs.append(parse)
                 except:
                     logging.error("Sink timed out waiting for remaining parse... exiting this iteration...")

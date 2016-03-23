@@ -27,7 +27,7 @@ data/simplewiki_d2_tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to
 	cat $< ./scripts/extract_d2_trees.sh | grep "^(S" | ./scripts/trees2poswords.sh | sort -R --random-source /dev/zero | head -5000 > $@ 
 
 data/%.ints.txt: data/%.txt
-	cat $< | perl scripts/wordFile2IntFile.pl data/$*.dict > $@
+	cat $< | scripts/lowercase.sh | perl scripts/wordFile2IntFile.pl data/$*.dict > $@
 
 data/%.small.txt: data/%.txt
 	head -100 $< > $@
@@ -82,9 +82,11 @@ data/%.m2.words.txt: data/%.words.txt
 data/%.morf.txt: data/%.txt genmodel/%.morf.model
 	cat $< | morfessor-segment -l genmodel/$*.morf.model - | perl scripts/morf2sents.pl > $@
 
+genmodel:
+	mkdir -p genmodel
 
-genmodel/%.morf.model: data/%.txt
-	morfessor-train -s $@ $^
+genmodel/%.morf.model: data/%.txt genmodel
+	morfessor-train -s $@ $<
 
 
 

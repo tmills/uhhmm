@@ -39,7 +39,7 @@ def main(argv):
         config.read(argv[0])
         out_dir = config.get('io', 'output_dir')
         if not os.path.exists(out_dir):
-            sys.stderr.write("Creating non-existent output directory.")
+            sys.stderr.write("Creating non-existent output directory.\n")
             os.makedirs(out_dir)
 
         with open(out_dir + "/config.ini", 'w') as configfile:
