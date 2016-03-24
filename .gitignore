@@ -15,3 +15,7 @@ outputs
 starcluster
 scripts/*.c
 scripts/*.so
+models
+analysis
+build
+data/countries

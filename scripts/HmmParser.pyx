@@ -8,11 +8,11 @@ cimport cython
 import numpy as np
 import sys, os, linecache
 import Sampler
-import finite_sampler
 from State import State
 import time
 import logging
 import scipy.sparse
+from Indexer import Indexer
 
 class ImportanceSet:
     """ A class that represents a finite number of elements according to an importance 
@@ -64,10 +64,11 @@ class ParserCell:
 class HmmParser:    
     def __init__(self, models):
         (self.models, self.pi) = models.model
-        self.lil_trans = self.pi.tolil()
+#         self.lil_trans = self.pi.tolil()
         unlog_models(self.models)
-        self.totalK = Sampler.get_state_size(self.models)
-        self.maxes = Sampler.getVariableMaxes(self.models)
+        self.indexer = Indexer(self.models)
+        self.totalK = self.indexer.get_state_size()
+        self.maxes = self.indexer.getVariableMaxes()
         self.lexMatrix = np.matrix(self.models.lex.dist, copy=False)
 
     def parse(self, sent):
@@ -95,12 +96,12 @@ class HmmParser:
                         ## Create the parser cell for this state:
                         max_trans = 0
                         max_bp = None
-                        
+                        trans_slice = self.pi[:,curState].toarray()
                         
                         ## Find the input with the highest existing * transition prob:
                         for prevState in forward[-1]:
-                            trans_prob = prevState.prob * float(self.lil_trans[prevState.state_index,curState])
-                            #print("Trans prob type = %s, shape=%s, prevState index=%d, curState=%d, lil matrix shape = %s" % (type(trans_prob), trans_prob.shape, prevState.state_index, curState, self.lil_trans.shape))
+                            trans_prob = prevState.prob * float(trans_slice[prevState.state_index])
+                            #print("Trans prob type = %s, shape=%s, prevState index=%d, curState=%d" % (type(trans_prob), trans_prob.shape, prevState.state_index, curState))
                             ## See if the transition with highest probability
                             if trans_prob > max_trans:
                                 max_trans = trans_prob
@@ -108,7 +109,7 @@ class HmmParser:
                                 
                         if max_trans > 0:
                             ## Extract the pos index for this state so we can get the output prob:
-                            (f,j,a,b,g) = finite_sampler.extractStates(curState, self.totalK, self.maxes)
+                            (f,j,a,b,g) = self.indexer.extractStacks(curState)
                             max_trans *= self.models.lex.dist[g][token]
                             cur_cell = ParserCell()
                             cur_cell.state_index = curState
@@ -124,8 +125,9 @@ class HmmParser:
             ## Find the maximum value that is at depth 0:
             max_prob_cell = None
             max_prob_state = None
+            print("Finished sentence with last time step containing %d cells" % ( len(forward[-1]) ) )
             for cell in forward[-1]:
-                state = State(finite_sampler.extractStates(cell.state_index, self.totalK, self.maxes))
+                state = self.indexer.extractState(int(cell.state_index))
                 if (max_prob_cell == None or cell.prob > max_prob_cell.prob):
                     max_prob_cell = cell
                     max_prob_state = state
@@ -141,7 +143,7 @@ class HmmParser:
             while reverse_cell_list[-1].bp != None:
                 cell = reverse_cell_list[-1].bp
                 reverse_cell_list.append(cell)
-                reverse_sent_list.append( State(finite_sampler.extractStates(cell.state_index, self.totalK, self.maxes) ) )
+                reverse_sent_list.append( self.indexer.extractState(cell.state_index) )
 
             reverse_sent_list.reverse()
                 
@@ -161,18 +163,20 @@ def printException():
     print 'EXCEPTION IN ({}, LINE {} "{}"): {}'.format(filename, lineno, line.strip(), exc_obj)
 
 def unlog_models(models):
-    models.fork.dist = 10**models.fork.dist
-    
-    models.reduce.dist = 10**models.reduce.dist
-#    models.trans.dist = 10**models.trans.dist
-    
-    models.act.dist = 10**models.act.dist
-    models.root.dist = 10**models.root.dist
-    
-    models.cont.dist = 10**models.cont.dist
-#    models.exp.dist = 10**models.exp.dist
-#    models.next.dist = 10**models.next.dist
-    models.start.dist = 10**models.start.dist
+    depth = len(models.fork)
+    for d in range(0, depth):
+        models.fork[d].dist = 10**models.fork[d].dist
+        
+        models.reduce[d].dist = 10**models.reduce[d].dist
+        models.trans[d].dist = 10**models.trans[d].dist
+        
+        models.act[d].dist = 10**models.act[d].dist
+        models.root[d].dist = 10**models.root[d].dist
+        
+        models.cont[d].dist = 10**models.cont[d].dist
+        models.exp[d].dist = 10**models.exp[d].dist
+        models.next[d].dist = 10**models.next[d].dist
+        models.start[d].dist = 10**models.start[d].dist
         
     models.pos.dist = 10**models.pos.dist
     models.lex.dist = 10**models.lex.dist
