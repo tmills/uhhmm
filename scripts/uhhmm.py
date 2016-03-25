@@ -31,6 +31,10 @@ class Sample:
         self.models = None
         self.log_prob = 0
 
+    def copy(self, models):
+        s_copy = Sample(self.hid_seqs, models, self.log_prob)
+        return s_copy
+
 # Historgam of how many instances of each state you have random sampled
 # May be a field in Sample
 class Stats:

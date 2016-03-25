@@ -1,6 +1,5 @@
 #!/usr/bin/env python3.4
 import numpy as np
-from uhhmm import Model, Sample, break_g_stick
 
 # sentence and word indices at given position in sequence
 def indices (cum_length, ind):
@@ -37,7 +36,7 @@ def perform_split_merge_operation(models, sample, ev_seqs):
 
     ## Need to copy the models otherwise we'll just have another pointer
     new_models = models.copy()
-    new_sample = sample.copy()
+    new_sample = sample.copy(new_models)
 
     ## Split-merge for pos tags:            
     ind0 = np.random.randint(num_tokens) # anchor 0
@@ -90,6 +89,7 @@ def perform_split_merge_operation(models, sample, ev_seqs):
     
     tt = trans_term(sample, models)
     if split:
+        from uhhmm import break_g_stick
         logging.info("Performing split operation of pos tag %d at iteration %d" % (pos0,iter))
         break_g_stick(new_models, new_sample, params) # add new pos tag variable
         for ind in sets[1]:
