@@ -21,6 +21,7 @@ import FullDepthCompiler
 import NoopCompiler
 import DepthOneInfiniteSampler
 import HmmSampler
+from dahl_split_merge import perform_split_merge_operation
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -76,6 +77,12 @@ class Model:
     def sampleBernoulli(self, base):
         self.dist = sampler.sampleBernoulli(self.pairCounts, base)
         self.pairCounts[:] = 0
+
+    def copy(self):
+        m_copy = Model(self.pairCounts.shape, self.alpha, None if self.beta == None else self.beta.copy(), self.trans_prob.shape)
+        m_copy.pairCounts = self.pairCounts.copy()
+        m_copy.dist = self.dist.copy()
+        return m_copy
         
 # This class is not currently used. Could someday be used to resample
 # all models if we give Model s more information about themselves.
@@ -110,6 +117,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     profile = bool(int(params.get('profile', 0)))
     finite = bool(int(params.get('finite', 0)))
     cluster_cmd = params.get('cluster_cmd', None)
+    split_merge_iters = int(params.get('split_merge_iters', -1))
     infinite_sample_prob = float(params.get('infinite_prob', 0.0))
     batch_size = min(num_sents, int(params.get('batch_size', num_sents)))
     
@@ -226,6 +234,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     ### Start doing actual sampling:
     while num_samples < max_samples:
         sample.iter = iter
+    
+        split_merge = False
+        if split_merge_iters >= 0 and iter >= burnin and (iter-burnin) % split_merge_iters == 0:
+            split_merge = True
 
         if finite:
             if iter > 0 and np.random.random() < infinite_sample_prob:
@@ -373,6 +385,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         
             prev_sample = sample
             sample = next_sample
+
+        if split_merge:
+            perform_split_merge_operation(models, sample, ev_seqs)
+            report_function(sample)
+            split_merge = False
 
         t0 = time.time()
         
