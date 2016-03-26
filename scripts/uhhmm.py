@@ -359,7 +359,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             if len(sample.hid_seqs) > num_sents:
                 logging.warning("There are more parses than input sentences!")
                 
-            logging.info("Finished complete pass through data -- calling checkpoint function and resampling hyperparameters")
+            logging.info("Finished complete pass through data -- calling checkpoint function")
             checkpoint_function(sample)
             if ready_for_sample:
                 logging.info("Collecting sample")
@@ -369,9 +369,15 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 num_samples += 1
                 ready_for_sample = False
 
+            if split_merge:
+               perform_split_merge_operation(models, sample, ev_seqs)
+               report_function(sample)
+               split_merge = False
+
             next_sample = Sample()
-                
-            ## Sample hyper-parameters
+            #next_sample.hid_seqs = hid_seqs        
+        
+            logging.info("Sampling hyperparameters")
             ## This is, e.g., where we might add categories to the a,b,g variables with
             ## stick-breaking. Without that, the values will stay what they were 
             next_sample.alpha_f = sample.alpha_f
@@ -392,11 +398,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         
             prev_sample = sample
             sample = next_sample
-
-        if split_merge:
-            perform_split_merge_operation(models, sample, ev_seqs)
-            report_function(sample)
-            split_merge = False
 
         t0 = time.time()
         
