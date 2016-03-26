@@ -139,6 +139,7 @@ cdef class FullDepthCompiler:
                             if a == prevA[start_depth-1]:
 #                                cumProbs[2] = cumProbs[1]
                                 nextState.a[start_depth-1] = a
+                                nextState.b[start_depth-1] = b
                                 cumProbs[2] = cumProbs[1] * models.next[start_depth-1].dist[ above_awa, nextState.a[start_depth-1], b ]
                             else:
                                 continue
@@ -165,7 +166,7 @@ cdef class FullDepthCompiler:
                         ## Now multiply in the pos tag probability:
                         state_index = indexer.getStateIndex(nextState.f, nextState.j, nextState.a, nextState.b, 0)         
                         range_probs = cumProbs[2] * (models.pos.dist[b,:-1])
-                            
+                        
                         for g in range(1,len(range_probs)):
                             indices.append(state_index + g)
                             data.append(range_probs[g])
