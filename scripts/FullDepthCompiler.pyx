@@ -119,7 +119,6 @@ cdef class FullDepthCompiler:
 
                         if f == 1 and j == 1:
                             if a == prevA[start_depth]:
-#                                cumProbs[2] = cumProbs[1]
                                 nextState.a[0:start_depth] = prevA[0:start_depth]
                                 nextState.b[0:start_depth] = prevB[0:start_depth]
                             
@@ -151,7 +150,6 @@ cdef class FullDepthCompiler:
                             cumProbs[2] = cumProbs[1] * models.act[start_depth].dist[ prevA[start_depth], above_awa, a] * models.start[start_depth].dist[ prevA[start_depth], a, b ]
                         
                             nextState.b[start_depth] = b
-#                            cumProbs[3] = cumProbs[2] * models.start[start_depth].dist[ prevA[start_depth], a, b ]
                         elif f == 1 and j == 0:
                             ## +/-, create a new stack level unless we're at the limit
                             if start_depth+1 == self.depth:
@@ -160,10 +158,9 @@ cdef class FullDepthCompiler:
                             nextState.a[0:start_depth+1] = prevA[0:start_depth+1]
                             nextState.b[0:start_depth+1] = prevB[0:start_depth+1]
                             nextState.a[start_depth+1] = a
-                            cumProbs[2] = cumProbs[1] * models.root[start_depth+1].dist[ above_awa, prevG, a ] * models.exp[start_depth+1].dist[ prevG, nextState.a[start_depth+1], b ]
+                            cumProbs[2] = cumProbs[1] * models.root[start_depth+1].dist[ prevB[start_depth], prevG, a ] * models.exp[start_depth+1].dist[ prevG, nextState.a[start_depth+1], b ]
                         
                             nextState.b[start_depth+1] = b
-#                            cumProbs[3] = cumProbs[2] * models.exp[start_depth+1].dist[ prevG, nextState.a[start_depth+1], b ]
                                                 
                         ## Now multiply in the pos tag probability:
                         state_index = indexer.getStateIndex(nextState.f, nextState.j, nextState.a, nextState.b, 0)         
@@ -255,8 +252,14 @@ def relog_models(models, depth):
     models.pos.dist = np.log10(models.pos.dist)
 
 def get_cur_awa_depth(stack):
-    for d in range(len(stack)):
-        if stack[d] > 0:
-            return d
-
-    return -1
+    ## Essentially empty -- used for first time step
+    if stack[0] <= 0:
+        return -1
+    
+    ## If we encounter a zero at position 1, then the depth is 0
+    for d in range(1, len(stack)):
+        if stack[d] == 0:
+            return d-1
+    
+    ## Stack is full -- if d=4 then max depth index is 3
+    return len(stack)-1
