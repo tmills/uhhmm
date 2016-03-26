@@ -57,8 +57,14 @@ class State:
         return -1
 
     def max_awa_depth(self):
-        for d in range(0, self.depth):
+        ## Essentially empty -- used for first time step
+        if self.b[0] == 0:
+            return -1
+        
+        ## If we encounter a zero at position 1, then the depth is 0
+        for d in range(1, self.depth):
             if self.b[d] == 0:
                 return d-1
-                
-        return 0
+        
+        ## Stack is full -- if d=4 then max depth index is 3
+        return self.depth-1
