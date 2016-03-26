@@ -1,5 +1,7 @@
 #!/usr/bin/env python3.4
 import numpy as np
+import logging
+from scipy.special import gammaln
 
 # sentence and word indices at given position in sequence
 def indices (cum_length, ind):
@@ -50,8 +52,8 @@ def perform_split_merge_operation(models, sample, ev_seqs):
     
     # indices with state pos0 or pos1
     subset = np.array([]) 
-    for ind in num_tokens:
-        sent_ind, word_ind = indices(ind)
+    for ind in range(num_tokens):
+        sent_ind, word_ind = indices(cum_length, ind)
         pos = sample.hid_seqs[sent_ind][word_ind].g
         if ((pos == pos0) | (pos == pos1)):
             subset = np.append(subset, ind)
@@ -66,15 +68,20 @@ def perform_split_merge_operation(models, sample, ev_seqs):
     logprob_prop = 0
     if not split:
         st = {pos0: 0, pos1: 1}
-    
-    obs_counts = np.zeros((2, len(np.unique(ev_seqs))))
+   
+    unique_obs = set(sum(ev_seqs, []))
+    obs_counts = np.zeros((2, len(unique_obs)))
+    print(np.shape(obs_counts))
+    print(ev_seqs[sent0_ind][word0_ind])
+    print(ev_seqs[sent1_ind][word1_ind])
     obs_counts[0, ev_seqs[sent0_ind][word0_ind]] = 1
     obs_counts[1, ev_seqs[sent1_ind][word1_ind]] = 1
     norm_consts = np.array([norm_const(obs_counts[0]), norm_const(obs_counts[1])])            
     
     for ind in subset1: 
-        sent_ind, word_ind = indices(ind)
+        sent_ind, word_ind = indices(cum_length, ind)
         newcounts = np.copy(obs_counts)
+        print(ev_seqs[sent_ind][word_ind])
         newcounts[:, ev_seqs[sent_ind][word_ind]] += 1
         logterms = np.array([norm_const(newcounts[0]), norm_const(newcounts[1])]) - norm_consts
         terms = [np.exp(logterms[0] - max(logterms)) * len(sets[0]), 
@@ -93,7 +100,7 @@ def perform_split_merge_operation(models, sample, ev_seqs):
         logging.info("Performing split operation of pos tag %d at iteration %d" % (pos0,iter))
         break_g_stick(new_models, new_sample, params) # add new pos tag variable
         for ind in sets[1]:
-            sent_ind, word_ind = indices(ind)
+            sent_ind, word_ind = indices(cum_length, ind)
             state = new_sample.hid_seqs[sent_ind][word_ind]
             state.g = new_models.pos.dist.shape[1]-2
             new_models.pos.pairCounts[state.b][pos0] -= 1
@@ -106,7 +113,7 @@ def perform_split_merge_operation(models, sample, ev_seqs):
         if new_models.pos.dist.shape[1] == 3:
             logging.warn("Performing a merge with only 1 state left")              
         for ind in sets[st[pos1]]:
-            sent_ind, word_ind = indices(ind)
+            sent_ind, word_ind = indices(cum_length, ind)
             state = new_sample.hid_seqs[sent_ind][word_ind]
             state.g = pos0
             new_models.pos.pairCounts[state.b][pos0] += 1
