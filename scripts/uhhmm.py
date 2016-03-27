@@ -31,14 +31,7 @@ class Sample:
         self.models = None
         self.log_prob = 0
 
-    def copy(self, models):
-        s_copy = Sample()
-        s_copy.hid_seqs = self.hid_seqs
-        s_copy.models = models
-        s_copy.log_prob = self.log_prob
-        return s_copy
-
-# Historgam of how many instances of each state you have random sampled
+# Histogram of how many instances of each state you have random sampled
 # May be a field in Sample
 class Stats:
     def __init__(self):
@@ -91,12 +84,24 @@ class Model:
         m_copy.dist = self.dist.copy()
         return m_copy
         
-# This class is not currently used. Could someday be used to resample
-# all models if we give Model s more information about themselves.
 class Models(list):
     def resample_all():
         for model in self:
             model.dist = sampleDirichlet(model)
+
+    def copy(self):
+        m_copy = Models()
+        m_copy.fork = self.fork.copy()
+        m_copy.reduce = self.reduce.copy()
+        m_copy.root = self.root.copy()
+        m_copy.act = self.act.copy()
+        m_copy.start = self.start.copy()
+        m_copy.cont = self.cont.copy()
+        m_copy.pos = self.pos.copy()
+        m_copy.lex = self.lex.copy()
+        m_copy.exp = self.exp.copy()
+        m_copy.trans = self.trans.copy()
+        return m_copy
 
 # This is the main entry point for this module.
 # Arg 1: ev_seqs : a list of lists of integers, representing
@@ -370,7 +375,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 ready_for_sample = False
 
             if split_merge:
-               perform_split_merge_operation(models, sample, ev_seqs)
+               perform_split_merge_operation(models, sample, ev_seqs, params, iter)
                report_function(sample)
                split_merge = False
 

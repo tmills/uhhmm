@@ -7,7 +7,7 @@ from scipy.special import gammaln
 def indices (cum_length, ind):
     sent_ind = np.where(cum_length > ind)[0][0]
     word_ind = ind if sent_ind == 0 else ind - cum_length[sent_ind-1]
-    return sent_ind, word_ind
+    return sent_ind, int(word_ind)
 
 # log emission posterior normalizing constant given word counts in given state
 # assumes multinomial-dirichlet model
@@ -17,11 +17,10 @@ def norm_const(obs_counts, alpha=.01):
 # log probability of HMM state partition 
 # assumes multinomial-dirichlet model for transition matrix rows
 # assumes pos tags are consecutive integers starting at 0
-def trans_term (sample, models, alpha=1):
-    nstates = models.pos.dist.shape[1]-2              
+def trans_term (sample, nstates, alpha=1):
     counts = np.zeros((nstates, nstates))
     for seq in sample.hid_seqs:
-        for word_index in len(seq):
+        for word_index in range(len(seq)-1):
           counts[seq[word_index].g, seq[word_index+1].g] += 1
         
     term = 0
@@ -32,13 +31,14 @@ def trans_term (sample, models, alpha=1):
 
     return term
 
-def perform_split_merge_operation(models, sample, ev_seqs):
+def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
     num_tokens = sum(map(len, ev_seqs))
     cum_length = np.cumsum(list(map(len, ev_seqs)))
 
     ## Need to copy the models otherwise we'll just have another pointer
     new_models = models.copy()
-    new_sample = sample.copy(new_models)
+    #new_models.exp[0].beta=1
+    new_sample = sample
 
     ## Split-merge for pos tags:            
     ind0 = np.random.randint(num_tokens) # anchor 0
@@ -71,18 +71,14 @@ def perform_split_merge_operation(models, sample, ev_seqs):
    
     unique_obs = set(sum(ev_seqs, []))
     obs_counts = np.zeros((2, len(unique_obs)))
-    print(np.shape(obs_counts))
-    print(ev_seqs[sent0_ind][word0_ind])
-    print(ev_seqs[sent1_ind][word1_ind])
-    obs_counts[0, ev_seqs[sent0_ind][word0_ind]] = 1
-    obs_counts[1, ev_seqs[sent1_ind][word1_ind]] = 1
+    obs_counts[0, ev_seqs[sent0_ind][word0_ind]-1] = 1
+    obs_counts[1, ev_seqs[sent1_ind][word1_ind]-1] = 1
     norm_consts = np.array([norm_const(obs_counts[0]), norm_const(obs_counts[1])])            
     
     for ind in subset1: 
         sent_ind, word_ind = indices(cum_length, ind)
         newcounts = np.copy(obs_counts)
-        print(ev_seqs[sent_ind][word_ind])
-        newcounts[:, ev_seqs[sent_ind][word_ind]] += 1
+        newcounts[:, ev_seqs[sent_ind][word_ind]-1] += 1
         logterms = np.array([norm_const(newcounts[0]), norm_const(newcounts[1])]) - norm_consts
         terms = [np.exp(logterms[0] - max(logterms)) * len(sets[0]), 
                  np.exp(logterms[1] - max(logterms)) * len(sets[1])]
@@ -94,35 +90,45 @@ def perform_split_merge_operation(models, sample, ev_seqs):
         norm_consts[newstate] += logterms[newstate]
         obs_counts[newstate] = newcounts[newstate]
     
-    tt = trans_term(sample, models)
+    nstates = models.pos.dist.shape[1]-1
+    tt = trans_term(sample, nstates)
     if split:
-        from uhhmm import break_g_stick
         logging.info("Performing split operation of pos tag %d at iteration %d" % (pos0,iter))
+        from uhhmm import break_g_stick
         break_g_stick(new_models, new_sample, params) # add new pos tag variable
         for ind in sets[1]:
             sent_ind, word_ind = indices(cum_length, ind)
             state = new_sample.hid_seqs[sent_ind][word_ind]
-            state.g = new_models.pos.dist.shape[1]-2
-            new_models.pos.pairCounts[state.b][pos0] -= 1
-            new_models.pos.pairCounts[state.b][state.g] += 1
-        tt = trans_term(new_sample, new_models) - tt
+            state.g = nstates
+            new_models.pos.pairCounts[state.b[0]][pos0] -= 1
+            new_models.pos.pairCounts[state.b[0]][state.g] += 1
+        tt = trans_term(new_sample, nstates+1) - tt
     else:
         (pos0, pos1) = (min(pos0, pos1), max(pos0, pos1))
-        logging.info("Performing merge operation between pos tags" + \
+        pos_last = nstates-1
+        logging.info("Performing merge operation between pos tags " + \
           "%d and %d at iteration %d" % (pos0, pos1, iter))
-        if new_models.pos.dist.shape[1] == 3:
+        if models.pos.dist.shape[1] == 3:
             logging.warn("Performing a merge with only 1 state left")              
-        for ind in sets[st[pos1]]:
+        for ind in range(num_tokens):
             sent_ind, word_ind = indices(cum_length, ind)
             state = new_sample.hid_seqs[sent_ind][word_ind]
-            state.g = pos0
-            new_models.pos.pairCounts[state.b][pos0] += 1
+            pos = state.g
+            if pos == pos1:
+                state.g = pos0
+                new_models.pos.pairCounts[state.b[0]][pos0] += 1
+                new_models.pos.pairCounts[state.b[0]][pos1] -= 1
+            elif pos == pos_last: 
+                new_sample.hid_seqs[sent_ind][word_ind].g = pos1
+                new_models.pos.pairCounts[state.b[0]][pos1] += 1
+                new_models.pos.pairCounts[state.b[0]][pos_last] -= 1
 
+        from uhhmm import remove_pos_from_models
         remove_pos_from_models(new_models, pos1)
         if new_models.pos.dist.shape[1] == 3:
             logging.warn("POS now down to only 3 (1) states")
             
-        tt -= trans_term(new_sample, new_models)            
+        tt -= trans_term(new_sample, nstates-1) 
 
     split_logprob_acc = norm_consts[0] + norm_consts[1] + tt - logprob_prop - \
       norm_const(np.sum(obs_counts, 0)) - norm_const(np.zeros((np.shape(obs_counts)[1])))
@@ -132,3 +138,6 @@ def perform_split_merge_operation(models, sample, ev_seqs):
         models = new_models
         sample = new_sample
         logging.info("%s proposal was accepted." % ("Split" if split else "Merge") )
+    else:
+        logging.info("%s proposal was rejected." % ("Split" if split else "Merge") )
+
