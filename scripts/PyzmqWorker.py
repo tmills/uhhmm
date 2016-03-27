@@ -128,7 +128,7 @@ class PyzmqWorker(Process):
                 
                 if sent_index % self.out_freq == 0:
                     logging.info("Processed sentence {0} (Worker {1})".format(sent_index, self.tid))
-                    logging.info("Cumulative forward time %f and backward time %f" % (sampler.ff_time, sampler.bs_time))
+#                     logging.info("Cumulative forward time %f and backward time %f" % (sampler.ff_time, sampler.bs_time))
 
                 t1 = time.time()
                 
@@ -139,7 +139,7 @@ class PyzmqWorker(Process):
 
                 if (t1-t0) > longest_time:
                     longest_time = t1-t0
-                    logging.warning("Sentence %d was my slowest sentence to parse at %d s" % (sent_index, longest_time) )
+                    logging.warning("Sentence %d was my slowest sentence to parse so far at %d s" % (sent_index, longest_time) )
 
 
                 parse = PyzmqParse(sent_index, sent_sample, log_prob, success)
@@ -154,6 +154,7 @@ class PyzmqWorker(Process):
             
             ## Tell the sink that i'm done:
 #            results_socket.send_pyobj(PyzmqParse(-1,None,0))
+            logging.info("Cumulative forward time %f and backward time %f" % (sampler.ff_time, sampler.bs_time))
             logging.debug("Worker %d processed %d sentences this iteration" % (self.tid, sents_processed))
 
         logging.debug("Worker %d disconnecting sockets and finishing up" % self.tid)
