@@ -135,9 +135,9 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
 
     if (split and (np.log(np.random.uniform()) < split_logprob_acc)) or \
        ((not split) and (np.log(np.random.uniform()) < - split_logprob_acc)):
+        logging.info("%s proposal was accepted." % ("Split" if split else "Merge") )
         models = new_models
         sample = new_sample
-        logging.info("%s proposal was accepted." % ("Split" if split else "Merge") )
     else:
         logging.info("%s proposal was rejected." % ("Split" if split else "Merge") )
 

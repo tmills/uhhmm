@@ -375,9 +375,12 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 ready_for_sample = False
 
             if split_merge:
+               logging.info("Before merger the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
                perform_split_merge_operation(models, sample, ev_seqs, params, iter)
+               logging.info("Done with split/merge operation")
                report_function(sample)
                split_merge = False
+               logging.info("After merger the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
 
             next_sample = Sample()
             #next_sample.hid_seqs = hid_seqs        
@@ -470,11 +473,17 @@ def remove_pos_from_models(models, pos):
         models.fork[d].pairCounts = np.delete(models.fork[d].pairCounts, pos, 1)
         models.fork[d].dist = np.delete(models.fork[d].dist, pos, 1)
     
-        models.root[d].pairCounts = np.delete(models.root[d].pairCounts, pos, 0)
-        models.root[d].dist = np.delete(models.root[d].dist, pos, 0)
+        models.trans[d].pairCounts = np.delete(models.trans[d].pairCounts, pos, 1)
+        models.trans[d].dist = np.delete(models.trans[d].dist, pos, 1)
+
+        models.root[d].pairCounts = np.delete(models.root[d].pairCounts, pos, 1)
+        models.root[d].dist = np.delete(models.root[d].dist, pos, 1)
     
         models.cont[d].pairCounts = np.delete(models.cont[d].pairCounts, pos, 1)
         models.cont[d].dist = np.delete(models.cont[d].dist, pos, 1)
+
+        models.exp[d].pairCounts = np.delete(models.exp[d].pairCounts, pos, 0)
+        models.exp[d].dist = np.delete(models.exp[d].dist, pos, 0)
     
     ## for the given POS index, delete the 1st (output) dimension from the
     ## counts and distribution of p(pos | awa)
@@ -730,7 +739,8 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
         models.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape)
         models.root[d].beta = np.zeros(a_max)
         models.root[d].beta[1:] = np.ones(a_max-1) / (a_max-1)
-    
+        models.act[d].beta = models.root[d].beta
+        
         ## four awaited models:
         models.cont[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
         models.exp[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
@@ -738,6 +748,9 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
         models.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
         models.cont[d].beta = np.zeros(b_max)
         models.cont[d].beta[1:] = np.ones(b_max-1) / (b_max-1)
+        models.exp[d].beta = models.cont[d].beta
+        models.next[d].beta = models.cont[d].beta
+        models.start[d].beta = models.cont[d].beta
         
     
     ## one pos model:
