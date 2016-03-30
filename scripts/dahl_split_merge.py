@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.4
 import numpy as np
 import logging
+import copy
 from scipy.special import gammaln
 
 # sentence and word indices at given position in sequence
@@ -36,8 +37,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
     cum_length = np.cumsum(list(map(len, ev_seqs)))
 
     ## Need to copy the models otherwise we'll just have another pointer
-    new_models = models.copy()
-    #new_models.exp[0].beta=1
+    new_models = copy.deepcopy(models)
     new_sample = sample
 
     ## Split-merge for pos tags:            
@@ -90,6 +90,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
         norm_consts[newstate] += logterms[newstate]
         obs_counts[newstate] = newcounts[newstate]
     
+    logging.info("During split-merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
     nstates = models.pos.dist.shape[1]-1
     tt = trans_term(sample, nstates)
     if split:
@@ -102,6 +103,8 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
             state.g = nstates
             new_models.pos.pairCounts[state.b[0]][pos0] -= 1
             new_models.pos.pairCounts[state.b[0]][state.g] += 1
+        logging.info("During split the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
+        logging.info("During split the new shape of root is %s and exp is %s" % (str(new_models.root[0].dist.shape), str(new_models.exp[0].dist.shape) ) )
         tt = trans_term(new_sample, nstates+1) - tt
     else:
         (pos0, pos1) = (min(pos0, pos1), max(pos0, pos1))
@@ -128,16 +131,18 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
         if new_models.pos.dist.shape[1] == 3:
             logging.warn("POS now down to only 3 (1) states")
             
+        logging.info("During merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
+        logging.info("During merge the new shape of root is %s and exp is %s" % (str(new_models.root[0].dist.shape), str(new_models.exp[0].dist.shape) ) )
         tt -= trans_term(new_sample, nstates-1) 
 
     split_logprob_acc = norm_consts[0] + norm_consts[1] + tt - logprob_prop - \
       norm_const(np.sum(obs_counts, 0)) - norm_const(np.zeros((np.shape(obs_counts)[1])))
-
-    if (split and (np.log(np.random.uniform()) < split_logprob_acc)) or \
-       ((not split) and (np.log(np.random.uniform()) < - split_logprob_acc)):
+    logprob_acc = split_logprob_acc if split else -split_logprob_acc
+    logging.info("Log acceptance probability = %s" % str(logprob_acc))
+    if np.log(np.random.uniform()) < logprob_acc:
         logging.info("%s proposal was accepted." % ("Split" if split else "Merge") )
-        models = new_models
-        sample = new_sample
+        return new_models, new_sample
     else:
         logging.info("%s proposal was rejected." % ("Split" if split else "Merge") )
+        return models, sample
 
