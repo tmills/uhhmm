@@ -185,6 +185,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             models.act[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
             models.root[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
             models.reduce[d].sampleBernoulli(sample.alpha_j * sample.beta_j)
+            models.trans[d].sampleBernoulli(sample.alpha_j * sample.beta_j)
             models.fork[d].sampleBernoulli(sample.alpha_f * sample.beta_f)
     
         sample.models = models
@@ -413,6 +414,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             models.act[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
             models.root[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
             models.reduce[d].sampleBernoulli(sample.alpha_j * sample.beta_j)
+            models.trans[d].sampleBernoulli(sample.alpha_j * sample.beta_j)
             models.fork[d].sampleBernoulli(sample.alpha_f * sample.beta_f)
         
         collect_trans_probs(hid_seqs, models, start_ind, end_ind)

@@ -169,7 +169,7 @@ cdef class FullDepthCompiler:
                         ## Now multiply in the pos tag probability:
                         state_index = indexer.getStateIndex(nextState.f, nextState.j, nextState.a, nextState.b, 0)         
                         range_probs = cumProbs[2] * (models.pos.dist[b,:-1])
-                        logging.info("Building model with %s => %s" % (prev_state.str(), nextState.str() ) )
+                        #logging.info("Building model with %s => %s" % (prev_state.str(), nextState.str() ) )
                         for g in range(1,len(range_probs)):
                             indices.append(state_index + g)
                             data.append(range_probs[g])
