@@ -3,7 +3,7 @@
 import numpy as np
 
 def sentence_string(state_list):
-    list(map(lambda x: x.str(), state_list))
+    return str(list(map(lambda x: x.str(), state_list)))
 
 # The set of random variable values at one word
 # There will be one of these for every word in the training set
