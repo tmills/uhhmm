@@ -33,13 +33,12 @@ class State:
         string += "::"
         
         for d in range(0, self.depth):
-            if d > 0:
-                string += ";"
 
             if self.a[d] > 0 or d == 0:
+                if d > 0:
+                    string += ";"
                 string += "ACT" + str(self.a[d]) + '/AWA' + str(self.b[d])
         
-        string = string[0:-1]              
         string += ':POS' + str(self.g)
         
         return string
