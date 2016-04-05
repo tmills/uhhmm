@@ -17,16 +17,19 @@ for sentnum, line in enumerate(sys.stdin):
 
 	stack = [emptyCat]*4
 	for index, step in enumerate(tokens):
+		print(index)
 		thisStep = []
 		step = step.split('::')
 		fj = step[0].split('/')
+		if index == 1:
+			fj = ('+', '-')
 		thisStep.append(str(index+1))
-		if fj[0] == '+':
+		if len(fj[0]) > 0 and fj[0] == '+':
 			thisStep.append(str(0))
 		else:
 			thisStep.append(str(1))
 		cats = step[1].split(':')
-		if cats[0] != '0/0':
+		if cats[0] != 'ACT0/AWA0':
 			preterm = '/'.join([x+'_' for x in cats[0].split('/')])
 			if fj[1] == '-' and fj[0] == '+':
 				for depth, element in enumerate(stack):

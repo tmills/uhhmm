@@ -23,16 +23,12 @@ class State:
     def str(self):
         string = ''
         for d in range(0, self.depth):
-            if d > 0:
-                string += ";"
             ## only one depth position of f and j will be active:
             if self.f[d] >= 0 and self.j[d] >= 0:
                 f_str = '+/' if self.f[d]==1 else '-/'        
                 string += f_str
                 j_str = '+' if self.j[d]==1 else '-'
                 string += j_str
-            else:
-                string += "-1/-1"
 
         string += "::"
         
@@ -40,9 +36,10 @@ class State:
             if d > 0:
                 string += ";"
 
-            if self.a[d] > 0 or self.depth==1:
+            if self.a[d] > 0 or d == 0:
                 string += "ACT" + str(self.a[d]) + '/AWA' + str(self.b[d])
-            
+        
+        string = string[0:-1]              
         string += ':POS' + str(self.g)
         
         return string
