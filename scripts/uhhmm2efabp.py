@@ -30,7 +30,7 @@ for sentnum, line in enumerate(sys.stdin):
 			thisStep.append(str(1))
 		cats = step[1].split(':')
 		if cats[0] != 'ACT0/AWA0':
-			preterm = '/'.join([x+'_' for x in cats[0].split('/')])
+			preterm = '/'.join([x+'_' for x in cats[0].split(';')[-1].split('/')])
 			if fj[1] == '-' and fj[0] == '+':
 				for depth, element in enumerate(stack):
 					if '-' in element:
@@ -41,6 +41,13 @@ for sentnum, line in enumerate(sys.stdin):
 					if '-' in element:
 						stack[depth-1] = preterm
 						break
+			elif fj[1] == '+' and fj[0] == '-':
+				for depth, element in enumerate(stack):
+					if '-' in element:
+						stack[depth-2] = preterm
+						stack[depth-1] = emptyCat
+						break
+                    
 		thisStep.append(';'.join(stack))
 		tagword = cats[1].split(';')
 		thisStep.append(tagword[0]+'_')
