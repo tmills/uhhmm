@@ -177,17 +177,21 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if np.argwhere(np.isnan(models.pos.dist)).size > 0:
             logging.error("Resampling the pos dist resulted in a nan")
         
-        for d in range(0, depth):
-            models.start[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
-            models.exp[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
-            models.cont[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
-            models.next[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
-            models.act[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
-            models.root[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
-            models.reduce[d].sampleBernoulli(sample.alpha_j * sample.beta_j)
-            models.trans[d].sampleBernoulli(sample.alpha_j * sample.beta_j)
-            models.fork[d].sampleBernoulli(sample.alpha_f * sample.beta_f)
-    
+        a_base =  sample.alpha_a * sample.beta_a
+        b_base = sample.alpha_b * sample.beta_b
+        f_base = sample.alpha_f * sample.beta_f
+        j_base = sample.alpha_j * sample.beta_j
+        for d in range(depth-1, -1, -1):
+            models.start[d].sampleDirichlet(b_base if d == 0 else models.start[d-1].pairCounts * sample.alpha_b)
+            models.exp[d].sampleDirichlet(b_base if d == 0 else models.exp[d-1].pairCounts * sample.alpha_b)
+            models.cont[d].sampleDirichlet(b_base if d == 0 else models.cont[d-1].pairCounts * sample.alpha_b)
+            models.next[d].sampleDirichlet(b_base if d == 0 else models.next[d-1].pairCounts * sample.alpha_b)
+            models.act[d].sampleDirichlet(a_base if d == 0 else models.act[d-1].pairCounts * sample.alpha_a)
+            models.root[d].sampleDirichlet(a_base if d == 0 else models.root[d-1].pairCounts * sample.alpha_a)
+            models.reduce[d].sampleBernoulli(j_base if d == 0 else models.reduce[d-1].pairCounts * sample.alpha_j)
+            models.trans[d].sampleBernoulli(j_base if d == 0 else models.trans[d-1].pairCounts * sample.alpha_j)
+            models.fork[d].sampleBernoulli(f_base if d == 0 else models.fork[d-1].pairCounts * sample.alpha_f)
+  
         sample.models = models
         iter = 0
 
@@ -406,16 +410,20 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         models.lex.sampleDirichlet(params['h'])
         models.pos.selfSampleDirichlet()
 
-        for d in range(0, depth):        
-            models.start[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
-            models.exp[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
-            models.cont[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
-            models.next[d].sampleDirichlet(sample.alpha_b * sample.beta_b)
-            models.act[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
-            models.root[d].sampleDirichlet(sample.alpha_a * sample.beta_a)
-            models.reduce[d].sampleBernoulli(sample.alpha_j * sample.beta_j)
-            models.trans[d].sampleBernoulli(sample.alpha_j * sample.beta_j)
-            models.fork[d].sampleBernoulli(sample.alpha_f * sample.beta_f)
+        a_base =  sample.alpha_a * sample.beta_a
+        b_base = sample.alpha_b * sample.beta_b
+        f_base = sample.alpha_f * sample.beta_f
+        j_base = sample.alpha_j * sample.beta_j
+        for d in range(depth-1, -1, -1):
+            models.start[d].sampleDirichlet(b_base if d == 0 else models.start[d-1].pairCounts * sample.alpha_b)
+            models.exp[d].sampleDirichlet(b_base if d == 0 else models.exp[d-1].pairCounts * sample.alpha_b)
+            models.cont[d].sampleDirichlet(b_base if d == 0 else models.cont[d-1].pairCounts * sample.alpha_b)
+            models.next[d].sampleDirichlet(b_base if d == 0 else models.next[d-1].pairCounts * sample.alpha_b)
+            models.act[d].sampleDirichlet(a_base if d == 0 else models.act[d-1].pairCounts * sample.alpha_a)
+            models.root[d].sampleDirichlet(a_base if d == 0 else models.root[d-1].pairCounts * sample.alpha_a)
+            models.reduce[d].sampleBernoulli(j_base if d == 0 else models.reduce[d-1].pairCounts * sample.alpha_j)
+            models.trans[d].sampleBernoulli(j_base if d == 0 else models.trans[d-1].pairCounts * sample.alpha_j)
+            models.fork[d].sampleBernoulli(f_base if d == 0 else models.fork[d-1].pairCounts * sample.alpha_f)
         
         collect_trans_probs(hid_seqs, models, start_ind, end_ind)
 
