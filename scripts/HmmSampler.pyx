@@ -133,7 +133,7 @@ class HmmSampler(Sampler.Sampler):
                 sample_depth = sample_state.max_awa_depth()
                 #logging.debug("Sampled final state %s with depth %d" % (sample_state.str(), sample_depth))
     
-            sample_seq.append(self.indexer.extractState(sample_t))
+            sample_seq.append(sample_state)
             #logging.debug("Sampled state %s at time %d" % (sample_seq[-1].str(), last_index))
             
             if last_index > 0 and (sample_seq[-1].a[0] == 0 or sample_seq[-1].b[0] == 0 or sample_seq[-1].g == 0):

@@ -13,9 +13,9 @@ from multiprocessing import Process,Queue,JoinableQueue
 import zmq
 from PyzmqSentenceDistributerServer import *
 from PyzmqMessage import *
-from PyzmqWorker import *
+from PyzmqWorker import PyzmqWorker, start_workers
 from State import State, sentence_string
-from Indexer import *
+from Indexer import Indexer
 import multiprocessing as mp
 import FullDepthCompiler
 import NoopCompiler
@@ -60,10 +60,9 @@ class Model:
         self.alpha = alpha
         self.beta = beta
 
-    def count(self, cond, out):
-        #print("Adding count for condition %s => %s" % (cond, out) )
+    def count(self, cond, out, val):
         out_counts = self.pairCounts[...,out]
-        out_counts[cond] += 1
+        out_counts[cond] += val
 
     def dec(self, cond, out):
         self.pairCounts[cond,out] -= 1
@@ -169,7 +168,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         sample.gamma = float(params.get('gamma'))
         sample.discount = float(params.get('discount'))
         sample.ev_seqs = ev_seqs
-    
+
         ## Sample distributions for all the model params and emissions params
         ## TODO -- make the Models class do this in a resample_all() method
         models.lex.sampleDirichlet(params['h'])
@@ -330,7 +329,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         for parse in parses:
             num_processed += 1
             if parse.success:
-                increment_counts(parse.state_list, ev_seqs[ parse.index ], models, parse.index)
+                increment_counts(parse.state_list, ev_seqs[ parse.index ], models)
                 sample.log_prob += parse.log_prob
             
             sample_map[parse.index] = parse.state_list
@@ -407,7 +406,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## After stick-breaking we probably need to re-sample all the models:
         remove_unused_variables(models)
         resample_beta_g(models, sample.gamma)
-               
+
         models.lex.sampleDirichlet(params['h'])
         models.pos.selfSampleDirichlet()
 
@@ -779,7 +778,7 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None):
         else:
           gold_tags=None
         for index,word in enumerate(sent):
-            state = State.State(max_depth)
+            state = State(max_depth)
             ## special case for first word
             if index == 0:
                 state.f[0] = -1
@@ -843,7 +842,7 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None):
                             
             hid_seq.append(state)
             
-        increment_counts(hid_seq, sent, models, sent_index)
+        increment_counts(hid_seq, sent, models)
         state_seqs.append(hid_seq)
 
     return state_seqs
@@ -878,8 +877,7 @@ def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
             models.pos.trans_prob[sent_index, index] = models.pos.dist[state.b[0], state.g]                        
             prevState = state
 
-def increment_counts(hid_seq, sent, models, sent_index):
-    #print("Incrementing counts for sentence %s" % ( sentence_string( hid_seq ) ) )
+def increment_counts(hid_seq, sent, models, inc=1):
     depth = len(models.fork)
     
     ## for every state transition in the sentence increment the count
@@ -908,62 +906,48 @@ def increment_counts(hid_seq, sent, models, sent_index):
             ## Count F & J
             if index == 1:
                 ## No counts for f & j -- deterministically +/- at depth 0
-#                print("Root 0 count")
-                models.root[0].count((0, prevState.g), state.a[0])
-#                print("Exp 0 count")
-                models.exp[0].count((prevState.g, state.a[0]), state.b[0])
+                models.root[0].count((0, prevState.g), state.a[0], inc)
+                models.exp[0].count((prevState.g, state.a[0]), state.b[0], inc)
             else:
-#                print("Fork %d count" % fork_depth)
-                models.fork[fork_depth].count((prevState.b[prev_depth], prevState.g), state.f[fork_depth])
+                models.fork[fork_depth].count((prevState.b[prev_depth], prevState.g), state.f[fork_depth], inc)
 
                 if state.f[fork_depth] == 0:
-#                    print("Reduce %d count" % (fork_depth) )
-                    models.reduce[fork_depth].count((prevState.a[prev_depth], prev_above_awa), state.j[fork_depth])
+                    models.reduce[fork_depth].count((prevState.a[prev_depth], prev_above_awa), state.j[fork_depth], inc)
                 elif state.f[fork_depth] == 1:
-#                    print("Trans %d count" % (fork_depth) )
-                    models.trans[fork_depth].count((prevState.b[prev_depth], prevState.g), state.j[fork_depth])
+                    models.trans[fork_depth].count((prevState.b[prev_depth], prevState.g), state.j[fork_depth], inc)
                 else:
                     raise Exception("Unallowed value of the fork variable!")
                     
                 ## Count A & B
                 if state.f[fork_depth] == 0 and state.j[fork_depth] == 0:
                     assert prev_depth == cur_depth
-#                    print("Act %d count" % (cur_depth) )
-                    models.act[cur_depth].count((prevState.a[cur_depth], prev_above_awa), state.a[cur_depth])
-#                    print("Start %d count"  % (cur_depth) )
-                    models.start[cur_depth].count((prevState.a[cur_depth], state.a[cur_depth]), state.b[cur_depth])
+                    models.act[cur_depth].count((prevState.a[cur_depth], prev_above_awa), state.a[cur_depth], inc)
+                    models.start[cur_depth].count((prevState.a[cur_depth], state.a[cur_depth]), state.b[cur_depth], inc)
                 elif state.f[fork_depth] == 1 and state.j[fork_depth] == 1:
                     assert prev_depth == cur_depth
                     ## no change to act, awa increments cont model
-#                    print("Cont %d count" % (cur_depth) )
-                    models.cont[cur_depth].count((prevState.b[cur_depth], prevState.g), state.b[cur_depth])
+                    models.cont[cur_depth].count((prevState.b[cur_depth], prevState.g), state.b[cur_depth], inc)
                 elif state.f[fork_depth] == 1 and state.j[fork_depth] == 0:
                     assert prev_depth+1 == cur_depth
                     ## run root and exp models at depth d+1
-#                    print("Root %d count" % (cur_depth) )
-                    models.root[cur_depth].count((prevState.b[prev_depth], prevState.g), state.a[cur_depth])
-#                    print("Exp %d count" % (cur_depth) )
-                    models.exp[cur_depth].count((prevState.g, state.a[cur_depth]), state.b[cur_depth])
+                    models.root[cur_depth].count((prevState.b[prev_depth], prevState.g), state.a[cur_depth], inc)
+                    models.exp[cur_depth].count((prevState.g, state.a[cur_depth]), state.b[cur_depth], inc)
                 elif state.f[fork_depth] == 0 and state.j[fork_depth] == 1:
                     assert prev_depth == cur_depth+1
                     ## lower level finished -- awaited can transition
                     ## Made the following deciison in a confusing rebase -- left other version
                     ## commented in in case I decided wrong.
-#                    print("Next %d count" % (cur_depth) )
-                    models.next[cur_depth].count((prevState.a[prev_depth], prevState.b[cur_depth]), state.b[cur_depth])
+                    models.next[cur_depth].count((prevState.a[prev_depth], prevState.b[cur_depth]), state.b[cur_depth], inc)
                 else:
                     raise Exception("Unallowed value of f=%d and j=%d" % (state.f[fork_depth], state.j[fork_depth]) )    
         
             ## Count G
-#            print("POS count")
-            models.pos.count(state.b[cur_depth], state.g)
+            models.pos.count(state.b[cur_depth], state.g, inc)
         else:
-#            print("POS count")
-            models.pos.count(0, state.g)
+            models.pos.count(0, state.g, inc)
                     
         ## Count w
-#        print("Lex count")
-        models.lex.count(state.g, word)
+        models.lex.count(state.g, word, inc)
         
         prevState = state
     
@@ -971,6 +955,10 @@ def increment_counts(hid_seq, sent, models, sent_index):
 ## WS: REMOVED THESE: WAS DISTORTING OUTPUTS BC F MODEL NOT REALLY CONSULTED AT END (MODEL ACTUALLY KNOWS ITS AT END)
 #    models.fork.count(prevBG, 0)
 #    models.reduce.count(hid_seq[-1].a, 1)
+
+def decrementSentenceCounts(hid_seqs, sents, models, start_ind, end_ind):
+    for ind in range(start_ind, end_ind+1):
+        increment_counts(hid_seqs[ind], sents[ind], models, -1)     
 
 def getGmax():
     global g_max
