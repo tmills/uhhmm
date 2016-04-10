@@ -75,9 +75,6 @@ def get_v(gold_pos, sys_pos, beta=1):
     
     
     V = ((1 + beta) * h * c ) / ((beta*h) + c)
-
-    print("v-measure components: H_gold=%f, H_sys=%f, H_joint=%f, H(G|S)=%f, H(S|G)=%f, h=%f, c=%f, V=%f" % 
-            (H_gold, H_sys, H_joint, H_gold_given_sys, H_sys_given_gold, h, c, V))
     
     return V
 

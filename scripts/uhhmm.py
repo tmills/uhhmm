@@ -50,8 +50,8 @@ class Stats:
 # TODO: Sub-class for BooleanModel vs. InfiniteModel  with single sample()/resample() method
 # and automatically adjusting sizes for infinite version.
 class Model:
-    def __init__(self, shape, alpha=0.0, beta=None, corpus_shape=(0,0)):
-        self.pairCounts = np.zeros(shape, dtype=np.uint)
+    def __init__(self, shape, alpha=0.0, beta=None, corpus_shape=(0,0), name="Unspecified"):
+        self.pairCounts = np.zeros(shape, dtype=np.int)
         self.dist = np.random.random(shape)
         self.dist /= self.dist.sum(1, keepdims=True)
         self.dist = np.log10(self.dist)
@@ -59,11 +59,14 @@ class Model:
         self.trans_prob = np.zeros(corpus_shape)
         self.alpha = alpha
         self.beta = beta
+        self.name = name
 
     def count(self, cond, out, val):
         out_counts = self.pairCounts[...,out]
-        out_counts[cond] += val
-
+        out_counts[cond] = out_counts[cond] + val
+        if val < 0 and out_counts[cond] < 0:
+            logging.error("Error! After a count there is a negative count")
+            
     def dec(self, cond, out):
         self.pairCounts[cond,out] -= 1
 
@@ -72,10 +75,11 @@ class Model:
         
     def sampleDirichlet(self, base):
         self.dist = sampler.sampleDirichlet(self.pairCounts, base)
-        self.pairCounts[:] = 0
 
     def sampleBernoulli(self, base):
         self.dist = sampler.sampleBernoulli(self.pairCounts, base)
+    
+    def resetCounts(self):
         self.pairCounts[:] = 0
 
     def copy(self):
@@ -84,11 +88,25 @@ class Model:
         m_copy.dist = self.dist.copy()
         return m_copy
         
-class Models(list):
-    def resample_all():
-        for model in self:
+class Models():
+    def __init__(self):
+        self.models = []
+        
+    def resample_all(self):
+        for model in self.models:
             model.dist = sampleDirichlet(model)
 
+    def resetAll(self):
+        for model in self.models:
+            if type(model) == list:
+                for submodel in model:
+                    submodel.resetCounts()
+            else:
+                model.resetCounts()
+
+    def append(self, model):
+        self.models.append(model)
+        
 # This is the main entry point for this module.
 # Arg 1: ev_seqs : a list of lists of integers, representing
 # the EVidence SEQuenceS seen by the user (e.g., words in a sentence
@@ -101,6 +119,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     start_b = int(params.get('startb'))
     start_g = int(params.get('startg'))
 
+    sent_lens = list(map(len, ev_seqs))
+    num_tokens = np.sum(sent_lens)
     maxLen = max(map(len, ev_seqs))
     max_output = max(map(max, ev_seqs))
     num_sents = len(ev_seqs)
@@ -150,7 +170,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         hid_seqs = initialize_state(ev_seqs, models, depth, gold_seqs)
 
         sample = Sample()
-    #    sample.hid_seqs = hid_seqs
         sample.alpha_a = models.root[0].alpha ## float(params.get('alphaa'))
         sample.alpha_b = float(params.get('alphab'))
         sample.alpha_g = float(params.get('alphag'))
@@ -199,7 +218,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         sample.log_prob = 0
         models = sample.models
         hid_seqs = sample.hid_seqs
-        sample.hid_seqs = [] ## Empty out hid_seqs because we will append later.
         
         a_max = models.act[0].dist.shape[-1]
         b_max = models.cont[0].dist.shape[-1]
@@ -304,6 +322,19 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         
         ## Give the models to the model server. (Note: We used to pass them to workers via temp files which works when you create new
         ## workers but is harder when you need to coordinate timing of reading new models in every pass)
+        
+        pos_counts = models.pos.pairCounts[:].sum()
+        lex_counts = models.lex.pairCounts[:].sum()
+        logging.info("Have %d pos counts, %d lex counts before sample - should equal number of tokens %d" % (pos_counts, lex_counts, num_tokens) )
+        
+        ## remove the counts form these sentences
+        if batch_size < num_sents:
+            logging.info("Decrementing counts for sentence indices %d-%d" % (start_ind, end_ind) )
+            decrement_sentence_counts(hid_seqs, ev_seqs, models, start_ind, end_ind)
+        else:
+            logging.info("Resetting all counts to zero for next iteration")
+            models.resetAll()
+
         t0 = time.time()
         if finite:
             FullDepthCompiler.FullDepthCompiler(depth).compile_and_store_models(models, working_dir)
@@ -332,18 +363,17 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 increment_counts(parse.state_list, ev_seqs[ parse.index ], models)
                 sample.log_prob += parse.log_prob
             
-            sample_map[parse.index] = parse.state_list
-        
-        ## samples got unsorted by queueing them so resort them just for the purpose 
-        ## of debugging.
-        for key in sorted(sample_map.keys()):
-            sample.hid_seqs.append(sample_map[key])
+            hid_seqs[parse.index] = parse.state_list
 
-        if num_processed < batch_size and len(sample.hid_seqs) < num_sents:
+        if num_processed < (end_ind - start_ind):
             logging.warning("Didn't receive the correct number of parses at iteration %d" % iter)
 
-        logging.info("Parsed %d sentences this batch -- now have %d parses" % (len(sample_map), len(sample.hid_seqs) ) )
+        logging.info("Parsed %d sentences this batch -- now have %d parses" % (end_ind-start_ind, end_ind ) )
 
+        pos_counts = models.pos.pairCounts[:].sum()
+        lex_counts = models.lex.pairCounts[:].sum()
+        assert pos_counts == lex_counts and pos_counts == num_tokens
+        
         t1 = time.time()
         logging.info("Building counts tables took %d s" % (t1-t0))
         
@@ -351,11 +381,12 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             logging.info("Performed enough batches to collect a sample -- waiting for complete pass to finish")
             ready_for_sample = True
         
-        if len(sample.hid_seqs) >= num_sents:
-            if len(sample.hid_seqs) > num_sents:
+        if end_ind >= num_sents:
+            if end_ind > num_sents:
                 logging.warning("There are more parses than input sentences!")
                 
             logging.info("Finished complete pass through data -- calling checkpoint function")
+            sample.hid_seqs = hid_seqs
             checkpoint_function(sample)
             if ready_for_sample:
                 logging.info("Collecting sample")
@@ -389,8 +420,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             next_sample.beta_a = models.root[0].beta
             next_sample.alpha_b = models.cont[0].alpha
             next_sample.beta_b = models.cont[0].beta
-    #        next_sample.alpha_g = sample.alpha_g
-    #        next_sample.beta_g = sample.beta_g
             next_sample.alpha_g = models.pos.alpha
             next_sample.beta_g = models.pos.beta
             next_sample.gamma = sample.gamma
@@ -724,25 +753,25 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
     
     ## One fork model:    
     for d in range(0, depth):
-        models.fork[d] = Model((b_max, g_max, 2))
+        models.fork[d] = Model((b_max, g_max, 2), name="Fork"+str(d))
     
         ## Two join models:
-        models.trans[d] = Model((b_max, g_max, 2))
-        models.reduce[d] = Model((a_max, b_max, 2))
+        models.trans[d] = Model((b_max, g_max, 2), name="J|F1_"+str(d))
+        models.reduce[d] = Model((a_max, b_max, 2), name="J|F0_"+str(d))
     
         ## TODO -- set d > 0 beta to the value of the model at d (can probably do this later)
         ## One active model:
-        models.act[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape)
-        models.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape)
+        models.act[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|00_"+str(d))
+        models.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
         models.root[d].beta = np.zeros(a_max)
         models.root[d].beta[1:] = np.ones(a_max-1) / (a_max-1)
         models.act[d].beta = models.root[d].beta
         
         ## four awaited models:
-        models.cont[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
-        models.exp[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
-        models.next[d] = Model((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
-        models.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape)
+        models.cont[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|11_"+str(d))
+        models.exp[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|10_"+str(d))
+        models.next[d] = Model((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|01_"+str(d))
+        models.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|00_"+str(d))
         models.cont[d].beta = np.zeros(b_max)
         models.cont[d].beta[1:] = np.ones(b_max-1) / (b_max-1)
         models.exp[d].beta = models.cont[d].beta
@@ -751,12 +780,24 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
         
     
     ## one pos model:
-    models.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape)
+    models.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape, name="POS")
     models.pos.beta = np.zeros(g_max)
     models.pos.beta[1:] = np.ones(g_max-1) / (g_max-1)
     
     ## one lex model:
-    models.lex = Model((g_max, max_output+1))
+    models.lex = Model((g_max, max_output+1), name="Lex")
+    
+    models.append(models.fork)
+    models.append(models.trans)
+    models.append(models.reduce)
+    models.append(models.act)
+    models.append(models.root)
+    models.append(models.cont)
+    models.append(models.start)
+    models.append(models.exp)
+    models.append(models.next)
+    models.append(models.pos)
+    models.append(models.lex)
     
     return models
 
@@ -848,6 +889,9 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None):
     return state_seqs
 
 def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
+    if end_ind-1 >= len(hid_seqs):
+        logging.error("Index of end_ind=%d passed in to sequence of length %d" % (end_ind, len(hid_seqs) ) )
+        
     for sent_index in range(start_ind, end_ind):
         hid_seq = hid_seqs[sent_index]
         ## for every state transition in the sentence increment the count
@@ -956,9 +1000,13 @@ def increment_counts(hid_seq, sent, models, inc=1):
 #    models.fork.count(prevBG, 0)
 #    models.reduce.count(hid_seq[-1].a, 1)
 
-def decrementSentenceCounts(hid_seqs, sents, models, start_ind, end_ind):
-    for ind in range(start_ind, end_ind+1):
-        increment_counts(hid_seqs[ind], sents[ind], models, -1)     
+def decrement_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
+    for ind in range(start_ind, end_ind):
+        increment_counts(hid_seqs[ind], sents[ind], models, -1)
+
+def increment_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
+    for ind in range(start_ind, end_ind):
+        increment_counts(hid_seqs[ind], sents[ind], models, 1)
 
 def getGmax():
     global g_max
