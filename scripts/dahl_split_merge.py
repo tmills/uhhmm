@@ -12,7 +12,7 @@ def indices (cum_length, ind):
 
 # log emission posterior normalizing constant given word counts in given state
 # assumes multinomial-dirichlet model
-def norm_const(obs_counts, alpha=.01):
+def norm_const(obs_counts, alpha=.2):
     return sum(gammaln(obs_counts+alpha)) - gammaln(sum(obs_counts+alpha))
     
 # log probability of HMM state partition 
@@ -22,13 +22,13 @@ def trans_term (sample, nstates, alpha=1):
     counts = np.zeros((nstates, nstates))
     for seq in sample.hid_seqs:
         for word_index in range(len(seq)-1):
-          counts[seq[word_index].g, seq[word_index+1].g] += 1
+          counts[seq[word_index].g-1, seq[word_index+1].g-1] += 1
         
     term = 0
     for state in range(nstates):
         term += gammaln(nstates*alpha) - gammaln(nstates*alpha + np.sum(counts, 1)[state])
         for state1 in range(nstates):
-          term += gammaln(alpha + counts[state, state1]) - gammaln(alpha)
+            term += gammaln(alpha + counts[state, state1]) - gammaln(alpha)
 
     return term
 
@@ -52,11 +52,15 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
     
     # indices with state pos0 or pos1
     subset = np.array([]) 
+    ps = []
     for ind in range(num_tokens):
         sent_ind, word_ind = indices(cum_length, ind)
         pos = sample.hid_seqs[sent_ind][word_ind].g
+        ps.append(pos)
         if ((pos == pos0) | (pos == pos1)):
             subset = np.append(subset, ind)
+    print("unique pos tags:")
+    print(set(ps))
 
     np.random.shuffle(subset)
 
@@ -91,7 +95,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
         obs_counts[newstate] = newcounts[newstate]
     
     logging.info("During split-merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
-    nstates = models.pos.dist.shape[1]-1
+    nstates = models.pos.dist.shape[1]-2
     tt = trans_term(sample, nstates)
     if split:
         logging.info("Performing split operation of pos tag %d at iteration %d" % (pos0,iter))
@@ -100,15 +104,13 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
         for ind in sets[1]:
             sent_ind, word_ind = indices(cum_length, ind)
             state = new_sample.hid_seqs[sent_ind][word_ind]
-            state.g = nstates
+            state.g = nstates+1
             new_models.pos.pairCounts[state.b[0]][pos0] -= 1
             new_models.pos.pairCounts[state.b[0]][state.g] += 1
-        logging.info("During split the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
         logging.info("During split the new shape of root is %s and exp is %s" % (str(new_models.root[0].dist.shape), str(new_models.exp[0].dist.shape) ) )
         tt = trans_term(new_sample, nstates+1) - tt
     else:
         (pos0, pos1) = (min(pos0, pos1), max(pos0, pos1))
-        pos_last = nstates-1
         logging.info("Performing merge operation between pos tags " + \
           "%d and %d at iteration %d" % (pos0, pos1, iter))
         if models.pos.dist.shape[1] == 3:
@@ -121,22 +123,26 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
                 state.g = pos0
                 new_models.pos.pairCounts[state.b[0]][pos0] += 1
                 new_models.pos.pairCounts[state.b[0]][pos1] -= 1
-            elif pos == pos_last: 
-                new_sample.hid_seqs[sent_ind][word_ind].g = pos1
+                continue
+            if pos == nstates: 
+                state.g = pos1
                 new_models.pos.pairCounts[state.b[0]][pos1] += 1
-                new_models.pos.pairCounts[state.b[0]][pos_last] -= 1
-
+                new_models.pos.pairCounts[state.b[0]][nstates] -= 1
         from uhhmm import remove_pos_from_models
-        remove_pos_from_models(new_models, pos1)
+        remove_pos_from_models(new_models, nstates)
         if new_models.pos.dist.shape[1] == 3:
             logging.warn("POS now down to only 3 (1) states")
-            
-        logging.info("During merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
         logging.info("During merge the new shape of root is %s and exp is %s" % (str(new_models.root[0].dist.shape), str(new_models.exp[0].dist.shape) ) )
         tt -= trans_term(new_sample, nstates-1) 
 
-    split_logprob_acc = norm_consts[0] + norm_consts[1] + tt - logprob_prop - \
-      norm_const(np.sum(obs_counts, 0)) - norm_const(np.zeros((np.shape(obs_counts)[1])))
+    print("trans term = " + str(tt))
+    print("norm_const0 = " + str(norm_consts[0]))
+    print("norm_const1 = " + str(norm_consts[1]))
+    print("logprob_prop = " + str(logprob_prop))
+    nc =  norm_const(np.sum(obs_counts, 0)) + norm_const(np.zeros((np.shape(obs_counts)[1])))
+    print("norm_const_merge = " + str(nc))
+    split_logprob_acc = norm_consts[0] + norm_consts[1] + tt - logprob_prop - nc
+    #  norm_const(np.sum(obs_counts, 0)) - norm_const(np.zeros((np.shape(obs_counts)[1])))
     logprob_acc = split_logprob_acc if split else -split_logprob_acc
     logging.info("Log acceptance probability = %s" % str(logprob_acc))
     if np.log(np.random.uniform()) < logprob_acc:

@@ -21,7 +21,7 @@ import FullDepthCompiler
 import NoopCompiler
 import DepthOneInfiniteSampler
 import HmmSampler
-from dahl_split_merge import perform_split_merge_operation
+from dahl_split_merge import perform_split_merge_operation, indices
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -359,10 +359,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 logging.info(".\n")
                 num_samples += 1
                 ready_for_sample = False
-
+            
             if split_merge:
                logging.info("Before split-merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
                models, sample = perform_split_merge_operation(models, sample, ev_seqs, params, iter)
+               hid_seqs = sample.hid_seqs 
                logging.info("Done with split/merge operation")
                report_function(sample)
                split_merge = False
@@ -811,7 +812,7 @@ def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
     for sent_index in range(start_ind, end_ind):
         hid_seq = hid_seqs[sent_index]
         ## for every state transition in the sentence increment the count
-        ## for the condition and for the output
+            ## for the condition and for the output
         for index, state in enumerate(hid_seq):            
             d = 0
             
