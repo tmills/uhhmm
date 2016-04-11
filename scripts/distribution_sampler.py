@@ -14,15 +14,23 @@ def sampleDirichlet(counts, H):
     ## Sample from a dirichlet to get distribution over
     ## words for every pos tag:
     
-    for ind,val in np.ndenumerate(counts[...,0]):
-        ## Set last value (new table probability):
-        
-        H = H.flatten()
-                
+    for ind,val in np.ndenumerate(counts[...,0]):       
         ## Get distribution for existing table by slicing out the null state
         ## and the new table state:
-        base = np.zeros((1,L-1)) + counts[ind][1:]+H[1:]
-        
+        base = np.zeros((1, counts.shape[-1]-1))
+        if counts.shape == H.shape:
+            ## Case for hierarchical prior:
+            #logging.info("Ind is %s, shape of counts is %s, shape of H is %s" % ( str(ind), counts[ind][1:].shape, H[ind][1:].shape) )
+            base += counts[ind][1:] + H[ind][1:]
+        elif len(H.shape) == 2:
+            ## Case where the vector is a 2-d matrix with one dim of size 1
+            base += counts[ind][1:] + H[0,1:]
+        elif len(H.shape) == 1:
+            ## Case where the vector is just an array
+            base += counts[ind][1:] + H[1:]
+        else:
+            logging.warning("Could not compute base with counts shape %s and base shape %s" % (counts.shape, H.shape) )
+            
         if base.shape[1] == 1:
             P[ind,1] = 1.0
         else:
@@ -44,7 +52,10 @@ def sampleBernoulli(counts, H):
     P = np.zeros(counts.shape)
     
     for ind,val in np.ndenumerate(counts[...,0]):
-        base = counts[ind][:] + H.flatten()
+        if counts.shape == H.shape:
+            base = counts[ind][:] + H[ind][:]
+        else:
+            base = counts[ind][:] + H.flatten()
         P[ind][:] = np.log10(sampleSimpleBernoulli(base))
         
     return P

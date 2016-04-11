@@ -39,7 +39,7 @@ class PyzmqWorker(Process):
         self.quit = False
         self.seed = seed
         self.debug_level = level
-        
+
     def run(self):
         logging.basicConfig(level=self.debug_level)
         context = zmq.Context()

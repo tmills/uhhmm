@@ -32,7 +32,10 @@ cdef class FullDepthCompiler:
         cdef np.ndarray range_probs, prevF, prefJ, prevA, prevB
         #cdef np.ndarray indices, data
         
-        (prevF, prevJ, prevA, prevB, prevG) = indexer.extractStacks(prevIndex)
+        prev_state = indexer.extractState(prevIndex)
+        (prevF, prevJ, prevA, prevB, prevG) = prev_state.f, prev_state.j, prev_state.a, prev_state.b, prev_state.g
+        
+        #(prevF, prevJ, prevA, prevB, prevG) = indexer.extractStacks(prevIndex)
         start_depth = get_cur_awa_depth(prevB)
         (a_max, b_max, g_max) = indexer.getVariableMaxes()
         totalK = indexer.get_state_size()        
@@ -104,7 +107,7 @@ cdef class FullDepthCompiler:
                     if f == 0:
                         cumProbs[1] = cumProbs[0] * models.reduce[start_depth].dist[ prevA[start_depth], above_awa, j ]
                     else:
-                        cumProbs[1] = cumProbs[0] * models.trans[start_depth].dist[ above_awa, prevG, j ]
+                        cumProbs[1] = cumProbs[0] * models.trans[start_depth].dist[ prevB[start_depth], prevG, j ]
                 else:
                     if j == 0:
                         cumProbs[1] = 1
@@ -140,7 +143,7 @@ cdef class FullDepthCompiler:
 #                                cumProbs[2] = cumProbs[1]
                                 nextState.a[start_depth-1] = a
                                 nextState.b[start_depth-1] = b
-                                cumProbs[2] = cumProbs[1] * models.next[start_depth-1].dist[ above_awa, nextState.a[start_depth-1], b ]
+                                cumProbs[2] = cumProbs[1] * models.next[start_depth-1].dist[ prevA[start_depth], above_awa, b ]
                             else:
                                 continue
                         elif f == 0 and j == 0:
@@ -159,14 +162,14 @@ cdef class FullDepthCompiler:
                             nextState.a[0:start_depth+1] = prevA[0:start_depth+1]
                             nextState.b[0:start_depth+1] = prevB[0:start_depth+1]
                             nextState.a[start_depth+1] = a
-                            cumProbs[2] = cumProbs[1] * models.root[start_depth+1].dist[ prevB[start_depth], prevG, a ] * models.exp[start_depth+1].dist[ prevG, nextState.a[start_depth+1], b ]
+                            cumProbs[2] = cumProbs[1] * models.root[start_depth+1].dist[ above_awa, prevG, a ] * models.exp[start_depth+1].dist[ prevG, a, b ]
                         
                             nextState.b[start_depth+1] = b
                                                 
                         ## Now multiply in the pos tag probability:
                         state_index = indexer.getStateIndex(nextState.f, nextState.j, nextState.a, nextState.b, 0)         
                         range_probs = cumProbs[2] * (models.pos.dist[b,:-1])
-                        
+                        #logging.info("Building model with %s => %s" % (prev_state.str(), nextState.str() ) )
                         for g in range(1,len(range_probs)):
                             indices.append(state_index + g)
                             data.append(range_probs[g])
