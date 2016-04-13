@@ -1,19 +1,11 @@
 
 
 all:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt
-	python3 scripts/d1trainer.py $<
+	./train.sh $<
 
 debug: config/debug.ini
-	python3 -m pdb scripts/d1trainer.py $<
+	./debug.sh $<
 
-short: config/debug.ini
-	python3 scripts/d1trainer.py $<
-
-profile: config/profile.ini
-	ln -s beam_sampler.pyx scripts/beam_sampler.py
-	/sw/bin/kernprof -l -v scripts/d1trainer.py $<
-	unlink scripts/beam_sampler.py
-	
 config/myconfig.ini:  config/d1train.ini
 	cp $< $@
 
