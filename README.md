@@ -1,10 +1,15 @@
 UHHMM - Unsupervised Hierarchical Hidden Markov Model
 
 Usage:
+
 ./train.sh &lt;config file&gt;  (For a brand new run)
+
 OR
+
 ./train.sh &lt;output directory&gt; (To resume a run)
+
 OR
+
 make (Start a new run using config/myconfig.ini as the configuration, creating a default config file if it doesn't yet exist)
 
 The train.sh script is new. Since this project uses cython extensively for optimization, the first step in every run is to recompile any changed cython code. This is a change from previous versions of the code which used pyximport to do "Just in time" compiling of cython code. The reason for the change is that the pyximport method built the code in the user's home directory, and so there could be collisions between versions if a user had two copies of the repository checked out running different experiments. The new style compiles the .pyx code into .c and .so files in the scripts/ directory so that every clone of the repo has its own build.
