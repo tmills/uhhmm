@@ -138,7 +138,7 @@ class HmmSampler(Sampler.Sampler):
             
             if last_index > 0 and (sample_seq[-1].a[0] == 0 or sample_seq[-1].b[0] == 0 or sample_seq[-1].g == 0):
                 logging.error("Error: First sample for sentence %d has index %d and has a|b|g = 0" % (sent_index, sample_t))
-                sys.exit(-1)
+                raise Exception
   
             for t in range(len(sent)-2,-1,-1):
                 trans_slice = self.pi[:,sample_t].toarray()
@@ -156,7 +156,8 @@ class HmmSampler(Sampler.Sampler):
                 logging.debug("Sampled state %s with index %d at time %d" % (sample_state.str(), sample_t, t))
             
                 if t > 0 and sample_state.g == 0:
-                    logging.error("Error: Sampled a g=0 state in backwards pass! {0}".format(sample_state.str()))
+                    logging.error("Error: Sampled a g=0 state with state index %d in backwards pass: %s" % (sample_t, sample_state.str()) )
+                    raise Exception
                 
                 sample_seq.append(sample_state)
             

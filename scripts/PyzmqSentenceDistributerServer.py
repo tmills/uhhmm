@@ -128,10 +128,13 @@ class Sink(Thread):
             while len(self.outputs) < self.batch_size:
                 try:   
                     parse = self.socket.recv_pyobj()
-                    logging.log(logging.DEBUG-1, "Sink received parse %d with result: %s" % (parse.index, list(map(lambda x: x.str(), parse.state_list))))
+                    if parse.success:
+                        logging.log(logging.DEBUG-1, "Sink received parse %d with result: %s" % (parse.index, list(map(lambda x: x.str(), parse.state_list))))
+                    else:
+                        logging.warn("Sink received parse %d with parse failure." % (parse.index) )
                     self.outputs.append(parse)
-                except:
-                    logging.error("Sink timed out waiting for remaining parse... exiting this iteration...")
+                except Exception as e:
+                    logging.error("Sink caught an exception waiting for parse: %s" % (e) )
                     break
 
             logging.debug("Sink finished processing this batch of sentences")
