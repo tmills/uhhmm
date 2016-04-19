@@ -17,6 +17,8 @@ import DepthOneInfiniteSampler
 import HmmSampler
 import SparseHmmSampler
 from Sampler import *
+import Indexer
+import FullDepthCompiler
 
 def start_workers(work_distributer, cluster_cmd, maxLen):
     logging.debug("Cluster command is %s" % cluster_cmd)
@@ -39,19 +41,24 @@ class PyzmqWorker(Process):
         self.quit = False
         self.seed = seed
         self.debug_level = level
-
+        self.model_file_sig = None
+        self.indexer = None
+        self.models_socket = None
+        self.jobs_socket = None
+        self.results_socket = None
+        
     def run(self):
         logging.basicConfig(level=self.debug_level)
         context = zmq.Context()
-        models_socket = context.socket(zmq.REQ)
-        models_socket.connect("tcp://%s:%s" % (self.host, self.models_port))
+        self.models_socket = context.socket(zmq.REQ)
+        self.models_socket.connect("tcp://%s:%s" % (self.host, self.models_port))
 
         logging.debug("Worker %d connecting to work distribution server..." % self.tid)
-        jobs_socket = context.socket(zmq.REQ)        
-        jobs_socket.connect("tcp://%s:%s" % (self.host, self.jobs_port))
+        self.jobs_socket = context.socket(zmq.REQ)        
+        self.jobs_socket.connect("tcp://%s:%s" % (self.host, self.jobs_port))
         
-        results_socket = context.socket(zmq.PUSH)
-        results_socket.connect("tcp://%s:%s" % (self.host, self.results_port))
+        self.results_socket = context.socket(zmq.PUSH)
+        self.results_socket.connect("tcp://%s:%s" % (self.host, self.results_port))
 
         logging.debug("Worker %d connected to all three endpoints" % self.tid)
                 
@@ -62,105 +69,144 @@ class PyzmqWorker(Process):
             sampler = None
             #  Socket to talk to server
             logging.debug("Worker %d waiting for new models..." % self.tid)
-            models_socket.send(b'0')
-            msg = models_socket.recv_pyobj()
+            self.models_socket.send(b'0')
+            msg = self.models_socket.recv_pyobj()
             
             in_file = open(msg, 'rb')
-            model_obj = pickle.load(in_file)
+            model_wrapper = pickle.load(in_file)
             in_file.close()
-            model_file_sig = get_file_signature(msg)
-            models = model_obj.model
-            finite = model_obj.finite
+            self.model_file_sig = get_file_signature(msg)
             
-            if finite:
+            if model_wrapper.model_type == ModelWrapper.HMM:
                 sampler = HmmSampler.HmmSampler(self.seed)
-            else:
+                sampler.set_models(model_wrapper.model)
+                self.processSentences(sampler)
+            elif model_wrapper.model_type == ModelWrapper.INFINITE:
                 sampler = DepthOneInfiniteSampler.InfiniteSampler(self.seed)
-            
-            sampler.set_models(models)
-                       
+                sampler.set_models(model_wrapper.model)
+                self.processSentences(sampler)
+            elif model_wrapper.model_type == ModelWrapper.COMPILE:
+                self.indexer = Indexer.Indexer(model_wrapper.model)
+                self.processRows(model_wrapper.model)
+            else:
+                logging.error("Received a model type that I don't know how to process!")
+
             logging.debug("Worker %d received new models..." % self.tid)
 
-            sampler.initialize_dynprog(self.maxLen)        
+            ## Tell the sink that i'm done:
+#            results_socket.send_pyobj(PyzmqParse(-1,None,0))
+
+
+        logging.debug("Worker %d disconnecting sockets and finishing up" % self.tid)
+        self.jobs_socket.close()
+        self.results_socket.close()
+        self.models_socket.close()
+
+    def processRows(self, models):
+        while True:
+            try:
+                ret_val = self.jobs_socket.send_pyobj(self.model_file_sig)
+                job = self.jobs_socket.recv_pyobj()
+            except Exception as e:
+                ## Timeout in the job socket probably means we're done -- quit
+                logging.info("Exception thrown while waiting for row to process: %s" % (e) )
+                self.quit = True
+                break
+
+            if job.type == PyzmqJob.COMPILE:
+                compile_job = job.resource
+                row = compile_job.index
+            elif job.type == PyzmqJob.QUIT:
+                break
+            else:
+                logging.debug("Received unexpected job type while expecting compile job! %s" % job.type)
+                raise Exception
             
-            sents_processed = 0
+            (indices, data) = FullDepthCompiler.compile_one_line(len(models.fork), row, models, self.indexer)
+            row_output = CompiledRow(row, indices, data)
+            self.results_socket.send_pyobj(CompletedJob(PyzmqJob.COMPILE, row_output, True) )
+            if row % 10000 == 0:
+                logging.info("Compiling row %d" % row)
             
             if self.quit:
                 break
-
-            longest_time = 4
-            while True: 
-                logging.log(logging.DEBUG-1, "Worker %d waiting for job" % self.tid)
-                try:
-                    ret_val = jobs_socket.send_pyobj(model_file_sig)
-                    job = jobs_socket.recv_pyobj();
-                except:
-                    ## Timeout in the job socket probably means we're done -- quit
-                    logging.info("Worker timed out waiting for job... shutting down.")
-                    self.quit = True
-                    break
                 
-                if job.type == PyzmqJob.SENTENCE:
-                    sent_index = job.index
-                    sent = job.ev_seq
-                elif job.type == PyzmqJob.QUIT:
-                    logging.debug('Worker %d received signal from job server to check for new model' % self.tid)
-                    break
+    def processSentences(self, sampler):
+        sampler.initialize_dynprog(self.maxLen)        
+    
+        sents_processed = 0
+    
+        if self.quit:
+            return
 
-                logging.log(logging.DEBUG-1, "Worker %d has received sentence %d" % (self.tid, sent_index))                
-
-                t0 = time.time()
-                
-                success = True
-                ## This was for debugging the finite model -- leaving commented because if we use the infinite model
-                ## it may not be enough time for some sentences.
-#                signal.alarm(5)
-                
-                try:
-                    (sent_sample, log_prob) = sampler.sample(sent, sent_index)
-                except Exception as e:
-                    logging.warning("Warning: Sentence %d had a parsing error %s." % (sent_index, e))
-                    sent_sample = None
-                    log_prob = 0
-                    success = False
-                
-#                signal.alarm(0)
-                
-                if sent_index % self.out_freq == 0:
-                    logging.info("Processed sentence {0} (Worker {1})".format(sent_index, self.tid))
-#                     logging.info("Cumulative forward time %f and backward time %f" % (sampler.ff_time, sampler.bs_time))
-
-                t1 = time.time()
-                
-                if success:
-                    logging.log(logging.DEBUG-1, "Worker %d has parsed sentence %d with result %s" % (self.tid, sent_index, list(map(lambda x: x.str(), sent_sample))))                
-                else:
-                    logging.info("Worker %d was unsuccessful in attempt to parse sentence %d" % (self.tid, sent_index) )
-
-                if (t1-t0) > longest_time:
-                    longest_time = t1-t0
-                    logging.warning("Sentence %d was my slowest sentence to parse so far at %d s" % (sent_index, longest_time) )
-
-
-                parse = PyzmqParse(sent_index, sent_sample, log_prob, success)
-                sents_processed +=1
-                
-                results_socket.send_pyobj(parse)
-                if self.quit:
-                    break
-
-                if log_prob > 0:
-                    logging.error('Sentence %d had positive log probability %f' % (sent_index, log_prob))
+        longest_time = 10
+        
+        while True: 
+            logging.log(logging.DEBUG-1, "Worker %d waiting for job" % self.tid)
+            try:
+                ret_val = self.jobs_socket.send_pyobj(self.model_file_sig)
+                job = self.jobs_socket.recv_pyobj()
+            except Exception as e:
+                ## Timeout in the job socket probably means we're done -- quit
+                logging.info("Exception raised while waiting for sentence: %s" % (e) )
+                self.quit = True
+                break
+        
+            if job.type == PyzmqJob.SENTENCE:
+                sentence_job = job.resource
+                sent_index = sentence_job.index
+                sent = sentence_job.ev_seq
+            elif job.type == PyzmqJob.QUIT:
+                logging.debug('Worker %d received signal from job server to check for new model' % self.tid)
+                break
+            elif job.type == PyzmqJob.COMPILE:
+                logging.error("Worker %d received compile job from job server when expecting sentence job!")
+                raise Exception
             
-            ## Tell the sink that i'm done:
-#            results_socket.send_pyobj(PyzmqParse(-1,None,0))
-            logging.info("Cumulative forward time %f and backward time %f" % (sampler.ff_time, sampler.bs_time))
-            logging.debug("Worker %d processed %d sentences this iteration" % (self.tid, sents_processed))
 
-        logging.debug("Worker %d disconnecting sockets and finishing up" % self.tid)
-        jobs_socket.close()
-        results_socket.close()
-        models_socket.close()
+            logging.log(logging.DEBUG-1, "Worker %d has received sentence %d" % (self.tid, sent_index))                
+
+            t0 = time.time()
+        
+            success = True
+        
+            try:
+                (sent_sample, log_prob) = sampler.sample(sent, sent_index)
+            except Exception as e:
+                logging.warning("Warning: Sentence %d had a parsing error %s." % (sent_index, e))
+                sent_sample = None
+                log_prob = 0
+                success = False
+        
+        
+            if sent_index % self.out_freq == 0:
+                logging.info("Processed sentence {0} (Worker {1})".format(sent_index, self.tid))
+
+            t1 = time.time()
+        
+            if success:
+                logging.log(logging.DEBUG-1, "Worker %d has parsed sentence %d with result %s" % (self.tid, sent_index, list(map(lambda x: x.str(), sent_sample))))                
+            else:
+                logging.info("Worker %d was unsuccessful in attempt to parse sentence %d" % (self.tid, sent_index) )
+
+            if (t1-t0) > longest_time:
+                longest_time = t1-t0
+                logging.warning("Sentence %d was my slowest sentence to parse so far at %d s" % (sent_index, longest_time) )
+
+
+            parse = PyzmqParse(sent_index, sent_sample, log_prob, success)
+            sents_processed +=1
+        
+            self.results_socket.send_pyobj(CompletedJob(PyzmqJob.SENTENCE, parse, parse.success))
+            if self.quit:
+                break
+
+            if log_prob > 0:
+                logging.error('Sentence %d had positive log probability %f' % (sent_index, log_prob))    
+
+        logging.info("Cumulative forward time %f and backward time %f" % (sampler.ff_time, sampler.bs_time))
+        logging.debug("Worker %d processed %d sentences this iteration" % (self.tid, sents_processed))
+
 
     def handle_sigint(self, signum, frame):
         logging.info("Worker received quit signal... will terminate after cleaning up.")

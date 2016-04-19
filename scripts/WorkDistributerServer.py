@@ -5,8 +5,13 @@ import pickle
 import socket
 import time
 import zmq
-from PyzmqMessage import *
+from queue import Queue
+from PyzmqMessage import SentenceJob, CompileJob, PyzmqJob, get_file_signature, resource_current
 from threading import Thread, Lock
+
+class ResetSignal():
+    def __init__(self):
+        self.reset = True
 
 class VerboseLock():
     def __init__(self, name):
@@ -41,13 +46,8 @@ class Ventilator(Thread):
         self.sync_socket.connect("tcp://%s:%s" % (self.host, sync_port))
         logging.debug("Ventilator connected to sync socket.")
     
-        self.start_ind = -1
-        self.end_ind = -1
+        self.job_queue = Queue()
         
-    def setSentenceRange(self, start, end):
-        self.start_ind = start
-        self.end_ind = end
-
     def run(self):
         while True:
             ## Wait for signal to start:
@@ -58,34 +58,47 @@ class Ventilator(Thread):
             if sync == b'0':
                 break
             else:
-                current_model_sig = sync
+                current_resource_sig = sync
 
             logging.debug("Ventilator received model signature sync signal")
 
-            for ind in range(self.start_ind, self.end_ind):
-                sent = self.sent_list[ind]
-                logging.log(logging.DEBUG-1, "Ventilator pushing job %d" % ind)
+            while not self.job_queue.empty():
+                msg = self.socket.recv_pyobj()
+                
+                if not resource_current(current_resource_sig, msg):
+                    ## Send them a quit message:
+                    self.socket.send_pyobj(PyzmqJob(PyzmqJob.QUIT, None))
+                    continue
+                    
+                job = self.job_queue.get()
+                logging.log(logging.DEBUG-1, "Ventilator pushing job %d" % job.resource.index)
+
+                self.socket.send_pyobj(job)
+                self.job_queue.task_done()
+                
+#            for ind in range(self.start_ind, self.end_ind):
+#                sent = self.sent_list[ind]
+#                logging.log(logging.DEBUG-1, "Ventilator pushing job %d" % ind)
                 
                 
-                while not model_current(current_model_sig, self.socket.recv_pyobj()):
-                    ## if the model is not current tell this worker to quit this iteration
-#                    logging.log(logging.DEBUG-1, "Current sig is %s, received sig is %s" % (current_model_sig, 
-                    self.socket.send_pyobj(PyzmqJob(PyzmqJob.QUIT, -1, None))
+#                while not resource_current(current_resource_sig, self.socket.recv_pyobj()):
+#                    ## if the model is not current tell this worker to quit this iteration
+#                    logging.log(logging.DEBUG-1, "Current sig is %s, received sig is %s" % (current_resource_sig, 
+#                    self.socket.send_pyobj(PyzmqJob(PyzmqJob.QUIT, None))
     
                 ## We heard from a worker with an up to date model, so send it a real sentence
-                self.socket.send_pyobj(PyzmqJob(PyzmqJob.SENTENCE, ind, sent))
-                logging.log(logging.DEBUG-1, "Ventilator has pushed job %d" % ind)
+#                self.socket.send_pyobj(PyzmqJob(PyzmqJob.SENTENCE, SentenceJob(ind, sent)))
+#                logging.log(logging.DEBUG-1, "Ventilator has pushed job %d" % ind)
                 
             logging.debug("Ventilator iteration finishing")
-            ## Reset these to defaults -- whole sentence list -- controller will call method to change them
-            ## if it receives parameters from uhhmm
-            self.start_ind = 0
-            self.end_ind = len(self.sent_list)
         
         logging.debug("Ventilator thread finishing")
         self.socket.close()
         self.sync_socket.close()
         logging.debug("All ventilator sockets closed.")
+        
+    def addJob(self, job):
+        self.job_queue.put(job)
         
 class Sink(Thread):
     def __init__(self, host, sync_port, num_sents):
@@ -109,6 +122,8 @@ class Sink(Thread):
         self.processing = False
         self.batch_size = self.num_sents
 
+        self.model_rows = {}
+        
     def run(self):
     
         while True:
@@ -124,15 +139,28 @@ class Sink(Thread):
             
             num_done = 0
             self.outputs = list()
-                  
-            while len(self.outputs) < self.batch_size:
+            self.model_rows = dict()
+            
+            while num_done < self.batch_size:
                 try:   
-                    parse = self.socket.recv_pyobj()
-                    if parse.success:
-                        logging.log(logging.DEBUG-1, "Sink received parse %d with result: %s" % (parse.index, list(map(lambda x: x.str(), parse.state_list))))
-                    else:
-                        logging.warn("Sink received parse %d with parse failure." % (parse.index) )
-                    self.outputs.append(parse)
+                    job_outcome = self.socket.recv_pyobj()
+                    num_done += 1
+                    if job_outcome.job_type == PyzmqJob.SENTENCE:
+                        parse = job_outcome.result
+                        parse.success = job_outcome.success
+                        if parse.success:
+                            logging.log(logging.DEBUG-1, "Sink received parse %d with result: %s" % (parse.index, list(map(lambda x: x.str(), parse.state_list))))
+                        else:
+                            logging.warn("Sink received parse %d with parse failure." % (parse.index) )
+                            
+                        self.outputs.append(parse)
+                    elif job_outcome.job_type == PyzmqJob.COMPILE:
+                        compiled_row = job_outcome.result
+                        self.model_rows[compiled_row.index] = (compiled_row.indices, compiled_row.data)
+                        logging.log(logging.DEBUG-1, "Sink received model row %d" % compiled_row.index)
+                    else:   
+                        logging.warn("Received a job with an unknown job type!")
+                        raise Exception
                 except Exception as e:
                     logging.error("Sink caught an exception waiting for parse: %s" % (e) )
                     break
@@ -147,6 +175,14 @@ class Sink(Thread):
         logging.debug("All sink sockets closed.")
         self.setProcessing(False)
     
+    def getModelRow(self, row):
+        ## Block while we wait for the worker to return this
+        while not row in self.model_rows:
+            time.sleep(0)
+        
+        ## Return and remove from the dictionary so we don't fill up memory
+        return self.model_rows.pop(row)
+                
     def setBatchSize(self, batch_size):
         self.batch_size = batch_size
 
@@ -198,9 +234,7 @@ class ModelDistributer(Thread):
                     logging.info("Model server received quit signal")
                     break
                 logging.log(logging.DEBUG, 'Sending worker a model in response to signal %s' % str(sync))
-                self.model_lock.acquire()
                 self.socket.send_pyobj(model_loc)
-                self.model_lock.release()
                 ## Don't need to do anything -- this happens when there is a timeout,
                 ## and just need to check the quit value regularly. Don't know when
                 ## to quit otherwise because we can't be sure of how many workers there
@@ -211,14 +245,14 @@ class ModelDistributer(Thread):
 
         self.socket.close()
 
-    def reset_models(self, finite):
+    def reset_models(self):
         fn = self.working_dir+'/models.bin'
         self.model_sig = get_file_signature(fn)
 
     def send_quit(self):
         self.quit_socket.send(b'-1')
-            
-class PyzmqSentenceDistributerServer():
+       
+class WorkDistributerServer():
    
     def __init__(self, sent_list, working_dir):
 
@@ -248,15 +282,17 @@ class PyzmqSentenceDistributerServer():
         self.models = None
         self.model_server.start()
         
-    def run_one_iteration(self, finite, start=-1, end=-1):
+    def submitSentenceJobs(self, start=-1, end=-1):
         ind = 0
         num_done = 0
         
-        self.model_server.reset_models(finite)
+        self.model_server.reset_models()
         model_sig = self.model_server.model_sig
         
         if start >= 0 and end >= 0:
-            self.vent.setSentenceRange(start, end)
+            for i in range(start, end):
+                self.vent.addJob(PyzmqJob(PyzmqJob.SENTENCE, SentenceJob(i, self.sent_list[i]) ) )
+
             self.sink.setBatchSize(end-start)
 
         self.sink.setProcessing(True)
@@ -264,8 +300,21 @@ class PyzmqSentenceDistributerServer():
         ## Wait a bit for sink to process signal and set processing to true for the first time
         time.sleep(3)
 
-        ## Wait for the sink to be ready before we start sending sentences out:
-        logging.debug("Sending new model signatures %s to threads:" % str(model_sig))
+        self.startProcessing(model_sig)
+        
+    def submitBuildModelJobs(self, num_rows):
+        self.model_server.reset_models()
+        for i in range(0, num_rows):
+            compile_job = CompileJob(i)
+            job = PyzmqJob(PyzmqJob.COMPILE, compile_job)
+            self.vent.addJob(job)
+    
+        self.sink.setBatchSize(num_rows)
+        self.sink.setProcessing(True)
+        
+        self.startProcessing(self.model_server.model_sig)
+    
+    def startProcessing(self, model_sig):
         self.sync_socket.recv()
         self.sync_socket.send_pyobj(model_sig)
         self.sync_socket.recv()
@@ -273,9 +322,10 @@ class PyzmqSentenceDistributerServer():
         
         while self.sink.getProcessing():
             time.sleep(2)
-
-        logging.debug("Sentence distributer server finished with one iteration.")
-
+        
+    def get_model_row(self, index):
+        return self.sink.getModelRow(index)
+        
     def stop(self):
         ## Send two stop signals to sink and ventilator
         self.sync_socket.recv()

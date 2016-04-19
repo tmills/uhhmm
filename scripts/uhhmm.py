@@ -11,7 +11,7 @@ import sys
 import tempfile
 from multiprocessing import Process,Queue,JoinableQueue
 import zmq
-from PyzmqSentenceDistributerServer import *
+from WorkDistributerServer import WorkDistributerServer
 from PyzmqMessage import *
 from PyzmqWorker import PyzmqWorker, start_workers
 from State import State, sentence_string
@@ -20,6 +20,7 @@ import multiprocessing as mp
 import FullDepthCompiler
 import NoopCompiler
 import DepthOneInfiniteSampler
+import DistributedModelCompiler
 import HmmSampler
 from dahl_split_merge import perform_split_merge_operation, indices
 
@@ -235,7 +236,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     logging.debug(ev_seqs[0])
     logging.debug(list(map(lambda x: x.str(), hid_seqs[0])))
 
-    workDistributer = PyzmqSentenceDistributerServer(ev_seqs, working_dir)
+    workDistributer = WorkDistributerServer(ev_seqs, working_dir)
     
     logging.info("Start a new worker with python3 scripts/PyzmqWorker.py %s %d %d %d %d" % (workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1))
     
@@ -338,11 +339,12 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         t0 = time.time()
         if finite:
-            FullDepthCompiler.FullDepthCompiler(depth).compile_and_store_models(models, working_dir)
+            DistributedModelCompiler.DistributedModelCompiler(depth, workDistributer).compile_and_store_models(models, working_dir)
+#            FullDepthCompiler.FullDepthCompiler(depth).compile_and_store_models(models, working_dir)
         else:
             NoopCompiler.NoopCompiler().compile_and_store_models(models, working_dir)
 
-        workDistributer.run_one_iteration(finite, start_ind, end_ind)
+        workDistributer.submitSentenceJobs(start_ind, end_ind)
         
         ## Wait for server to finish distributing sentences for this iteration:
         t1 = time.time()
@@ -363,7 +365,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             if parse.success:
                 increment_counts(parse.state_list, ev_seqs[ parse.index ], models)
                 sample.log_prob += parse.log_prob
-            
             hid_seqs[parse.index] = parse.state_list
 
         if num_processed < (end_ind - start_ind):

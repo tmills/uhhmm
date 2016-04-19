@@ -6,12 +6,27 @@ import os
 class PyzmqJob:
     SENTENCE=0
     QUIT=1
+    COMPILE=2
     
-    def __init__(self, msg_type, index, ev_seq):
+    def __init__(self, msg_type, resource):
         self.type = msg_type
+        self.resource = resource
+
+class SentenceJob:
+    def __init__(self, index, ev_seq):
         self.index = index
         self.ev_seq = ev_seq
 
+class CompileJob:
+    def __init__(self, index):
+        self.index = index
+
+class CompletedJob:
+    def __init__(self, job_type, result, success):
+        self.job_type = job_type
+        self.result = result
+        self.success = success
+        
 class PyzmqParse:
     def __init__(self, index, state_list, log_prob, success=True):
         self.index = index
@@ -19,12 +34,27 @@ class PyzmqParse:
         self.log_prob = log_prob
         self.success = success
 
-class PyzmqModel:
-    def __init__(self, model, finite):
-        self.model = model
-        self.finite = finite
+class CompiledRow:
+    def __init__(self, index, indices, data):
+        self.index = index
+        self.indices = indices
+        self.data = data
 
-def model_current(ref_sig, comp_sig):
+class ModelWrapper:
+    
+    INFINITE = 0
+    HMM = 1
+    COMPILE = 2
+    
+    ## If the model type is INFINITE we just have a Models object with all
+    ## the various CPTs as component models. If we have HMM we have a tuple of
+    ## a Models object and a scipy.sparse transition matrix object.
+    def __init__(self, model_type, model, depth):
+        self.model = model
+        self.model_type = model_type
+        self.depth = depth
+
+def resource_current(ref_sig, comp_sig):
     return (ref_sig[0] == comp_sig[0] and ref_sig[1] == comp_sig[1])
     
 def get_file_signature(filename):

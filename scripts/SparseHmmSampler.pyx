@@ -12,8 +12,6 @@ import sys
 import zmq
 import scipy.sparse
 from Indexer import *
-from PyzmqMessage import PyzmqModel
-#import pyximport; pyximport.install()
 import Sampler
 from State import *
 import subprocess
