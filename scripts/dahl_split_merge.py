@@ -15,7 +15,9 @@ def indices (cum_length, ind):
 # used for lex | pos and pos | awa
 def norm_const(obs_counts, alpha=.2):
     return sum(gammaln(obs_counts+alpha)) - gammaln(sum(obs_counts+alpha))
-    
+
+# Sequentially Allocated Merge Split algorithm (Dahl 2005, section 4.1)
+# http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.131.3712&rep=rep1&type=pdf    
 def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
     num_tokens = sum(map(len, ev_seqs))
     cum_length = np.cumsum(list(map(len, ev_seqs)))
@@ -128,15 +130,17 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
             logging.warn("POS now down to only 3 (1) states")
         logging.info("During merge the new shape of root is %s and exp is %s" % (str(new_models.root[0].dist.shape), str(new_models.exp[0].dist.shape) ) )
 
+    # acceptance probability calculation follows sections 4.3 and 2.1
     print("norm_const0 = " + str(norm_consts[0]))
     print("norm_const1 = " + str(norm_consts[1]))
-    print("logprob_prop = " + str(logprob_prop))
+    norm_const_pos_prior = norm_const(np.zeros((2)), alpha_pos)
     norm_const_pos = 0
     for i in range(nawa):
-        norm_const_pos += norm_const(pos_counts[awa], alpha_pos)
+        norm_const_pos += norm_const(pos_counts[awa], alpha_pos) - norm_const_pos_prior
     print("norm_const_pos = " + str(norm_const_pos))
     nc = norm_const(np.sum(obs_counts, 0), alpha_lex) + norm_const(np.zeros((np.shape(obs_counts)[1])), alpha_lex)
     print("norm_const_merge = " + str(nc))
+    print("logprob_prop = " + str(logprob_prop))
     split_logprob_acc = norm_consts[0] + norm_consts[1] + norm_const_pos - logprob_prop - nc
     logprob_acc = split_logprob_acc if split else -split_logprob_acc
     logging.info("Log acceptance probability = %s" % str(logprob_acc))
