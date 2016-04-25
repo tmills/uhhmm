@@ -66,7 +66,8 @@ class Model:
         out_counts[cond] = out_counts[cond] + val
         if val < 0 and out_counts[cond] < 0:
             logging.error("Error! After a count there is a negative count")
-            
+            raise Exception
+
     def dec(self, cond, out):
         self.pairCounts[cond,out] -= 1
 
@@ -372,7 +373,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         pos_counts = models.pos.pairCounts[:].sum()
         lex_counts = models.lex.pairCounts[:].sum()
-        assert pos_counts == lex_counts and pos_counts == num_tokens
+        assert pos_counts == lex_counts
+        
+        if not pos_counts == num_tokens:
+            logging.warn("This iteration has %d pos counts for %d tokens" % (pos_counts, num_tokens) )
         
         t1 = time.time()
         logging.info("Building counts tables took %d s" % (t1-t0))
@@ -397,13 +401,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 ready_for_sample = False
             
             if split_merge:
-               logging.info("Before split-merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
-               models, sample = perform_split_merge_operation(models, sample, ev_seqs, params, iter)
-               hid_seqs = sample.hid_seqs 
-               logging.info("Done with split/merge operation")
-               report_function(sample)
-               split_merge = False
-               logging.info("After split-merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
+                logging.info("Starting split/merge operation")
+                models, sample = perform_split_merge_operation(models, sample, ev_seqs, params, iter)
+                hid_seqs = sample.hid_seqs
+                logging.info("Done with split/merge operation")
+                report_function(sample)
+                split_merge = False
+                logging.info("After split-merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
 
             next_sample = Sample()
             #next_sample.hid_seqs = hid_seqs        

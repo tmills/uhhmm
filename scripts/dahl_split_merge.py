@@ -35,12 +35,12 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
     split = (pos0 == pos1) # whether to split or merge
 
     alpha_lex = params['h'][0,1:]
-    print ("Lexical Dirichlet pseudocounts:")
-    print (alpha_lex)
+    logging.debug("Lexical Dirichlet pseudocounts:")
+    logging.debug(alpha_lex)
     alpha_pos_vec = models.pos.alpha * models.pos.beta[1:]
     alpha_pos = [alpha_pos_vec[pos0-1], alpha_pos_vec[pos1-1]]
-    print ("POS Dirichlet pseudocounts:")
-    print (alpha_pos)
+    logging.debug("POS Dirichlet pseudocounts:")
+    logging.debug(alpha_pos)
     
     # indices with state pos0 or pos1
     subset = np.array([]) 
@@ -93,7 +93,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
         obs_counts[newstate] = newcounts[newstate]
         pos_counts[awa] = newcounts_pos1 if (newstate == 1) else newcounts_pos0
     
-    logging.info("During split-merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
+    logging.debug("During split-merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
     if split:
         logging.info("Performing split operation of pos tag %d at iteration %d" % (pos0,iter))
         from uhhmm import break_g_stick
@@ -101,55 +101,63 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
         for ind in sets[1]:
             sent_ind, word_ind = indices(cum_length, ind)
             state = new_sample.hid_seqs[sent_ind][word_ind]
+            token = ev_seqs[sent_ind][word_ind]
             state.g = nstates+1
-            new_models.pos.pairCounts[state.b[0]][pos0] -= 1
-            new_models.pos.pairCounts[state.b[0]][state.g] += 1
-        logging.info("During split the new shape of root is %s and exp is %s" % (str(new_models.root[0].dist.shape), str(new_models.exp[0].dist.shape) ) )
+            new_models.pos.count(state.b[0], pos0, -1)
+            new_models.pos.count(state.b[0], state.g, 1)
+            new_models.lex.count(pos0, token, -1)
+            new_models.lex.count(state.g, token, 1)
+        logging.debug("During split the new shape of root is %s and exp is %s" % (str(new_models.root[0].dist.shape), str(new_models.exp[0].dist.shape) ) )
     else:
         (pos0, pos1) = (min(pos0, pos1), max(pos0, pos1))
+        if models.pos.dist.shape[1] <= 4:
+            logging.warn("Tried to perform a merge with only %d state(s) left!" % (models.pos.dist.shape[1] - 2) )
+            return models, sample
+
         logging.info("Performing merge operation between pos tags " + \
           "%d and %d at iteration %d" % (pos0, pos1, iter))
-        if models.pos.dist.shape[1] == 3:
-            logging.warn("Performing a merge with only 1 state left")              
         for ind in range(num_tokens):
             sent_ind, word_ind = indices(cum_length, ind)
             state = new_sample.hid_seqs[sent_ind][word_ind]
             pos = state.g
+            token = ev_seqs[sent_ind][word_ind]
+            ## Reassign things from pos1 into pos0
             if pos == pos1:
                 state.g = pos0
-                new_models.pos.pairCounts[state.b[0]][pos0] += 1
-                new_models.pos.pairCounts[state.b[0]][pos1] -= 1
+                new_models.pos.count(state.b[0], pos0, 1)
+                new_models.pos.count(state.b[0], pos1, -1)
+                new_models.lex.count(pos0, token, 1)
+                new_models.lex.count(pos1, token, -1)
                 continue
+            ## Since we'll remove the last pos tag, move everything from that tag
+            ## into the pos1 index.
             if pos == nstates: 
                 state.g = pos1
-                new_models.pos.pairCounts[state.b[0]][pos1] += 1
-                new_models.pos.pairCounts[state.b[0]][nstates] -= 1
+                new_models.pos.count(state.b[0], pos1, 1)
+                new_models.lex.count(pos1, token, 1)
         from uhhmm import remove_pos_from_models
         remove_pos_from_models(new_models, nstates)
         if new_models.pos.dist.shape[1] == 3:
             logging.warn("POS now down to only 3 (1) states")
         logging.info("During merge the new shape of root is %s and exp is %s" % (str(new_models.root[0].dist.shape), str(new_models.exp[0].dist.shape) ) )
 
-    # resample models
-    new_models.lex.sampleDirichlet(params['h'])
-    new_models.pos.selfSampleDirichlet()
-    
     # acceptance probability calculation follows sections 4.3 and 2.1
-    print("norm_const0 = " + str(norm_consts[0]))
-    print("norm_const1 = " + str(norm_consts[1]))
+    logging.debug("norm_const0 = " + str(norm_consts[0]))
+    logging.debug("norm_const1 = " + str(norm_consts[1]))
     norm_const_pos_prior = norm_const(np.zeros((2)), alpha_pos)
     norm_const_pos = 0
     for i in range(nawa):
         norm_const_pos += norm_const(pos_counts[awa], alpha_pos) - norm_const_pos_prior
-    print("norm_const_pos = " + str(norm_const_pos))
+    logging.debug("norm_const_pos = " + str(norm_const_pos))
     nc = norm_const(np.sum(obs_counts, 0), alpha_lex) + norm_const(np.zeros((np.shape(obs_counts)[1])), alpha_lex)
-    print("norm_const_merge = " + str(nc))
-    print("logprob_prop = " + str(logprob_prop))
+    logging.debug("norm_const_merge = " + str(nc))
+    logging.debug("logprob_prop = " + str(logprob_prop))
     split_logprob_acc = norm_consts[0] + norm_consts[1] + norm_const_pos - logprob_prop - nc
     logprob_acc = split_logprob_acc if split else -split_logprob_acc
     logging.info("Log acceptance probability = %s" % str(logprob_acc))
     if np.log(np.random.uniform()) < logprob_acc:
         logging.info("%s proposal was accepted." % ("Split" if split else "Merge") )
+        new_sample.model = new_models
         return new_models, new_sample
     else:
         logging.info("%s proposal was rejected." % ("Split" if split else "Merge") )
