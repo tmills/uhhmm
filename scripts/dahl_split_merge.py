@@ -130,6 +130,10 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
             logging.warn("POS now down to only 3 (1) states")
         logging.info("During merge the new shape of root is %s and exp is %s" % (str(new_models.root[0].dist.shape), str(new_models.exp[0].dist.shape) ) )
 
+    # resample models
+    new_models.lex.sampleDirichlet(params['h'])
+    new_models.pos.selfSampleDirichlet()
+    
     # acceptance probability calculation follows sections 4.3 and 2.1
     print("norm_const0 = " + str(norm_consts[0]))
     print("norm_const1 = " + str(norm_consts[1]))
