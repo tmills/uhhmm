@@ -407,7 +407,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 logging.info("Done with split/merge operation")
                 report_function(sample)
                 split_merge = False
-                logging.info("After split-merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
+                logging.debug("After split-merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
 
             next_sample = Sample()
             #next_sample.hid_seqs = hid_seqs        
