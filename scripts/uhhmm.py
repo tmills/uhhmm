@@ -898,8 +898,12 @@ def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
         
     for sent_index in range(start_ind, end_ind):
         hid_seq = hid_seqs[sent_index]
+        if hid_seq == None:
+            logging.warning("collect_trans_probs() found a missing parse %d - skipping sentence." % (sent_index) )
+            continue
+            
         ## for every state transition in the sentence increment the count
-            ## for the condition and for the output
+        ## for the condition and for the output
         for index, state in enumerate(hid_seq):            
             d = 0
             
