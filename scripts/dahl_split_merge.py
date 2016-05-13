@@ -18,7 +18,7 @@ def norm_const(obs_counts, alpha=.2):
 
 # Sequentially Allocated Merge Split algorithm (Dahl 2005, section 4.1)
 # http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.131.3712&rep=rep1&type=pdf    
-def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
+def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=True):
     num_tokens = sum(map(len, ev_seqs))
     cum_length = np.cumsum(list(map(len, ev_seqs)))
     ## Need to copy the models otherwise we'll just have another pointer
@@ -27,10 +27,21 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
 
     ## Split-merge for pos tags:            
     ind0 = np.random.randint(num_tokens) # anchor 0
-    ind1 = np.random.randint(num_tokens) # anchor 1
     sent0_ind, word0_ind = indices(cum_length, ind0)
-    sent1_ind, word1_ind = indices(cum_length, ind1)
     pos0 = sample.hid_seqs[sent0_ind][word0_ind].g
+    if equal: 
+        split = (np.random.binomial(1, .5) > .5)
+        subset = np.array([]) 
+        for ind in range(num_tokens):
+            sent_ind, word_ind = indices(cum_length, ind)
+            state = sample.hid_seqs[sent_ind][word_ind]
+            if (((state.g == pos0) and split) or ((state.g != pos0) and not split)):
+                subset = np.append(subset, ind)
+        ind1 = np.random.choice(subset)
+    else:
+        ind1 = np.random.randint(num_tokens) # anchor 1
+
+    sent1_ind, word1_ind = indices(cum_length, ind1)
     pos1 = sample.hid_seqs[sent1_ind][word1_ind].g
     split = (pos0 == pos1) # whether to split or merge
 
@@ -49,7 +60,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter):
     for ind in range(num_tokens):
         sent_ind, word_ind = indices(cum_length, ind)
         state = sample.hid_seqs[sent_ind][word_ind]
-        if ((state.g == pos0) | (state.g == pos1)):
+        if ((state.g == pos0) or (state.g == pos1)):
             subset = np.append(subset, ind)
 
     np.random.shuffle(subset)
