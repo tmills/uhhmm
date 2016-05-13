@@ -194,7 +194,7 @@ cdef class FullDepthCompiler:
                 
         for prevIndex in range(0,totalK):
             indptr[prevIndex+1] = indptr[prevIndex]
-            (local_indices, local_data) = self.compile_one_line(depth, prevIndex, models, indexer)
+            (local_indices, local_data) = compile_one_line(self.depth, prevIndex, models, indexer)
             indptr[prevIndex+1] += len(local_indices)
             indices.append(local_indices)
             data.append(local_data)
