@@ -21,8 +21,8 @@ import scipy.sparse
 #@profile
 def compile_one_line(int depth, int prevIndex, models, indexer):
     cdef int totalK, a_max, b_max, g_max, start_depth, above_act, above_awa, state_index
-    cdef int f,j,a,b,g
-    cdef np.ndarray range_probs, prevF, prefJ, prevA, prevB
+    cdef int f,j,a,b,g, prevF, prefJ
+    cdef np.ndarray range_probs, prevA, prevB
     #cdef np.ndarray indices, data
     
     prev_state = indexer.extractState(prevIndex)
@@ -76,27 +76,23 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
 
     t00 = time.time()
     for f in (0,1):
-        nextState.f[:] = -1
+        nextState.f = f
+
         ## when t=0, start_depth will be -1, which in the d> 1 case will wraparound.
         ## we want in the t=0 case for f_{t=1} to be [-/-]*d
         if start_depth >= 0:
-            nextState.f[start_depth] = f
             cumProbs[0] = models.fork[start_depth].dist[ prevB[start_depth], prevG, f ]
         else:
-            ## We only need to handle the f=-1 case one time, when f=1 and j=0 (though formally they are -1 and -1 because the 1 and 0 are above the stack we actually keep track of)
+            ## if start depth is -1 we're only allowed to fork:
             if f == 1:
                 cumProbs[0] = 1.0
             else:
                 continue
             
         for j in (0,1):
-            if start_depth == -1 and not (f == 1 and j == 0):
-                continue
-
-            nextState.j[:] = -1
+            nextState.j = j
             ## See note above where we set nextState.f
             if start_depth >= 0:
-                nextState.j[start_depth] = j
                 if f == 0:
                     cumProbs[1] = cumProbs[0] * models.reduce[start_depth].dist[ prevA[start_depth], above_awa, j ]
                 else:
@@ -105,7 +101,7 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
                 if j == 0:
                     cumProbs[1] = 1
                 else:
-                    ## Should be dead code from above
+                    ## if start_depth <0 then j must be 0
                     continue
             
             for a in range(1, a_max-1):

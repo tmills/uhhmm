@@ -827,49 +827,49 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None):
             state = State(max_depth)
             ## special case for first word
             if index == 0:
-                state.f[0] = -1
-                state.j[0] = -1
+                state.f = 1
+                state.j = 0
                 state.a[0] = 0
                 state.b[0] = 0
             else:
                 prev_depth = prev_state.max_awa_depth()
                 if index == 1:
-                    state.f[0] = -1
-                    state.j[0] = -1
+                    state.f = 1
+                    state.j = 0
                 else:
                     if np.random.random() >= 0.5:
-                        state.f[prev_depth] = 1
+                        state.f = 1
                     else:
-                        state.f[prev_depth] = 0
+                        state.f = 0
                     ## j is deterministic in the middle of the sentence
-                    if prev_depth+1 == max_depth and state.f[prev_depth] == 1:
+                    if prev_depth+1 == max_depth and state.f == 1:
                         ## If we are at max depth and we forked, we must reduce
-                        state.j[prev_depth] = 1
-                    elif prev_depth <= 0 and state.f[prev_depth] == 0:
+                        state.j = 1
+                    elif prev_depth <= 0 and state.f == 0:
                         ## If we are at 0 and we did not fork, we must not reduce
-                        state.j[prev_depth] = 0
+                        state.j = 0
                     else:
-                        state.j[prev_depth] = np.random.randint(0, 2)
+                        state.j = np.random.randint(0, 2)
                     
                 if prev_depth == -1:
                     cur_depth = 0
                     state.a[cur_depth] = np.random.randint(1, a_max-1)
-                elif state.f[prev_depth] == 1 and state.j[prev_depth] == 1:
+                elif state.f == 1 and state.j == 1:
                     cur_depth = prev_depth
                     state.a[0:cur_depth] = prev_state.a[0:cur_depth]
                     state.b[0:cur_depth] = prev_state.b[0:cur_depth]
                     state.a[cur_depth] = prev_state.a[cur_depth]
-                elif state.f[prev_depth] == 0 and state.j[prev_depth] == 0:
+                elif state.f == 0 and state.j == 0:
                     cur_depth = prev_depth
                     state.a[0:cur_depth] = prev_state.a[0:cur_depth]
                     state.b[0:cur_depth] = prev_state.b[0:cur_depth]
                     state.a[cur_depth] = np.random.randint(1,a_max-1)
-                elif state.f[prev_depth] == 1 and state.j[prev_depth] == 0:
+                elif state.f == 1 and state.j == 0:
                     cur_depth = prev_depth + 1
                     state.a[0:cur_depth] = prev_state.a[0:cur_depth]
                     state.b[0:cur_depth] = prev_state.b[0:cur_depth]
                     state.a[cur_depth] = np.random.randint(1,a_max-1)
-                elif state.f[prev_depth] == 0 and state.j[prev_depth] == 1:
+                elif state.f == 0 and state.j == 1:
                     cur_depth = prev_depth - 1
                     state.a[0:cur_depth] = prev_state.a[0:cur_depth]
                     state.b[0:cur_depth] = prev_state.b[0:cur_depth]
@@ -914,16 +914,16 @@ def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
                     models.exp[0].trans_prob[sent_index, index] = models.exp[0].dist[prevState.g, state.a[0], state.b[0]]
                 else:
                     ## Fork and join don't have trans_probs because they are finite:
-                    if state.f[d] == 0 and state.j[d] == 0:
+                    if state.f == 0 and state.j == 0:
                         models.act[d].trans_prob[sent_index, index] = models.root[d].trans_prob[sent_index, index] = models.act[d].dist[ prevState.a[d], 0, state.a[d] ]
                         models.start[d].trans_prob[sent_index, index] = models.cont[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.start[d].dist[ prevState.a[d], state.a[d], state.b[d] ]
-                    elif state.f[d] == 1 and state.j[d] == 1:
+                    elif state.f == 1 and state.j == 1:
                         models.act[d].trans_prob[sent_index, index] = models.root[d].trans_prob[sent_index, index] = 0
                         models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.cont[d].dist[ prevState.b[d], prevState.g, state.b[d] ]
-                    elif state.f[d] == 1 and state.j[d] == 0:
+                    elif state.f == 1 and state.j == 0:
                         models.root[d].trans_prob[sent_index, index] = models.act[d].trans_prob[sent_index, index]  = models.root[d].dist[ 0, prevState.g, state.a[d] ]
                         models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.exp[0].dist[prevState.g, state.a[d], state.b[d] ]
-                    elif state.f[d] == 0 and state.j[d] == 1:
+                    elif state.f == 0 and state.j == 1:
                         models.act[d-1].trans_prob[sent_index, index] = models.root[d-1].trans_prob[sent_index, index] = 0
                         models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.cont[d-1].dist[ prevState.b[d-1], prevState.g, state.b[d] ]
 
@@ -962,37 +962,37 @@ def increment_counts(hid_seq, sent, models, inc=1):
                 models.root[0].count((0, prevState.g), state.a[0], inc)
                 models.exp[0].count((prevState.g, state.a[0]), state.b[0], inc)
             else:
-                models.fork[fork_depth].count((prevState.b[prev_depth], prevState.g), state.f[fork_depth], inc)
+                models.fork[fork_depth].count((prevState.b[prev_depth], prevState.g), state.f, inc)
 
-                if state.f[fork_depth] == 0:
-                    models.reduce[fork_depth].count((prevState.a[prev_depth], prev_above_awa), state.j[fork_depth], inc)
-                elif state.f[fork_depth] == 1:
-                    models.trans[fork_depth].count((prevState.b[prev_depth], prevState.g), state.j[fork_depth], inc)
+                if state.f == 0:
+                    models.reduce[fork_depth].count((prevState.a[prev_depth], prev_above_awa), state.j, inc)
+                elif state.f == 1:
+                    models.trans[fork_depth].count((prevState.b[prev_depth], prevState.g), state.j, inc)
                 else:
                     raise Exception("Unallowed value of the fork variable!")
                     
                 ## Count A & B
-                if state.f[fork_depth] == 0 and state.j[fork_depth] == 0:
+                if state.f == 0 and state.j == 0:
                     assert prev_depth == cur_depth
                     models.act[cur_depth].count((prevState.a[cur_depth], prev_above_awa), state.a[cur_depth], inc)
                     models.start[cur_depth].count((prevState.a[cur_depth], state.a[cur_depth]), state.b[cur_depth], inc)
-                elif state.f[fork_depth] == 1 and state.j[fork_depth] == 1:
+                elif state.f == 1 and state.j == 1:
                     assert prev_depth == cur_depth
                     ## no change to act, awa increments cont model
                     models.cont[cur_depth].count((prevState.b[cur_depth], prevState.g), state.b[cur_depth], inc)
-                elif state.f[fork_depth] == 1 and state.j[fork_depth] == 0:
+                elif state.f == 1 and state.j == 0:
                     assert prev_depth+1 == cur_depth
                     ## run root and exp models at depth d+1
                     models.root[cur_depth].count((prevState.b[prev_depth], prevState.g), state.a[cur_depth], inc)
                     models.exp[cur_depth].count((prevState.g, state.a[cur_depth]), state.b[cur_depth], inc)
-                elif state.f[fork_depth] == 0 and state.j[fork_depth] == 1:
+                elif state.f == 0 and state.j == 1:
                     assert prev_depth == cur_depth+1
                     ## lower level finished -- awaited can transition
                     ## Made the following deciison in a confusing rebase -- left other version
                     ## commented in in case I decided wrong.
                     models.next[cur_depth].count((prevState.a[prev_depth], prevState.b[cur_depth]), state.b[cur_depth], inc)
                 else:
-                    raise Exception("Unallowed value of f=%d and j=%d" % (state.f[fork_depth], state.j[fork_depth]) )    
+                    raise Exception("Unallowed value of f=%d and j=%d" % (state.f, state.j) )    
         
             ## Count G
             models.pos.count(state.b[cur_depth], state.g, inc)

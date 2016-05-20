@@ -12,8 +12,8 @@ class State:
         self.depth = depth
         
         if state == None:
-            self.f = np.zeros(depth, dtype=int) - 1
-            self.j = np.zeros(depth, dtype=int) - 1
+            self.f = -1
+            self.j = -1
             self.a = np.zeros(depth, dtype=int)
             self.b = np.zeros(depth, dtype=int)
             self.g = 0
@@ -22,13 +22,11 @@ class State:
 
     def str(self):
         string = ''
-        for d in range(0, self.depth):
-            ## only one depth position of f and j will be active:
-            if self.f[d] >= 0 and self.j[d] >= 0:
-                f_str = '+/' if self.f[d]==1 else '-/'        
-                string += f_str
-                j_str = '+' if self.j[d]==1 else '-'
-                string += j_str
+
+        f_str = '+/' if self.f==1 else '-/'        
+        string += f_str
+        j_str = '+' if self.j==1 else '-'
+        string += j_str
 
         string += "::"
         
@@ -47,10 +45,7 @@ class State:
         return (self.f, self.j, self.a, self.b, self.g)
 
     def max_fork_depth(self):
-        for d in range(0, self.depth):
-            if self.f[d] >= 0:
-                return d
-        return -1
+        return self.max_awa_depth()
 
     def max_awa_depth(self):
         ## Essentially empty -- used for first time step
@@ -64,3 +59,4 @@ class State:
         
         ## Stack is full -- if d=4 then max depth index is 3
         return self.depth-1
+
