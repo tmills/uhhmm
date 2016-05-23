@@ -228,7 +228,8 @@ def main(args):
         while True:
             if os.path.isfile(config_file):
                 configs = open(config_file).readlines()
-                if 'OK' in configs[1]:
+                if len(configs)==2 and 'OK' in configs[1]:
+                    logging.info('OSC setup acquired. Starting a worker with ' + config_file)
                     args = configs[0].strip().split(' ')
                     break
             else:
