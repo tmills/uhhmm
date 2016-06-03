@@ -19,7 +19,6 @@ def main(args):
     logging.info("Reading parser models")
     in_file = open(args[0], 'rb')
     models = pickle.load(in_file)
-#    parser = HmmParser.HmmParser(models)
     out_dir = args[3]
     
     logging.info("Reading word->int mapping dictionary")
@@ -79,14 +78,12 @@ def processLTF(ltf_file, models, word_map, word_lookup, out_dir):
                 int_tokens.append(word_map['unk'])
 
         if len(int_tokens) > 0:
-            token_ids.insert(0, None)
-            print("ABOUT TO PARSE")
+#            token_ids.insert(0, None)
             sent_list = parser.parse(int_tokens)
-            print("DONE PARSING")
             for index, state in enumerate(sent_list):
 
-                if index == 0:
-                    continue
+#                if index == 0:
+#                    continue
 
                 # add a, b, and g attributes to token elements of existing tree
                 # provided the states in sent_list and the tokens in token_ids
@@ -102,6 +99,8 @@ def addABG2TokenElement(element, state):
     element.set('a', str(state.a))
     element.set('b', str(state.b))
     element.set('g', str(state.g))
+    element.set('f', str(state.f))
+    element.set('j', str(state.j))
 
 
 
