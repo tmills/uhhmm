@@ -43,15 +43,15 @@ def main(args):
         laf_dir = args[2]
 
     except:
-        print("Usage: "+sys.argv[0]+" [gazeteer file] [ltf directory] [laf output directory]")
+        print("Usage: "+sys.argv[0]+" [gazetteer file] [ltf directory] [laf output directory]")
         exit(1)
 
     logging.basicConfig(level=logging.INFO)
 #    logging.basicConfig(level=logging.DEBUG)
 
     with open(gaz_fn, 'r') as gazfile:
-        gaz = []
-        g1 = []
+        gaz = [] # List of full entries in gazetteer
+        g1 = [] # List of first words of entries in gazetteer
         for line in gazfile.read().strip().split('\n'):
             gaz.append(line.lower())
             g1.append(line.lower().split()[0])
@@ -133,23 +133,3 @@ def indent(elem, level=0):
 
 if __name__ == '__main__':
     main(sys.argv[1:])    
-#squares = [1,4,9,16]
-#l = [i for i in range(20)]
-#nums = ''
-#while l:
-#    n = l.pop(0)
-#    if n in squares:
-#        nums+=str(n)+' '
-#        while l:
-#            n = l.pop(0)
-#            if n % 2 == 0 or n % 3 == 0:
-#                nums+=str(n)+' '
-#            else:
-#                print(nums)
-#                nums = ''
-#                break
-#    elif nums != '':
-#        print(nums)
-#        nums = ''
-#print("Done")
-
