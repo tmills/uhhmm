@@ -41,9 +41,10 @@ def main(args):
         gaz_fn = args[0]
         ltf_dir = args[1]
         laf_dir = args[2]
+        working_lang = args[3]
 
     except:
-        print("Usage: "+sys.argv[0]+" [gazetteer file] [ltf directory] [laf output directory]")
+        print("Usage: "+sys.argv[0]+" [gazetteer file] [ltf directory] [laf output directory] [lang abbrev]")
         exit(1)
 
     logging.basicConfig(level=logging.INFO)
@@ -52,9 +53,15 @@ def main(args):
     with open(gaz_fn, 'r') as gazfile:
         gaz = [] # List of full entries in gazetteer
         g1 = [] # List of first words of entries in gazetteer
+        entitytypes = {}
         for line in gazfile.read().strip().split('\n'):
-            gaz.append(line.lower())
-            g1.append(line.lower().split()[0])
+            NEtype = line.split()[0]
+            lang = line.split()[1]
+            entity = ' '.join(line.split()[2:])
+            if lang = working_lang:
+                entitytypes[entity] = NEtype
+                gaz.append(entity.lower())
+                g1.append(entity.lower().split()[0])
 
     for fn in os.listdir(args[1]):
         if fn.endswith("ltf.xml"):
@@ -78,20 +85,21 @@ def main(args):
                     start_char = token.get('start_char')
                     end_char = token.get('end_char')
                     candidate = None
-                    if word.lower() in g1:
+                    if word.lower() in g1: # If the current word is the first of a NE, start a new candidate with this word
                         logging.debug("Found first word of NE")
                         candidate = Candidate(word, start_char, end_char, token_id, token_id)
-                    for c in candidates:
+                    for c in candidates: # Add the current word to all already started candidates, and see if there are any complete NE matches
                         c.appendString(word, end_char, token_id)
                         if c.lowered in gaz:
                             logging.debug("Found full NE in gazetteer")
-                            add_annotation(out_doc, c.string, doc_id+'-ann-'+str(annot_id), c.start_token, c.end_token, c.start_char, c.end_char)
+                            add_annotation(out_doc, c.string, doc_id+'-ann-'+str(annot_id), entitytypes[c.string],
+                                            c.start_token, c.end_token, c.start_char, c.end_char)
                             annot_id+=1
-                    if candidate:
+                    if candidate: # If a new candidate was started, check whether it is a complete NE, and add it to the list of candidates
                         if candidate.lowered in gaz:
                             logging.debug("Found full NE in gazetteer")
-                            add_annotation(out_doc, candidate.string, doc_id+'-ann-'+str(annot_id), candidate.start_token, candidate.end_token, 
-                                            candidate.start_char, candidate.end_char)
+                            add_annotation(out_doc, candidate.string, doc_id+'-ann-'+str(annot_id), entitytypes[candidate.string],
+                                            candidate.start_token, candidate.end_token, candidate.start_char, candidate.end_char)
                             annot_id+=1
                         candidates.append(candidate)
 
@@ -100,12 +108,13 @@ def main(args):
         out_tree.write(join(laf_dir, fn.replace('ltf.xml','laf.xml')))
 
 
-def add_annotation(parent, string, id_str, begin_id, end_id, begin_char, end_char):
+def add_annotation(parent, string, id_str, NEtype, begin_id, end_id, begin_char, end_char):
     annot = ET.SubElement(parent, "ANNOTATION")
     annot.set("id", id_str)
     annot.set("task", "NE")
     annot.set("start_token", begin_id)
     annot.set("end_token", end_id)
+    annot.set("type", NEtype)
     extent = ET.SubElement(annot, "EXTENT")
     extent.set("start_char", begin_char)
     extent.set("end_char", end_char)
