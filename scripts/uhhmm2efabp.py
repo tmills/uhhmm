@@ -28,6 +28,12 @@ for sentnum, line in enumerate(sys.stdin):
 			thisStep.append(str(0))
 		else:
 			thisStep.append(str(1))
+		if step[1].endswith(':'):
+			step[1] = step[1][:-1]+'COLON'
+		elif step[1].endswith('('):
+			step[1] = step[1][:-1]+'LB'
+		elif step[1].endswith(')'):
+			step[1] = step[1][:-1]+ 'RB'
 		cats = step[1].split(':')
 		if cats[0] != 'ACT0/AWA0':
 			preterm = '/'.join([x+'_' for x in cats[0].split(';')[-1].split('/')])
@@ -52,6 +58,8 @@ for sentnum, line in enumerate(sys.stdin):
 		tagword = cats[1].split(';')
 		thisStep.append(tagword[0]+'_')
 		thisStep.append(relations)
+		if tagword[1] == 'COLON':
+			tagword[1] = ':'
 		thisStep.append(tagword[1] if len(tagword) > 1 else "Word%d"% index)
 		#print thisStep
 		string.append(thisStep)
