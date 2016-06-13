@@ -37,7 +37,7 @@ def main(args):
     files = glob.glob(args[2] + "/*.ltf.xml")
 
 #    jobs = []
-    pool = multiprocessing.Pool(processes=10)
+    pool = multiprocessing.Pool(processes=8, maxtasksperchild=1)
 
     for ltf_file in files:
         pool.apply_async(processLTF, (ltf_file, models, word_map, word_lookup, out_dir))
@@ -90,6 +90,7 @@ def processLTF(ltf_file, models, word_map, word_lookup, out_dir):
                 # line up 1 to 1
 
                 addABG2TokenElement(token_elemsByID[token_ids[index]], state)
+    parser = None
 
     tree.write("%s/%s.ltf.xml" % (out_dir, docid), encoding='utf-8')
 
