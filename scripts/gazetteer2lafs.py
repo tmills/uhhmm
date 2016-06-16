@@ -2,7 +2,8 @@ import sys
 import os
 import logging
 from os.path import join
-from lxml import etree as ET
+#from lxml import etree as ET
+import xml.etree.ElementTree as ET
 
 #data = "We welcome the President of the United States of America , whose contributions have been great for America .".split()
 
@@ -58,11 +59,17 @@ def main(args):
             NEtype = line.split()[0]
             lang = line.split()[1]
             entity = ' '.join(line.split()[2:])
-            if lang = working_lang:
+            if lang == working_lang:
                 entitytypes[entity] = NEtype
-                gaz.append(entity.lower())
-                g1.append(entity.lower().split()[0])
-
+                try:
+                    u_entity = entity.lower()
+                    u_entity_start = entity.lower()
+                    gaz.append(u_entity)
+                    g1.append(u_entity_start)
+                    print("Added %s of type %s to gazetteer" % (u_entity, type(u_entity) ) )
+                except Exception as e:
+                    print ("Failed to encode this entity: %s" % entity)
+                                    
     for fn in os.listdir(args[1]):
         if fn.endswith("ltf.xml"):
             annot_id = 0
@@ -80,11 +87,16 @@ def main(args):
                     if word == None or len(word) == 0:
                         logging.warning("Found an empty token!")
                         continue
+                    if type(word) == 'unicode':
+                        print("re-encoding unicode word %s" % (word) )
+                        word = word.decode('utf-8').encode('utf-8')
+                        
                     logging.debug("Processing %s" % word)
                     token_id = token.get('id')
                     start_char = token.get('start_char')
                     end_char = token.get('end_char')
                     candidate = None
+                    #print("Type of word %s is %s, type of g1 is %s" % ( word.lower(), type(word.lower()), type(g1[0]) ) )
                     if word.lower() in g1: # If the current word is the first of a NE, start a new candidate with this word
                         logging.debug("Found first word of NE")
                         candidate = Candidate(word, start_char, end_char, token_id, token_id)

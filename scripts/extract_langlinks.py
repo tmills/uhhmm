@@ -13,7 +13,7 @@ def read_ner_lines(fn):
         parts = line.rstrip().split(' ')
         key = "_".join(parts[1:])
         map[key] = parts[0]
-        sys.stderr.write("Creating map with %s => %s\n" % (key, parts[0]) )
+        #sys.stderr.write("Creating map with %s => %s\n" % (key, parts[0]) )
 
 #    map["Barack_Obama"] = "PER"
     return map
@@ -43,7 +43,7 @@ def main(args):
         name_with_quotes = els[2]
         name_wo_quotes = name_with_quotes[1:-1]
         if name_wo_quotes in ners:
-            sys.stderr.write("Found key %s in page file with pid %d\n" % (name_wo_quotes, int(pid)) )
+            #sys.stderr.write("Found key %s in page file with pid %d\n" % (name_wo_quotes, int(pid)) )
             page_maps[pid] = ners[name_wo_quotes]
     
     pf.close()

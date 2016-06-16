@@ -85,6 +85,7 @@ def write_output(sample, stats, config, gold_pos=None):
     f.write('%d\t%s\n' % (sample.iter, np.array_str(models.pos.beta)))
     f.close()
     
+    #write_lex_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
     write_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
     write_model(models.pos.dist, output_dir + "/p_pos_%d.txt" % sample.iter, condPrefix="B", outcomePrefix="POS")
     
@@ -136,6 +137,22 @@ def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix="",
             f.write("P( %s | %s, %d ) = %f \n" % (word_dict[rhs], str(lhs), depth, 10**val))
                 
     f.close()
+
+def write_lex_model(dist, out_file, word_dict=None):
+    f = open(out_file, 'w')
+    out_dim = dist.shape[-1]
+    for ind,val in np.ndenumerate(dist):
+        lhs = ind[0:-1]
+        rhs = ind[-1]
+        unlog_val = 10**val
+        
+        if (out_dim > 2 and rhs == 0) or unlog_val < 0.000001:
+            continue
+
+        if word_dict == None:
+            f.write("X %s : %s = %f \n" % (str(lhs), str(rhs), 10**val))
+        else:
+            f.write("X %s : %s = %f \n" % (str(lhs), word_dict[rhs], 10**val))
 
 ## Sample output format -- each time step (token) is represented as the following:
 ## F/J::Active/Awaited:Pos   (see str() method in the State() class)
