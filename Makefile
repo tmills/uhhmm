@@ -101,4 +101,5 @@ genmodel/%.morf.model: data/%.txt genmodel
 	morfessor-train -s $@ $<
 
 
-
+clean:
+	rm scripts/*.{c,so}

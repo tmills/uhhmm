@@ -10,7 +10,7 @@ import time
 import numpy as np
 cimport numpy as np
 import sys
-from State import State
+import State
 from Sampler import *
 from HmmSampler import *
 from PyzmqMessage import ModelWrapper
@@ -62,7 +62,7 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
                     return indices, data
 
     cumProbs = np.zeros(3)
-    nextState = State(depth)
+    nextState = State.State(depth)
 
     ## Some of the transitions look at above states, but in the d=0 special
     ## case there is nowhere to look so just assign the variable here and

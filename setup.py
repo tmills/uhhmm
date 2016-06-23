@@ -3,7 +3,7 @@ from Cython.Build import cythonize
 from distutils.extension import Extension
 import numpy
 
-extensions = [Extension("*", ["scripts/*.pyx"], 
+extensions = [Extension("*", ["scripts/*.pyx"], extra_compile_args=["-w"]
                 )]
 
 setup(

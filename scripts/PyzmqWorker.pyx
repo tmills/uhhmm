@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
 import zmq
-from PyzmqMessage import *
 from multiprocessing import Process
+from PyzmqMessage import get_file_signature, resource_current, ModelWrapper, PyzmqJob, SentenceJob, CompileJob, CompletedJob, PyzmqParse, CompiledRow
+import multiprocessing
 import logging
 import os
 import os.path
@@ -15,22 +16,19 @@ import pdb, traceback
 #import pyximport; pyximport.install()
 import DepthOneInfiniteSampler
 import HmmSampler
+cimport HmmSampler
 import SparseHmmSampler
-from Sampler import *
+import Sampler
+cimport Sampler
+#from Sampler import *
 import Indexer
 import FullDepthCompiler
+from uhhmm_io import printException, ParsingError
 
-def start_workers(work_distributer, cluster_cmd, maxLen):
-    logging.debug("Cluster command is %s" % cluster_cmd)
-
-    cmd_str = 'python3 %s/scripts/PyzmqWorker.py %s %d %d %d %d' % (os.getcwd(), work_distributer.host, work_distributer.jobs_port, work_distributer.results_port, work_distributer.models_port, maxLen)
-    submit_cmd = [ cmd_arg.replace("%c", cmd_str) for cmd_arg in cluster_cmd.split()]
-    logging.info("Making cluster submit call with the following command: %s" % str(submit_cmd))
-    subprocess.call(submit_cmd)
-    
-class PyzmqWorker(Process):
+       
+cdef class PyzmqWorker:
     def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, seed=0, level=logging.INFO):
-        Process.__init__(self)
+        #Process.__init__(self)
         self.host = host
         self.jobs_port = jobs_port
         self.results_port = results_port
@@ -43,22 +41,24 @@ class PyzmqWorker(Process):
         self.debug_level = level
         self.model_file_sig = None
         self.indexer = None
-        self.models_socket = None
-        self.jobs_socket = None
-        self.results_socket = None
+
+    def __reduce__(self):
+        return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.seed, self.debug_level), None)
         
     def run(self):
         logging.basicConfig(level=self.debug_level)
         context = zmq.Context()
-        self.models_socket = context.socket(zmq.REQ)
-        self.models_socket.connect("tcp://%s:%s" % (self.host, self.models_port))
+        models_socket = context.socket(zmq.REQ)
+        url = "tcp://%s:%d" % (self.host, self.models_port)
+        logging.debug("Connecting to models socket at url %s" % (url) )
+        models_socket.connect(url)
 
         logging.debug("Worker %d connecting to work distribution server..." % self.tid)
-        self.jobs_socket = context.socket(zmq.REQ)        
-        self.jobs_socket.connect("tcp://%s:%s" % (self.host, self.jobs_port))
+        jobs_socket = context.socket(zmq.REQ)        
+        jobs_socket.connect("tcp://%s:%d" % (self.host, self.jobs_port))
         
-        self.results_socket = context.socket(zmq.PUSH)
-        self.results_socket.connect("tcp://%s:%s" % (self.host, self.results_port))
+        results_socket = context.socket(zmq.PUSH)
+        results_socket.connect("tcp://%s:%d" % (self.host, self.results_port))
 
         logging.debug("Worker %d connected to all three endpoints" % self.tid)
                 
@@ -69,25 +69,30 @@ class PyzmqWorker(Process):
             sampler = None
             #  Socket to talk to server
             logging.debug("Worker %d waiting for new models..." % self.tid)
-            self.models_socket.send(b'0')
-            msg = self.models_socket.recv_pyobj()
+            models_socket.send(b'0')
+            msg = models_socket.recv_pyobj()
             
             in_file = open(msg, 'rb')
-            model_wrapper = pickle.load(in_file)
+            try:
+                model_wrapper = pickle.load(in_file)
+            except Exception as e:
+                printException()
+                raise e
+
             in_file.close()
             self.model_file_sig = get_file_signature(msg)
             
             if model_wrapper.model_type == ModelWrapper.HMM:
                 sampler = HmmSampler.HmmSampler(self.seed)
                 sampler.set_models(model_wrapper.model)
-                self.processSentences(sampler)
+                self.processSentences(sampler, model_wrapper.model[1], jobs_socket, results_socket)
             elif model_wrapper.model_type == ModelWrapper.INFINITE:
                 sampler = DepthOneInfiniteSampler.InfiniteSampler(self.seed)
                 sampler.set_models(model_wrapper.model)
                 self.processSentences(sampler)
             elif model_wrapper.model_type == ModelWrapper.COMPILE:
                 self.indexer = Indexer.Indexer(model_wrapper.model)
-                self.processRows(model_wrapper.model)
+                self.processRows(model_wrapper.model, jobs_socket, results_socket)
             else:
                 logging.error("Received a model type that I don't know how to process!")
 
@@ -98,15 +103,15 @@ class PyzmqWorker(Process):
 
 
         logging.debug("Worker %d disconnecting sockets and finishing up" % self.tid)
-        self.jobs_socket.close()
-        self.results_socket.close()
-        self.models_socket.close()
+        jobs_socket.close()
+        results_socket.close()
+        models_socket.close()
 
-    def processRows(self, models):
+    def processRows(self, models, jobs_socket, results_socket):
         while True:
             try:
-                ret_val = self.jobs_socket.send_pyobj(self.model_file_sig)
-                job = self.jobs_socket.recv_pyobj()
+                ret_val = jobs_socket.send_pyobj(self.model_file_sig)
+                job = jobs_socket.recv_pyobj()
             except Exception as e:
                 ## Timeout in the job socket probably means we're done -- quit
                 logging.info("Exception thrown while waiting for row to process: %s" % (e) )
@@ -124,14 +129,14 @@ class PyzmqWorker(Process):
             
             (indices, data) = FullDepthCompiler.compile_one_line(len(models.fork), row, models, self.indexer)
             row_output = CompiledRow(row, indices, data)
-            self.results_socket.send_pyobj(CompletedJob(PyzmqJob.COMPILE, row_output, True) )
+            results_socket.send_pyobj(CompletedJob(PyzmqJob.COMPILE, row_output, True) )
             if row % 10000 == 0:
                 logging.info("Compiling row %d" % row)
             
             if self.quit:
                 break
                 
-    def processSentences(self, sampler):
+    def processSentences(self, sampler, pi, jobs_socket, results_socket):
         sampler.initialize_dynprog(self.maxLen)        
     
         sents_processed = 0
@@ -144,8 +149,8 @@ class PyzmqWorker(Process):
         while True: 
             logging.log(logging.DEBUG-1, "Worker %d waiting for job" % self.tid)
             try:
-                ret_val = self.jobs_socket.send_pyobj(self.model_file_sig)
-                job = self.jobs_socket.recv_pyobj()
+                ret_val = jobs_socket.send_pyobj(self.model_file_sig)
+                job = jobs_socket.recv_pyobj()
             except Exception as e:
                 ## Timeout in the job socket probably means we're done -- quit
                 logging.info("Exception raised while waiting for sentence: %s" % (e) )
@@ -171,7 +176,7 @@ class PyzmqWorker(Process):
             success = True
         
             try:
-                (sent_sample, log_prob) = sampler.sample(sent, sent_index)
+                (sent_sample, log_prob) = sampler.sample(pi, sent, sent_index)
             except Exception as e:
                 logging.warning("Warning: Sentence %d had a parsing error %s." % (sent_index, e))
                 sent_sample = None
@@ -197,7 +202,7 @@ class PyzmqWorker(Process):
             parse = PyzmqParse(sent_index, sent_sample, log_prob, success)
             sents_processed +=1
         
-            self.results_socket.send_pyobj(CompletedJob(PyzmqJob.SENTENCE, parse, parse.success))
+            results_socket.send_pyobj(CompletedJob(PyzmqJob.SENTENCE, parse, parse.success))
             if self.quit:
                 break
 
@@ -211,37 +216,40 @@ class PyzmqWorker(Process):
     def handle_sigint(self, signum, frame):
         logging.info("Worker received quit signal... will terminate after cleaning up.")
         self.quit = True
+
+    def handle_sigterm(self, signum, frame):
+        logging.info("Worker received quit signal... will terminate after cleaning up.")
+        self.quit = True
     
     def handle_sigalarm(self, signum, frame):
         logging.warning("Worker received alarm while trying to process sentence... will raise exception")
-        raise ParseException("Worker hung while parsing sentence")
-        
-def main(args):
-    logging.basicConfig(level=logging.INFO)
+        raise ParsingError("Worker hung while parsing sentence")
+
+                
+# def main(args):
+#     logging.basicConfig(level=logging.INFO)
+#     
+#     if len(args) != 1 and len(args) != 5:
+#         print("ERROR: Wrong number of arguments! Two run modes -- One argument of a file with properties or 5 arguments with properties.")
+#         sys.exit(-1)
+#         
+#     if len(args) == 1:
+#         config_file = args[0] + "/masterConfig.txt"
+#         while True:
+#             if os.path.isfile(config_file):
+#                 configs = open(config_file).readlines()
+#                 if len(configs)==2 and 'OK' in configs[1]:
+#                     logging.info('OSC setup acquired. Starting a worker with ' + config_file)
+#                     args = configs[0].strip().split(' ')
+#                     break
+#             else:
+#                 time.sleep(10)
+#     
+#     fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]))
+#     signal.signal(signal.SIGINT, fs.handle_sigint)
+#     signal.signal(signal.SIGALRM, fs.handle_sigalarm)
+#     
+#     ## Call run directly instead of start otherwise we'll have 2n workers    
+#     fs.run()
     
-    if len(args) != 1 and len(args) != 5:
-        print("ERROR: Wrong number of arguments! Two run modes -- One argument of a file with properties or 5 arguments with properties.")
-        sys.exit(-1)
-        
-    if len(args) == 1:
-        config_file = args[0] + "/masterConfig.txt"
-        while True:
-            if os.path.isfile(config_file):
-                configs = open(config_file).readlines()
-                if len(configs)==2 and 'OK' in configs[1]:
-                    logging.info('OSC setup acquired. Starting a worker with ' + config_file)
-                    args = configs[0].strip().split(' ')
-                    break
-            else:
-                time.sleep(10)
-    
-    fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]))
-    signal.signal(signal.SIGINT, fs.handle_sigint)
-    signal.signal(signal.SIGALRM, fs.handle_sigalarm)
-    
-    ## Call run directly instead of start otherwise we'll have 2n workers    
-    fs.run()
-    
-if __name__ == "__main__":
-    main(sys.argv[1:])
 

@@ -6,6 +6,7 @@ import numpy as np
 import distribution_sampler as sampler
 import uhhmm_io
 import pdb
+import signal
 import socket
 import sys
 import tempfile
@@ -13,8 +14,9 @@ from multiprocessing import Process,Queue,JoinableQueue
 import zmq
 from WorkDistributerServer import WorkDistributerServer
 from PyzmqMessage import *
-from PyzmqWorker import PyzmqWorker, start_workers
-from State import State, sentence_string
+#from PyzmqWorker import PyzmqWorker
+from State import sentence_string
+import State
 from Indexer import Indexer
 import multiprocessing as mp
 import FullDepthCompiler
@@ -23,6 +25,8 @@ import DepthOneInfiniteSampler
 import DistributedModelCompiler
 import HmmSampler
 from dahl_split_merge import perform_split_merge_operation, indices
+from models import Model, Models
+from workers import start_local_workers_with_distributer
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -44,70 +48,6 @@ class Stats:
         self.alpha0 = 0
         self.gamma = 0
         self.vi = 0
-
-# A mapping from input space to output space. The Model class can be
-# used to store counts during inference, and then know how to resample themselves
-# if given a base distribution.
-# TODO: Sub-class for BooleanModel vs. InfiniteModel  with single sample()/resample() method
-# and automatically adjusting sizes for infinite version.
-class Model:
-    def __init__(self, shape, alpha=0.0, beta=None, corpus_shape=(0,0), name="Unspecified"):
-        self.pairCounts = np.zeros(shape, dtype=np.int)
-        self.dist = np.random.random(shape)
-        self.dist /= self.dist.sum(1, keepdims=True)
-        self.dist = np.log10(self.dist)
-        self.u = np.zeros(corpus_shape) + -np.inf
-        self.trans_prob = np.zeros(corpus_shape)
-        self.alpha = alpha
-        self.beta = beta
-        self.name = name
-
-    def count(self, cond, out, val):
-        out_counts = self.pairCounts[...,out]
-        out_counts[cond] = out_counts[cond] + val
-        if val < 0 and out_counts[cond] < 0:
-            logging.error("Error! After a count there is a negative count")
-            raise Exception
-
-    def dec(self, cond, out):
-        self.pairCounts[cond,out] -= 1
-
-    def selfSampleDirichlet(self):
-        self.sampleDirichlet(self.alpha * self.beta)
-        
-    def sampleDirichlet(self, base):
-        self.dist = sampler.sampleDirichlet(self.pairCounts, base)
-
-    def sampleBernoulli(self, base):
-        self.dist = sampler.sampleBernoulli(self.pairCounts, base)
-    
-    def resetCounts(self):
-        self.pairCounts[:] = 0
-
-    def copy(self):
-        m_copy = Model(self.pairCounts.shape, self.alpha, None if self.beta == None else self.beta.copy(), self.trans_prob.shape)
-        m_copy.pairCounts = self.pairCounts.copy()
-        m_copy.dist = self.dist.copy()
-        return m_copy
-        
-class Models():
-    def __init__(self):
-        self.models = []
-        
-    def resample_all(self):
-        for model in self.models:
-            model.dist = sampleDirichlet(model)
-
-    def resetAll(self):
-        for model in self.models:
-            if type(model) == list:
-                for submodel in model:
-                    submodel.resetCounts()
-            else:
-                model.resetCounts()
-
-    def append(self, model):
-        self.models.append(model)
         
 # This is the main entry point for this module.
 # Arg 1: ev_seqs : a list of lists of integers, representing
@@ -236,26 +176,23 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     collect_trans_probs(hid_seqs, models, 0, num_sents)
     
     stats = Stats()
-    inf_procs = dict()
+    inf_procs = list()
     
     logging.debug(ev_seqs[0])
     logging.debug(list(map(lambda x: x.str(), hid_seqs[0])))
 
     workDistributer = WorkDistributerServer(ev_seqs, working_dir)
     
-    logging.info("Start a new worker with python3 scripts/PyzmqWorker.py %s %d %d %d %d" % (workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1))
+    logging.info("Start a new worker with python3 scripts/workers.py %s %d %d %d %d" % (workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1))
     
     ## Initialize all the sub-processes with their input-output queues
     ## and dimensions of matrix they'll need    
     if num_procs > 0:
-        mp.set_start_method('spawn')
-        for cur_proc in range(0,num_procs):
-            ## Initialize and start the sub-process
-            inf_procs[cur_proc] = PyzmqWorker(workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, out_freq=100, tid=cur_proc, level=logging.getLogger().getEffectiveLevel())
-            inf_procs[cur_proc].start()
+        inf_procs = start_local_workers_with_distributer(workDistributer, maxLen, num_procs)
+        signal.signal(signal.SIGINT, lambda x,y: handle_sigint(x,y, inf_procs))
     
     elif cluster_cmd != None:
-        start_workers(workDistributer, cluster_cmd, maxLen)
+        start_cluster_workers(workDistributer, cluster_cmd, maxLen)
     else:
         master_config_file = './masterConfig.txt'
         with open(master_config_file, 'w') as c:
@@ -871,7 +808,7 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None):
         else:
           gold_tags=None
         for index,word in enumerate(sent):
-            state = State(max_depth)
+            state = State.State(max_depth)
             ## special case for first word
             if index == 0:
                 state.f = 1
@@ -1062,6 +999,15 @@ def decrement_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
 def increment_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
     for ind in range(start_ind, end_ind):
         increment_counts(hid_seqs[ind], sents[ind], models, 1)
+
+def handle_sigint(signum, frame, workers):
+    logging.info("Master received quit signal... will terminate after cleaning up.")
+    for ind,worker in enumerate(workers):
+        logging.info("Terminating worker %d" % (ind) )
+        worker.terminate()
+        logging.info("Joining worker %d" % (ind) )
+        worker.join()
+    sys.exit(0)
 
 def getGmax():
     global g_max

@@ -8,75 +8,83 @@ import logging
 import pickle
 import time
 import numpy as np
-import sys
+cimport numpy as np
 import zmq
 import scipy.sparse
-from Indexer import *
-#import pyximport; pyximport.install()
+cimport Indexer
+import Indexer
 import Sampler
-from State import *
+cimport Sampler
+import State
+cimport State
 import subprocess
+from uhhmm_io import printException
+import models
+cimport models
 
 def boolean_depth(l):
     for index,val in enumerate(l):
         if val >= 0:
             return index
 
-class HmmSampler(Sampler.Sampler):
+cdef class HmmSampler(Sampler.Sampler):
+    
     def __init__(self, seed):
         Sampler.Sampler.__init__(self, seed)
         self.indexer = None
+        self.models = None
+#        self.pi = None
         
     def set_models(self, models):
-        (self.models, self.pi) = models
+        self.models = models[0]
         unlog_models(self.models)
         self.lexMatrix = np.matrix(self.models.lex.dist, copy=False)
         self.depth = len(self.models.fork)
-        self.indexer = Indexer(self.models)
+        self.indexer = Indexer.Indexer(self.models)
         
-        g_len = self.models.pos.dist.shape[-1]
-        w_len = self.models.lex.dist.shape[-1]
-        scipy = True
-        try:
-            import scipy.sparse
-            self.lexMultiplier = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, self.indexer.get_state_size() / g_len)))
-        except:
-            logging.warn("Could not find scipy! Using numpy will be much less memory efficient!")
-            self.lexMultipler = np.tile(np.identity(g_len), (1, self.indexer.get_state_size() / g_len))
-            scipy = False
+        g_len = self.models.pos.dist.shape[1]
+        w_len = self.models.lex.dist.shape[1]
+        lexMultiplier = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, self.indexer.get_state_size() / g_len)))
+        self.data = lexMultiplier.data
+        self.indices = lexMultiplier.indices
+        self.indptr = lexMultiplier.indptr
         
     def initialize_dynprog(self, maxLen):
         self.dyn_prog = np.zeros((self.indexer.get_state_size(), maxLen))
 
-#    @profile
-    def forward_pass(self,sent,sent_index):
+    cpdef forward_pass(self, pi, list sent, int sent_index):
+        cdef float sentence_log_prob = 0
+        cdef double t0, t1
+        cdef int a_max, b_max, g_max, index, token, g_len
+        cdef tuple maxes
+        
         t0 = time.time()
-        try:
+        try:           
             ## keep track of forward probs for this sentence:
             maxes = self.indexer.getVariableMaxes()
             (a_max,b_max,g_max) = maxes
 
-            self.dyn_prog[:] = 0
-            sentence_log_prob = 0
-
             ## Copy=False indicates that this matrix object is just a _view_ of the
             ## array -- we don't have to copy it into a matrix and recopy back to array
             ## to get the return value
+#            sentence_log_prob = self._forward_sample_inner(pi, sent, g_max)
+            self.dyn_prog[:] = 0
+            lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
             forward = np.matrix(self.dyn_prog, copy=False)
             for index,token in enumerate(sent):
                 ## Still use special case for 0
                 if index == 0:
                     forward[1:g_max-1,0] = self.lexMatrix[1:-1,token]
                 else:
-                    forward[:,index] = self.pi.transpose() * forward[:,index-1]
-                    expanded_lex = self.lexMatrix[:,token].transpose() * self.lexMultiplier
+                    forward[:,index] = pi.transpose() * forward[:,index-1]
+                    expanded_lex = self.lexMatrix[:,token].transpose() * lexMultiplier
                     forward[:,index] = np.multiply(forward[:,index], expanded_lex.transpose())
-#                     if np.isnan(forward[:,index].max()):
-#                         logging.error("Maximum value at index %d of sentence %d is nan" % (index, sent_index))
+    #                     if np.isnan(forward[:,index].max()):
+    #                         logging.error("Maximum value at index %d of sentence %d is nan" % (index, sent_index))
 
                 normalizer = forward[:,index].sum()
                 forward[:,index] /= normalizer
-                
+            
                 ## Normalizer is p(y_t)
                 sentence_log_prob += np.log10(normalizer)
 
@@ -95,12 +103,46 @@ class HmmSampler(Sampler.Sampler):
         t1 = time.time()
         self.ff_time += (t1-t0)
         return sentence_log_prob
+    
+    cdef _forward_sample_inner(self, pi, list sent, int g_max):
+        cdef float sentence_log_prob = 0
+        cdef np.ndarray forward, expanded_lex
+        
+        self.dyn_prog[:] = 0
+        lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
+        forward = np.matrix(self.dyn_prog, copy=False)
+        for index,token in enumerate(sent):
+            ## Still use special case for 0
+            if index == 0:
+                forward[1:g_max-1,0] = self.lexMatrix[1:-1,token]
+            else:
+                forward[:,index] = pi.transpose() * forward[:,index-1]
+                expanded_lex = self.lexMatrix[:,token].transpose() * lexMultiplier
+                forward[:,index] = np.multiply(forward[:,index], expanded_lex.transpose())
+#                     if np.isnan(forward[:,index].max()):
+#                         logging.error("Maximum value at index %d of sentence %d is nan" % (index, sent_index))
 
-    #@profile
-    def reverse_sample(self, sent, sent_index):
+            normalizer = forward[:,index].sum()
+            forward[:,index] /= normalizer
+            
+            ## Normalizer is p(y_t)
+            sentence_log_prob += np.log10(normalizer)
+
+        last_index = len(sent)-1
+        if np.argwhere(forward.max(0)[:,0:last_index+1] == 0).size > 0 or np.argwhere(np.isnan(forward.max(0)[:,0:last_index+1])).size > 0:
+            logging.error("Error; There is a word with no positive probabilities for its generation in the forward filter.")
+            raise Exception("There is a word with no positive probabilities for its generation in the forward filter.")
+        return sentence_log_prob
+    
+    cpdef reverse_sample(self, pi, list sent, int sent_index):
         cdef int totalK, depth, last_index, sample_t, sample_depth, t, ind
         cdef int prev_depth, next_f_depth, next_awa_depth
-        cdef float trans_prob, normalizer
+        cdef float trans_prob, sample_log_prob
+        cdef double t0, t1
+        cdef list sample_seq
+        cdef tuple maxes
+        cdef np.ndarray trans_slice
+        cdef State.State sample_state
         
         t0 = time.time()
         try:      
@@ -112,11 +154,6 @@ class HmmSampler(Sampler.Sampler):
         
             ## Normalize and grab the sample from the forward probs at the end of the sentence
             last_index = len(sent)-1
-#            if self.dyn_prog[:,last_index].max() == 0:
-#                logging.error("Error: The last word of the sentence has no positive probabilities in the reverse sample method.")
-                
-#            if np.isnan(self.dyn_prog[:,last_index].max()):
-#                logging.error("Error: The last word of the sentence is nan in the reverse sample method.")
                 
             ## normalize after multiplying in the transition out probabilities
             self.dyn_prog[:,last_index] /= self.dyn_prog[:,last_index].sum()
@@ -139,29 +176,12 @@ class HmmSampler(Sampler.Sampler):
                 logging.error("Error: First sample for sentence %d has index %d and has a|b|g = 0" % (sent_index, sample_t))
                 raise Exception
   
-            for t in range(len(sent)-2,-1,-1):
-                trans_slice = self.pi[:,sample_t].toarray()
-                for ind in np.where(self.dyn_prog[:,t] != 0.0)[0]:
-                     
-                    self.dyn_prog[ind,t] *= trans_slice[ind]
-
-                normalizer = self.dyn_prog[:,t].sum()
-                if normalizer == 0.0:
-                    logging.warning("No positive probability states at this time step %d." % (t))
-                      
-                self.dyn_prog[:,t] /= normalizer
-                sample_t = get_sample(self.dyn_prog[:,t])
-                sample_state = self.indexer.extractState(sample_t)
-                logging.log(logging.DEBUG-1, "Sampled state %s with index %d at time %d" % (sample_state.str(), sample_t, t))
-            
-                if t > 0 and sample_state.g == 0:
-                    logging.error("Error: Sampled a g=0 state with state index %d in backwards pass: %s" % (sample_t, sample_state.str()) )
-                    raise Exception
-                
+            for t in range(len(sent)-2,-1,-1):                
+                sample_state, sample_t = self._reverse_sample_inner(pi, sample_t, t)
                 sample_seq.append(sample_state)
-            
+           
             sample_seq.reverse()
-            logging.log(logging.DEBUG, "Sample sentence %d: %s" % (sent_index, list(map(lambda x: x.str(), sample_seq))))
+#            logging.log(logging.DEBUG, "Sample sentence %d: %s" % (sent_index, list(map(lambda x: x.str(), sample_seq))))
         except Exception as e:
             printException()
             raise e
@@ -170,6 +190,30 @@ class HmmSampler(Sampler.Sampler):
         self.bs_time += (t1-t0)
         return sample_seq
 
+    cdef _reverse_sample_inner(self, pi, int sample_t, int t):
+        cdef np.ndarray trans_slice
+        cdef int ind
+        cdef float normalizer
+        
+        trans_slice = pi[:,sample_t].toarray()
+        for ind in np.where(self.dyn_prog[:,t] != 0.0)[0]:                     
+            self.dyn_prog[ind,t] *= trans_slice[ind]
+        
+        normalizer = self.dyn_prog[:,t].sum()
+        if normalizer == 0.0:
+            logging.warning("No positive probability states at this time step %d." % (t))
+        
+        self.dyn_prog[:,t] /= normalizer
+        sample_t = get_sample(self.dyn_prog[:,t])
+        sample_state = self.indexer.extractState(sample_t)
+        logging.log(logging.DEBUG-1, "Sampled state %s with index %d at time %d" % (sample_state.str(), sample_t, t))
+        
+        if t > 0 and sample_state.g == 0:
+            logging.error("Error: Sampled a g=0 state with state index %d in backwards pass: %s" % (sample_t, sample_state.str()) )
+            raise Exception
+        
+        return sample_state, sample_t
+        
 cdef max_awa_depth(b):
     cdef int d = 0
     for d in range(0, len(b)):

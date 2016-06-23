@@ -6,10 +6,9 @@ cimport cython
 import State
 import numpy as np
 cimport numpy as np
-#from Sampler import *
 
 cdef class Indexer:
-    cdef int depth, fj_size, a_max, b_max, g_max, state_size, a_size, b_size
+    #cdef int depth, fj_size, a_max, b_max, g_max, state_size, a_size, b_size
     def __init__(self, models):
         self.depth = len(models.fork)
         self.fj_size = 4

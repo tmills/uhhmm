@@ -7,7 +7,7 @@ def sentence_string(state_list):
 
 # The set of random variable values at one word
 # There will be one of these for every word in the training set
-class State:
+cdef class State:
     def __init__(self, int depth, state=None):
         self.depth = depth
         
@@ -60,3 +60,20 @@ class State:
         ## Stack is full -- if d=4 then max depth index is 3
         return self.depth-1
 
+#     def __reduce__(self):
+#         d = {}
+#         d['depth'] = self.depth
+#         d['f'] = self.f
+#         d['j'] = self.j
+#         d['a'] = self.a
+#         d['b'] = self.b
+#         d['g'] = self.g
+#         return (State, (self.depth,), d)
+#     
+#     def __setstate__(self, d):
+#         self.depth = d['depth']
+#         self.f = d['f']
+#         self.j = d['j']
+#         self.a = d['a']
+#         self.b = d['b']
+#         self.g = d['g']
