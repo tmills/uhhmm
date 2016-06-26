@@ -50,7 +50,8 @@ cdef class HmmSampler(Sampler.Sampler):
         self.indptr = lexMultiplier.indptr
         
     def initialize_dynprog(self, maxLen):
-        self.dyn_prog = np.zeros((self.indexer.get_state_size(), maxLen))
+        #self.dyn_prog = np.zeros((self.indexer.get_state_size(), maxLen))
+        self.dyn_prog = np.zeros((maxLen, self.indexer.get_state_size()))
 
     cpdef forward_pass(self, pi, list sent, int sent_index):
         cdef float sentence_log_prob = 0
@@ -70,27 +71,43 @@ cdef class HmmSampler(Sampler.Sampler):
 #            sentence_log_prob = self._forward_sample_inner(pi, sent, g_max)
             self.dyn_prog[:] = 0
             lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
+            ## Make forward be transposed up front so we don't have to do all the transposing inside the loop
             forward = np.matrix(self.dyn_prog, copy=False)
+            #forward = np.matrix(self.dyn_prog.transpose(), copy=False)
+            #forward = scipy.sparse.csc_matrix(self.dyn_prog, copy=False)
+            #forward = self.dyn_prog
+            
             for index,token in enumerate(sent):
                 ## Still use special case for 0
                 if index == 0:
-                    forward[1:g_max-1,0] = self.lexMatrix[1:-1,token]
+#                    forward[1:g_max-1,0] = self.lexMatrix[1:-1,token]
+                    ## for transposed:
+                    forward[0,1:g_max-1] = self.lexMatrix[1:-1,token].transpose()
                 else:
-                    forward[:,index] = pi.transpose() * forward[:,index-1]
+#                    forward[:,index] = (forward[:,index-1].transpose() * pi).transpose()
+                    ## for transposed dyn_prog
+                    forward[index,:] = forward[index-1,:] * pi
+                    
                     expanded_lex = self.lexMatrix[:,token].transpose() * lexMultiplier
-                    forward[:,index] = np.multiply(forward[:,index], expanded_lex.transpose())
+#                    forward[:,index] = np.multiply(forward[:,index], expanded_lex.transpose())
+                    ## for transposed dyn_prog
+                    forward[index,:] = np.multiply(forward[index,:], expanded_lex)
     #                     if np.isnan(forward[:,index].max()):
     #                         logging.error("Maximum value at index %d of sentence %d is nan" % (index, sent_index))
 
-                normalizer = forward[:,index].sum()
-                forward[:,index] /= normalizer
+#                normalizer = forward[:,index].sum()
+                normalizer = forward[index,:].sum()
+#                forward[:,index] /= normalizer
+                forward[index,:] /= normalizer
             
                 ## Normalizer is p(y_t)
                 sentence_log_prob += np.log10(normalizer)
 
             last_index = len(sent)-1
-            if np.argwhere(forward.max(0)[:,0:last_index+1] == 0).size > 0 or np.argwhere(np.isnan(forward.max(0)[:,0:last_index+1])).size > 0:
-                logging.error("Error; There is a word with no positive probabilities for its generation in the forward filter.")
+#            if np.argwhere(forward.max(0)[:,0:last_index+1] == 0).size > 0 or np.argwhere(np.isnan(forward.max(0)[:,0:last_index+1])).size > 0:
+            # for transposed dyn_prog
+            if np.argwhere(forward.max(1)[0:last_index+1,:] == 0).size > 0 or np.argwhere(np.isnan(forward.max(1)[0:last_index+1,:])).size > 0:
+                logging.error("Error; There is a word with no positive probabilities for its generation in the forward filter: %s" % forward.max(1)[0:last_index+1,:])
                 raise Exception("There is a word with no positive probabilities for its generation in the forward filter.")
 
             ## FIXME - Do we need to multiply by -/+ at last time step for d > 0 system?
@@ -104,35 +121,35 @@ cdef class HmmSampler(Sampler.Sampler):
         self.ff_time += (t1-t0)
         return sentence_log_prob
     
-    cdef _forward_sample_inner(self, pi, list sent, int g_max):
-        cdef float sentence_log_prob = 0
-        cdef np.ndarray forward, expanded_lex
-        
-        self.dyn_prog[:] = 0
-        lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
-        forward = np.matrix(self.dyn_prog, copy=False)
-        for index,token in enumerate(sent):
-            ## Still use special case for 0
-            if index == 0:
-                forward[1:g_max-1,0] = self.lexMatrix[1:-1,token]
-            else:
-                forward[:,index] = pi.transpose() * forward[:,index-1]
-                expanded_lex = self.lexMatrix[:,token].transpose() * lexMultiplier
-                forward[:,index] = np.multiply(forward[:,index], expanded_lex.transpose())
-#                     if np.isnan(forward[:,index].max()):
-#                         logging.error("Maximum value at index %d of sentence %d is nan" % (index, sent_index))
-
-            normalizer = forward[:,index].sum()
-            forward[:,index] /= normalizer
-            
-            ## Normalizer is p(y_t)
-            sentence_log_prob += np.log10(normalizer)
-
-        last_index = len(sent)-1
-        if np.argwhere(forward.max(0)[:,0:last_index+1] == 0).size > 0 or np.argwhere(np.isnan(forward.max(0)[:,0:last_index+1])).size > 0:
-            logging.error("Error; There is a word with no positive probabilities for its generation in the forward filter.")
-            raise Exception("There is a word with no positive probabilities for its generation in the forward filter.")
-        return sentence_log_prob
+#     cdef _forward_sample_inner(self, pi, list sent, int g_max):
+#         cdef float sentence_log_prob = 0
+#         cdef np.ndarray forward, expanded_lex
+#         
+#         self.dyn_prog[:] = 0
+#         lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
+#         forward = np.matrix(self.dyn_prog, copy=False)
+#         for index,token in enumerate(sent):
+#             ## Still use special case for 0
+#             if index == 0:
+#                 forward[1:g_max-1,0] = self.lexMatrix[1:-1,token]
+#             else:
+#                 forward[:,index] = pi.transpose() * forward[:,index-1]
+#                 expanded_lex = self.lexMatrix[:,token].transpose() * lexMultiplier
+#                 forward[:,index] = np.multiply(forward[:,index], expanded_lex.transpose())
+# #                     if np.isnan(forward[:,index].max()):
+# #                         logging.error("Maximum value at index %d of sentence %d is nan" % (index, sent_index))
+# 
+#             normalizer = forward[:,index].sum()
+#             forward[:,index] /= normalizer
+#             
+#             ## Normalizer is p(y_t)
+#             sentence_log_prob += np.log10(normalizer)
+# 
+#         last_index = len(sent)-1
+#         if np.argwhere(forward.max(0)[:,0:last_index+1] == 0).size > 0 or np.argwhere(np.isnan(forward.max(0)[:,0:last_index+1])).size > 0:
+#             logging.error("Error; There is a word with no positive probabilities for its generation in the forward filter.")
+#             raise Exception("There is a word with no positive probabilities for its generation in the forward filter.")
+#         return sentence_log_prob
     
     cpdef reverse_sample(self, pi, list sent, int sent_index):
         cdef int totalK, depth, last_index, sample_t, sample_depth, t, ind
@@ -156,7 +173,8 @@ cdef class HmmSampler(Sampler.Sampler):
             last_index = len(sent)-1
                 
             ## normalize after multiplying in the transition out probabilities
-            self.dyn_prog[:,last_index] /= self.dyn_prog[:,last_index].sum()
+            #self.dyn_prog[:,last_index] /= self.dyn_prog[:,last_index].sum()
+            self.dyn_prog[last_index,:] /= self.dyn_prog[last_index,:].sum()
             
             sample_t = -1
             sample_depth = -1
@@ -164,7 +182,8 @@ cdef class HmmSampler(Sampler.Sampler):
             ## 0 (i.e. the sentence must fully reduce to be a valid parse)
             #print(dyn_prog[:,last_index])
             while sample_t < 0 or sample_depth > 0:
-                sample_t = get_sample(self.dyn_prog[:,last_index])
+                #sample_t = get_sample(self.dyn_prog[:,last_index])
+                sample_t = get_sample(self.dyn_prog[last_index,:])
                 sample_state = self.indexer.extractState(sample_t)
                 sample_depth = sample_state.max_awa_depth()
                 #logging.debug("Sampled final state %s with depth %d" % (sample_state.str(), sample_depth))
@@ -196,15 +215,20 @@ cdef class HmmSampler(Sampler.Sampler):
         cdef float normalizer
         
         trans_slice = pi[:,sample_t].toarray()
-        for ind in np.where(self.dyn_prog[:,t] != 0.0)[0]:                     
-            self.dyn_prog[ind,t] *= trans_slice[ind]
+        #for ind in np.where(self.dyn_prog[:,t] != 0.0)[0]:                     
+            #self.dyn_prog[ind,t] *= trans_slice[ind]
+        for ind in np.where(self.dyn_prog[t,:] != 0.0)[0]:                     
+            self.dyn_prog[t,ind] *= trans_slice[ind]
         
-        normalizer = self.dyn_prog[:,t].sum()
+        #normalizer = self.dyn_prog[:,t].sum()
+        normalizer = self.dyn_prog[t,:].sum()
         if normalizer == 0.0:
             logging.warning("No positive probability states at this time step %d." % (t))
         
-        self.dyn_prog[:,t] /= normalizer
-        sample_t = get_sample(self.dyn_prog[:,t])
+        #self.dyn_prog[:,t] /= normalizer
+        self.dyn_prog[t,:] /= normalizer
+        #sample_t = get_sample(self.dyn_prog[:,t])
+        sample_t = get_sample(self.dyn_prog[t,:])
         sample_state = self.indexer.extractState(sample_t)
         logging.log(logging.DEBUG-1, "Sampled state %s with index %d at time %d" % (sample_state.str(), sample_t, t))
         
@@ -214,7 +238,9 @@ cdef class HmmSampler(Sampler.Sampler):
         
         return sample_state, sample_t
         
-cdef max_awa_depth(b):
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+cdef int max_awa_depth(np.ndarray b):
     cdef int d = 0
     for d in range(0, len(b)):
         if b[d] == 0:
@@ -222,8 +248,13 @@ cdef max_awa_depth(b):
             
     return 0
 
-cdef int get_sample(dist):
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+cdef int get_sample(np.ndarray dist):
     cdef int i = 0
+    cdef float dart
+    cdef np.ndarray sum_dist
+    
     sum_dist = np.cumsum(dist)
     dart = np.random.random()
     for i in range(0, len(dist)):
