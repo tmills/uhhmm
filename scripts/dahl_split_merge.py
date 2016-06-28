@@ -23,7 +23,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
     cum_length = np.cumsum(list(map(len, ev_seqs)))
     ## Need to copy the models otherwise we'll just have another pointer
     new_models = copy.deepcopy(models)
-    new_sample = sample
+    new_sample = copy.deepcopy(sample)
 
     ## Split-merge for pos tags:            
     ind0 = np.random.randint(num_tokens) # anchor 0
@@ -45,11 +45,12 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
     pos1 = sample.hid_seqs[sent1_ind][word1_ind].g
     split = (pos0 == pos1) # whether to split or merge
 
-    alpha_lex = params['h'][0,1:]
+    alpha_lex = np.array(params['h'][0,1:])
     logging.debug("Lexical Dirichlet pseudocounts:")
     logging.debug(alpha_lex)
+    logging.debug(np.shape(alpha_lex))
     alpha_pos_vec = models.pos.alpha * models.pos.beta[1:]
-    alpha_pos = [alpha_pos_vec[pos0-1], alpha_pos_vec[pos1-1]]
+    alpha_pos = np.array([alpha_pos_vec[pos0-1], alpha_pos_vec[pos1-1]])
     logging.debug("POS Dirichlet pseudocounts:")
     logging.debug(alpha_pos)
     
@@ -119,12 +120,12 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
             new_models.lex.count(pos0, token, -1)
             new_models.lex.count(state.g, token, 1)
         logging.debug("During split the new shape of root is %s and exp is %s" % (str(new_models.root[0].dist.shape), str(new_models.exp[0].dist.shape) ) )
+        assert new_models.pos.dist.shape[1] == new_models.root[0].dist.shape[1], "new pos dist size inconsistent with root: %d" % new_models.pos.dist.shape[1]  
     else:
         (pos0, pos1) = (min(pos0, pos1), max(pos0, pos1))
         if models.pos.dist.shape[1] <= 4:
             logging.warn("Tried to perform a merge with only %d state(s) left!" % (models.pos.dist.shape[1] - 2) )
             return models, sample
-
         logging.info("Performing merge operation between pos tags " + \
           "%d and %d at iteration %d" % (pos0, pos1, iter))
         for ind in range(num_tokens):
@@ -139,34 +140,29 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
                 new_models.pos.count(state.b[0], pos1, -1)
                 new_models.lex.count(pos0, token, 1)
                 new_models.lex.count(pos1, token, -1)
-                continue
-            ## Since we'll remove the last pos tag, move everything from that tag
-            ## into the pos1 index.
-            if pos == nstates: 
-                state.g = pos1
-                new_models.pos.count(state.b[0], pos1, 1)
-                new_models.lex.count(pos1, token, 1)
-        from uhhmm import remove_pos_from_models
-        remove_pos_from_models(new_models, nstates)
+        from uhhmm import remove_pos_from_models, remove_pos_from_hid_seqs
+        remove_pos_from_models(new_models, pos1)
+        remove_pos_from_hid_seqs(new_sample.hid_seqs, pos1)
         if new_models.pos.dist.shape[1] == 3:
             logging.warn("POS now down to only 3 (1) states")
         logging.debug("During merge the new shape of root is %s and exp is %s" % (str(new_models.root[0].dist.shape), str(new_models.exp[0].dist.shape) ) )
+        assert new_models.pos.dist.shape[1] == new_models.root[0].dist.shape[1], "new pos dist size inconsistent with root: %d" % new_models.pos.dist.shape[1]  
 
     # acceptance probability calculation follows sections 4.3 and 2.1
     logging.debug("norm_const0 = " + str(norm_consts[0]))
     logging.debug("norm_const1 = " + str(norm_consts[1]))
     norm_const_pos_prior = norm_const(np.zeros((2)), alpha_pos)
     norm_const_pos = 0
-    for i in range(nawa):
+    for awa in range(nawa):
         norm_const_pos += norm_const(pos_counts[awa], alpha_pos) - norm_const_pos_prior
     logging.debug("norm_const_pos = " + str(norm_const_pos))
-    nc = norm_const(np.sum(obs_counts, 0), alpha_lex) + norm_const(np.zeros((np.shape(obs_counts)[1])), alpha_lex)
-    logging.debug("norm_const_merge = " + str(nc))
+    norm_const_merge = norm_const(np.sum(obs_counts, 0), alpha_lex) + norm_const(np.zeros((np.shape(obs_counts)[1])), alpha_lex)
+    logging.debug("norm_const_merge = " + str(norm_const_merge))
     logging.debug("logprob_prop = " + str(logprob_prop))
-    split_logprob_acc = norm_consts[0] + norm_consts[1] + norm_const_pos - logprob_prop - nc
-    logprob_acc = split_logprob_acc if split else -split_logprob_acc
-    logging.debug("Log acceptance probability = %s" % str(logprob_acc))
-    if np.log(np.random.uniform()) < logprob_acc:
+    split_log_acc_ratio = norm_consts[0] + norm_consts[1] + norm_const_pos - logprob_prop - norm_const_merge
+    log_acc_ratio = split_log_acc_ratio if split else -split_log_acc_ratio
+    logging.debug("Log acceptance ratio = %s" % str(log_acc_ratio))
+    if np.log(np.random.uniform()) < log_acc_ratio:
         logging.info("%s proposal was accepted." % ("Split" if split else "Merge") )
         new_sample.models = new_models
         return new_models, new_sample
