@@ -3,7 +3,9 @@ cimport numpy as np
 import numpy as np
 
 cdef class Indexer:
-    cdef int depth, fj_size, a_max, b_max, g_max, state_size, a_size, b_size
+    cdef int depth, fj_size, a_max, b_max, g_max, a_size, b_size
+    
+    cdef public int state_size
     
     cpdef public int extractPos(self, int index)
     

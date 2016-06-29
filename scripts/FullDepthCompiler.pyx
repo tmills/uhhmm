@@ -1,7 +1,7 @@
-# cython: profile=True
-# cython: linetrace=True
-# cython: binding=True
-# distutils: define_macros=CYTHON_TRACE=1
+# cython: profile=False
+# cython: linetrace=False
+# cython: binding=False
+# distutils: define_macros=CYTHON_TRACE=0
 
 cimport cython
 import cython
