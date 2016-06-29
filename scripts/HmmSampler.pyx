@@ -1,7 +1,7 @@
-# cython: profile=True
-# cython: linetrace=True
-# cython: binding=True
-# distutils: define_macros=CYTHON_TRACE=1
+# cython: profile=False
+# cython: linetrace=False
+# cython: binding=False
+# distutils: define_macros=CYTHON_TRACE=0
 
 cimport cython
 import logging
@@ -120,37 +120,7 @@ cdef class HmmSampler(Sampler.Sampler):
         t1 = time.time()
         self.ff_time += (t1-t0)
         return sentence_log_prob
-    
-#     cdef _forward_sample_inner(self, pi, list sent, int g_max):
-#         cdef float sentence_log_prob = 0
-#         cdef np.ndarray forward, expanded_lex
-#         
-#         self.dyn_prog[:] = 0
-#         lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
-#         forward = np.matrix(self.dyn_prog, copy=False)
-#         for index,token in enumerate(sent):
-#             ## Still use special case for 0
-#             if index == 0:
-#                 forward[1:g_max-1,0] = self.lexMatrix[1:-1,token]
-#             else:
-#                 forward[:,index] = pi.transpose() * forward[:,index-1]
-#                 expanded_lex = self.lexMatrix[:,token].transpose() * lexMultiplier
-#                 forward[:,index] = np.multiply(forward[:,index], expanded_lex.transpose())
-# #                     if np.isnan(forward[:,index].max()):
-# #                         logging.error("Maximum value at index %d of sentence %d is nan" % (index, sent_index))
-# 
-#             normalizer = forward[:,index].sum()
-#             forward[:,index] /= normalizer
-#             
-#             ## Normalizer is p(y_t)
-#             sentence_log_prob += np.log10(normalizer)
-# 
-#         last_index = len(sent)-1
-#         if np.argwhere(forward.max(0)[:,0:last_index+1] == 0).size > 0 or np.argwhere(np.isnan(forward.max(0)[:,0:last_index+1])).size > 0:
-#             logging.error("Error; There is a word with no positive probabilities for its generation in the forward filter.")
-#             raise Exception("There is a word with no positive probabilities for its generation in the forward filter.")
-#         return sentence_log_prob
-    
+   
     cpdef reverse_sample(self, pi, list sent, int sent_index):
         cdef int totalK, depth, last_index, sample_t, sample_depth, t, ind
         cdef int prev_depth, next_f_depth, next_awa_depth
@@ -250,13 +220,50 @@ cdef int max_awa_depth(np.ndarray b):
 
 @cython.boundscheck(False) # turn off bounds-checking for entire function
 @cython.wraparound(False)  # turn off negative index wrapping for entire function
-cdef int get_sample(np.ndarray dist):
-    cdef int i = 0
+@cython.cdivision(True)    # faster division without checks
+cdef int get_sample(np.ndarray[np.float64_t] dist):
     cdef float dart
-    cdef np.ndarray sum_dist
+    cdef np.ndarray[np.float64_t] sum_dist
+    cdef int start, end, cur, ret
     
     sum_dist = np.cumsum(dist)
     dart = np.random.random()
+    start = 0
+    end = len(dist) - 1
+    cur = (end + start) / 2
+    
+    while True:
+        if dart > sum_dist[cur]:
+            if cur == end - 1:
+                ret = cur+1
+                break
+                
+            start = cur
+        else:
+            ## dart < sum_dist but need to check 3 cases:
+            if cur == 0:
+                ret = cur
+                break
+            elif sum_dist[cur-1] < dart:
+                ret = cur
+                break
+            else:
+                end = cur
+        
+        cur = (end+start) / 2
+
+    return ret
+
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+cdef int old_get_sample(np.ndarray dist):
+    cdef np.ndarray sum_dist
+    cdef int i
+    cdef float dart
+    
+    sum_dist = np.cumsum(dist)
+    dart = np.random.random()
+    
     for i in range(0, len(dist)):
         if dart < sum_dist[i]:
             return i
