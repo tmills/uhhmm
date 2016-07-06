@@ -183,7 +183,7 @@ cdef class HmmSampler(Sampler.Sampler):
         
         sample_t = get_sample(self.dyn_prog[t,:])
         sample_state = self.indexer.extractState(sample_t)
-        logging.log(logging.DEBUG-1, "Sampled state %s with index %d at time %d" % (sample_state.str(), sample_t, t))
+        #logging.log(logging.DEBUG-1, "Sampled state %s with index %d at time %d" % (sample_state.str(), sample_t, t))
         
         if t > 0 and sample_state.g == 0:
             logging.error("Error: Sampled a g=0 state with state index %d in backwards pass: %s" % (sample_t, sample_state.str()) )

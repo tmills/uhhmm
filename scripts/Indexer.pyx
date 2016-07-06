@@ -85,3 +85,10 @@ cdef class Indexer:
         start = self.getStateIndex(f,j,a,b,0)
         return (start,start+self.g_max-1)
 
+    def get_g_vector(self):
+        f = np.zeros(self.state_size)
+        for i in range(0, self.state_size):
+             f[i] = i % self.g_max
+        
+        return f
+

@@ -3,12 +3,7 @@ import numpy as np
 import logging
 import copy
 from scipy.special import gammaln
-
-# sentence and word indices at given position in sequence
-def indices (cum_length, ind):
-    sent_ind = np.where(cum_length > ind)[0][0]
-    word_ind = ind if sent_ind == 0 else ind - cum_length[sent_ind-1]
-    return sent_ind, int(word_ind)
+import uhhmm
 
 # log emission posterior normalizing constant
 # assumes multinomial-dirichlet model
@@ -27,13 +22,13 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
 
     ## Split-merge for pos tags:            
     ind0 = np.random.randint(num_tokens) # anchor 0
-    sent0_ind, word0_ind = indices(cum_length, ind0)
+    sent0_ind, word0_ind = uhhmm.indices(cum_length, ind0)
     pos0 = sample.hid_seqs[sent0_ind][word0_ind].g
     if equal: 
         split = (np.random.binomial(1, .5) > .5)
         subset = np.array([]) 
         for ind in range(num_tokens):
-            sent_ind, word_ind = indices(cum_length, ind)
+            sent_ind, word_ind = uhhmm.indices(cum_length, ind)
             state = sample.hid_seqs[sent_ind][word_ind]
             if (((state.g == pos0) and split) or ((state.g != pos0) and not split)):
                 subset = np.append(subset, ind)
@@ -41,7 +36,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
     else:
         ind1 = np.random.randint(num_tokens) # anchor 1
 
-    sent1_ind, word1_ind = indices(cum_length, ind1)
+    sent1_ind, word1_ind = uhhmm.indices(cum_length, ind1)
     pos1 = sample.hid_seqs[sent1_ind][word1_ind].g
     split = (pos0 == pos1) # whether to split or merge
 
@@ -59,7 +54,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
     nstates = models.pos.dist.shape[1]-2
     nawa = models.pos.dist.shape[0]
     for ind in range(num_tokens):
-        sent_ind, word_ind = indices(cum_length, ind)
+        sent_ind, word_ind = uhhmm.indices(cum_length, ind)
         state = sample.hid_seqs[sent_ind][word_ind]
         if ((state.g == pos0) or (state.g == pos1)):
             subset = np.append(subset, ind)
@@ -86,7 +81,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
     pos_counts[awa1, 1] += 1
     norm_consts = np.array([norm_const(obs_counts[0], alpha_lex), norm_const(obs_counts[1], alpha_lex)])
     for ind in subset1: 
-        sent_ind, word_ind = indices(cum_length, ind)
+        sent_ind, word_ind = uhhmm.indices(cum_length, ind)
         newcounts = np.copy(obs_counts)
         newcounts[:, ev_seqs[sent_ind][word_ind]-1] += 1
         awa = sample.hid_seqs[sent_ind][word_ind].b[0]
@@ -111,7 +106,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
         from uhhmm import break_g_stick
         break_g_stick(new_models, new_sample, params) # add new pos tag variable
         for ind in sets[1]:
-            sent_ind, word_ind = indices(cum_length, ind)
+            sent_ind, word_ind = uhhmm.indices(cum_length, ind)
             state = new_sample.hid_seqs[sent_ind][word_ind]
             token = ev_seqs[sent_ind][word_ind]
             state.g = nstates+1
@@ -129,7 +124,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
         logging.info("Performing merge operation between pos tags " + \
           "%d and %d at iteration %d" % (pos0, pos1, iter))
         for ind in range(num_tokens):
-            sent_ind, word_ind = indices(cum_length, ind)
+            sent_ind, word_ind = uhhmm.indices(cum_length, ind)
             state = new_sample.hid_seqs[sent_ind][word_ind]
             pos = state.g
             token = ev_seqs[sent_ind][word_ind]

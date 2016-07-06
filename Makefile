@@ -71,11 +71,23 @@ data/thailtf_tagwords.txt: user-lorelei-location.txt
 data/tamiltf_tagwords.txt: user-lorelei-location.txt
 	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Tamil_LDC2015E83_V1.1/data/annotation/pos_tagged/ltf > $@
 
+data/darpa_y1eval_set0_tagwords.txt: user-lorelei-location.txt
+	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/LDC2016E57_LORELEI_IL3_Incident_Language_Pack_for_Year_1_Eval/set0/data/monolingual_text/ltf/
+
+data/darpa_y1eval_setE_tagwords.txt: user-lorelei-location.txt
+	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/LDC2016E57_LORELEI_IL3_Incident_Language_Pack_for_Year_1_Eval/setE/data/monolingual_text/ltf/
+
+data/darpa_y1eval_set0,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_setE.tagwords.txt
+	cat $^ > $@
+
 data/%.words.txt: data/%.tagwords.txt
 	cat $^ | $(SCRIPTS)/tagwords2words.sh > $@
 
 data/%-l10.words.txt: data/%.words.txt
 	cat $^ | $(SCRIPTS)/words2l10words.sh > $@
+
+data/%-l3-10.words.txt: data/%-l10.words.txt
+	cat $^ | perl -lane 'if($$#F >= 2){ print $$_; }' > $@
 
 data/%.m2.words.txt: data/%.words.txt
 	cat $^ | perl $(SCRIPTS)/removeInfrequent.pl 2 > $@
@@ -100,6 +112,6 @@ genmodel:
 genmodel/%.morf.model: data/%.txt genmodel
 	morfessor-train -s $@ $<
 
-
 clean:
 	rm scripts/*.{c,so}
+

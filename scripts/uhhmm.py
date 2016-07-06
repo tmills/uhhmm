@@ -24,7 +24,7 @@ import NoopCompiler
 import DepthOneInfiniteSampler
 import DistributedModelCompiler
 import HmmSampler
-from dahl_split_merge import perform_split_merge_operation, indices
+from dahl_split_merge import perform_split_merge_operation
 from models import Model, Models
 from workers import start_local_workers_with_distributer
 
@@ -991,6 +991,12 @@ def increment_counts(hid_seq, sent, models, inc=1):
 ## WS: REMOVED THESE: WAS DISTORTING OUTPUTS BC F MODEL NOT REALLY CONSULTED AT END (MODEL ACTUALLY KNOWS ITS AT END)
 #    models.fork.count(prevBG, 0)
 #    models.reduce.count(hid_seq[-1].a, 1)
+
+# sentence and word indices at given position in sequence
+def indices (cum_length, ind):
+    sent_ind = np.where(cum_length > ind)[0][0]
+    word_ind = ind if sent_ind == 0 else ind - cum_length[sent_ind-1]
+    return sent_ind, int(word_ind)
 
 def decrement_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
     for ind in range(start_ind, end_ind):
