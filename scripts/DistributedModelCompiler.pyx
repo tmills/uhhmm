@@ -47,6 +47,7 @@ class DistributedModelCompiler(FullDepthCompiler):
             (local_indices, local_data) = self.work_server.get_model_row(prevIndex)
             
             indptr[prevIndex+1] += len(local_indices)
+            
             indices.append(local_indices)
             data.append(local_data)
 
@@ -55,7 +56,7 @@ class DistributedModelCompiler(FullDepthCompiler):
         flat_data = [item for sublist in data for item in sublist]
             
         logging.info("Creating csr transition matrix from sparse indices")
-        pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK), dtype=np.float64)
+        pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK), dtype=np.float32)
         fn = working_dir+'/models.bin'
         out_file = open(fn, 'wb')
         logging.info("Transforming and writing csc model")

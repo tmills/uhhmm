@@ -1,5 +1,5 @@
 # cython: profile=False
-# cython: linetrace=False
+# cython: linetrace=True
 # cython: binding=False
 # distutils: define_macros=CYTHON_TRACE=0
 
@@ -21,6 +21,13 @@ import subprocess
 from uhhmm_io import printException
 import models
 cimport models
+import pycuda.driver as cuda
+import pycuda.autoinit
+from pycuda.compiler import SourceModule
+import pycuda.gpuarray as gpuarray
+import skcuda.linalg as linalg
+import skcuda
+linalg.init()
 
 def boolean_depth(l):
     for index,val in enumerate(l):
@@ -38,7 +45,7 @@ cdef class HmmSampler(Sampler.Sampler):
     def set_models(self, models):
         self.models = models[0]
         unlog_models(self.models)
-        self.lexMatrix = np.matrix(self.models.lex.dist, copy=False)
+        self.lexMatrix = np.matrix(self.models.lex.dist, copy=False, dtype=np.float32)
         self.depth = len(self.models.fork)
         self.indexer = Indexer.Indexer(self.models)
         
@@ -50,52 +57,60 @@ cdef class HmmSampler(Sampler.Sampler):
         self.indptr = lexMultiplier.indptr
         
     def initialize_dynprog(self, maxLen):
-        #self.dyn_prog = np.zeros((self.indexer.get_state_size(), maxLen))
-        self.dyn_prog = np.zeros((maxLen, self.indexer.get_state_size()))
+        self.maxLen = maxLen
 
     @cython.cdivision(True)
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    cpdef forward_pass(self, pi, list sent, int sent_index):
+    cpdef forward_pass(self, pi_gpu, list sent, int sent_index):
         cdef float sentence_log_prob = 0, normalizer
         cdef double t0, t1
         cdef int a_max, b_max, g_max, index, token, g_len
         cdef tuple maxes
-        
+                
         t0 = time.time()
         try:           
             ## keep track of forward probs for this sentence:
             maxes = self.indexer.getVariableMaxes()
             (a_max,b_max,g_max) = maxes
 
-            ## Copy=False indicates that this matrix object is just a _view_ of the
-            ## array -- we don't have to copy it into a matrix and recopy back to array
-            ## to get the return value
-            self.dyn_prog[:] = 0
+            forward = gpuarray.zeros( (self.maxLen, self.indexer.state_size), np.float32)
+            gpu_lex = gpuarray.to_gpu(self.lexMatrix)
+            
             lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
-            ## Make forward be transposed up front so we don't have to do all the transposing inside the loop
-            forward = np.matrix(self.dyn_prog, copy=False)
+            next = gpuarray.zeros((1, self.indexer.state_size), dtype='float32')
             
             for index,token in enumerate(sent):
                 ## Still use special case for 0
                 if index == 0:
-                    forward[0,1:g_max-1] = self.lexMatrix[1:-1,token].transpose()
+                    next[0,1:g_max-1] = gpu_lex[1:-1,token]
                 else:
-                    forward[index,:] = forward[index-1,:] * pi
+                    next = linalg.dot(prev, pi_gpu)
                     
-                    expanded_lex = self.lexMatrix[:,token].transpose() * lexMultiplier
-                    forward[index,:] = np.multiply(forward[index,:], expanded_lex)
+                    ## TODO -- make the inputs to this already gpu arrays so we don't have to convert every time
+                    expanded_lex = gpuarray.to_gpu( (self.lexMatrix[:,token].transpose() * lexMultiplier).astype(np.float32) )
+                    
+                    next = linalg.multiply(next, expanded_lex)                       
 
-                normalizer = forward[index,:].sum()
-                forward[index,:] /= normalizer
-            
+                normalizer = float (np.array (skcuda.misc.sum( next ).get() ) )
+                next = next / normalizer
+                
+                forward[index] += next[0,:]
+                prev = next
+                           
                 ## Normalizer is p(y_t)
                 sentence_log_prob += np.log10(normalizer)
 
             last_index = len(sent)-1
-            if np.argwhere(forward.max(1)[0:last_index+1,:] == 0).size > 0 or np.argwhere(np.isnan(forward.max(1)[0:last_index+1,:])).size > 0:
-                logging.error("Error; There is a word with no positive probabilities for its generation in the forward filter: %s" % forward.max(1)[0:last_index+1,:])
-                raise Exception("There is a word with no positive probabilities for its generation in the forward filter.")
+            ## FIXME - for some reason this doesn't work with pycuda max.
+            #if np.argwhere(skcuda.misc.max(forward,1)[0:last_index+1] == 0).size > 0:
+                #logging.error("Error; There is a word with no positive probabilities for its generation in the forward filter: %s" % skcuda.misc.max(forward, 1)[0:last_index+1])
+                #raise Exception("There is a word with no positive probabilities for its generation in the forward filter.")
+
+            ## FIXME - for some reason this doesn't work with pycuda max.
+            #if np.argwhere(np.isnan(skcuda.misc.max(forward, 1)[0:last_index+1])).size > 0:
+            #    logging.error("Error; There is a word with no positive probabilities for its generation in the forward filter: %s" % skcuda.misc.max(forward, 1)[0:last_index+1])
+            #    raise Exception("There is a word with nan probabilities for its generation in the forward filter.")
 
             ## FIXME - Do we need to multiply by -/+ at last time step for d > 0 system?
             ## TODO - should we make probability of transitioning to d > 0 state at 
@@ -106,9 +121,9 @@ cdef class HmmSampler(Sampler.Sampler):
             
         t1 = time.time()
         self.ff_time += (t1-t0)
-        return sentence_log_prob
+        return sentence_log_prob, forward
    
-    cpdef reverse_sample(self, pi, list sent, int sent_index):
+    cpdef reverse_sample(self, forward, gpu_pi, list sent, int sent_index):
         cdef int totalK, depth, last_index, sample_t, sample_depth, t, ind
         cdef int prev_depth, next_f_depth, next_awa_depth
         cdef float trans_prob, sample_log_prob
@@ -128,9 +143,9 @@ cdef class HmmSampler(Sampler.Sampler):
         
             ## Normalize and grab the sample from the forward probs at the end of the sentence
             last_index = len(sent)-1
-                
+            
             ## normalize after multiplying in the transition out probabilities
-            self.dyn_prog[last_index,:] /= self.dyn_prog[last_index,:].sum()
+            #forward[last_index,:] /= skcuda.misc.sum(forward[last_index,:]) #.sum()
             
             sample_t = -1
             sample_depth = -1
@@ -138,7 +153,7 @@ cdef class HmmSampler(Sampler.Sampler):
             ## 0 (i.e. the sentence must fully reduce to be a valid parse)
             #print(dyn_prog[:,last_index])
             while sample_t < 0 or sample_depth > 0:
-                sample_t = get_sample(self.dyn_prog[last_index,:])
+                sample_t = get_gpu_sample(forward[last_index,:])
                 sample_state = self.indexer.extractState(sample_t)
                 sample_depth = sample_state.max_awa_depth()
                 #logging.debug("Sampled final state %s with depth %d" % (sample_state.str(), sample_depth))
@@ -151,7 +166,7 @@ cdef class HmmSampler(Sampler.Sampler):
                 raise Exception
   
             for t in range(len(sent)-2,-1,-1):                
-                sample_state, sample_t = self._reverse_sample_inner(pi, sample_t, t)
+                sample_state, sample_t = self._reverse_sample_inner(forward, gpu_pi, sample_t, t)
                 sample_seq.append(sample_state)
            
             sample_seq.reverse()
@@ -166,22 +181,23 @@ cdef class HmmSampler(Sampler.Sampler):
     @cython.cdivision(True)
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    cdef _reverse_sample_inner(self, pi, int sample_t, int t):
+    cdef _reverse_sample_inner(self, forward, gpu_pi, int sample_t, int t):
         cdef np.ndarray trans_slice
         cdef int ind
         cdef float normalizer
         
-        trans_slice = pi[:,sample_t].toarray()
-        for ind in np.where(self.dyn_prog[t,:] != 0.0)[0]:                     
-            self.dyn_prog[t,ind] *= trans_slice[ind]
+        ## TODO - see if we can get non-zero entries like before - might be faster
+#        for ind in np.where(forward[t,:] != 0.0)[0]:                     
+        for ind in range(len(forward[t,:])):
+            forward[t,ind] *= gpu_pi[ind, sample_t]
         
-        normalizer = self.dyn_prog[t,:].sum()
+        normalizer = float(skcuda.misc.sum(forward[t,:]).get())
         if normalizer == 0.0:
             logging.warning("No positive probability states at this time step %d." % (t))
         
-        self.dyn_prog[t,:] /= normalizer
+        forward[t,:] /= normalizer
         
-        sample_t = get_sample(self.dyn_prog[t,:])
+        sample_t = get_gpu_sample(forward[t,:])
         sample_state = self.indexer.extractState(sample_t)
         logging.log(logging.DEBUG-1, "Sampled state %s with index %d at time %d" % (sample_state.str(), sample_t, t))
         
@@ -237,6 +253,20 @@ cdef int get_sample(np.ndarray[np.float64_t] dist):
 
     return ret
 
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+@cython.cdivision(True)    # faster division without checks
+## TODO - find out what pycuda types are if I want to type this
+cdef get_gpu_sample(dist):
+    cdef float dart
+    cdef int i
+    sum_dist = skcuda.misc.cumsum(dist)
+    dart = np.random.random()
+   
+    for i in range(0, len(dist)):
+        if dart < sum_dist[i].get():
+            return i
+    
 @cython.boundscheck(False) # turn off bounds-checking for entire function
 @cython.wraparound(False)  # turn off negative index wrapping for entire function
 cdef int old_get_sample(np.ndarray dist):
