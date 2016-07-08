@@ -19,6 +19,14 @@ for sentnum, line in enumerate(sys.stdin):
 	for index, step in enumerate(tokens):
 		print(index)
 		thisStep = []
+		if step.endswith(':::::.......'):
+			step = step[:-12] + 'COLONSDOTS'
+		if step.endswith('::::'):
+			step = step[:-4] + 'COLONSS'
+		elif step.endswith('::'):
+			step = step[:-2] + 'COLONS'
+		elif step.endswith('::d'):
+			step = step[:-3] + 'COLONSD'
 		step = step.split('::')
 		fj = step[0].split('/')
 		if index == 1:
@@ -30,19 +38,29 @@ for sentnum, line in enumerate(sys.stdin):
 			thisStep.append(str(1))
 		if step[1].endswith(':'):
 			step[1] = step[1][:-1]+'COLON'
-		elif step[1].endswith('('):
-			step[1] = step[1][:-1]+'LB'
-		elif step[1].endswith(')'):
-			step[1] = step[1][:-1]+ 'RB'
-		elif step[1].endswith('>'):
-			step[1] = step[1][:-1] + 'RTB'
-		elif step[1].endswith('<'):
-			step[1] = step[1][:-1] + 'LTB'
-		elif step[1].endswith(';'):
-			step[1] = step[1][:-1] + 'SEMICOLON'
-		elif step[1].endswith('_'):
-			step[1] = step[1][:-1] + 'UNDERSCORE'
+		#elif step[1].endswith('('):
+		#	step[1] = step[1][:-1]+'LB'
+		#elif step[1].endswith(')'):
+		#	step[1] = step[1][:-1]+ 'RB'
+		#elif step[1].endswith('>'):
+		#	step[1] = step[1][:-1] + 'RTB'
+		#elif step[1].endswith('<'):
+		#	step[1] = step[1][:-1] + 'LTB'
+		#elif step[1].endswith(';'):
+		#	step[1] = step[1][:-1] +'$SEMICOLON$'
+		#elif step[1].endswith('_'):
+		#	step[1] = step[1][:-1] + '$UNDERSCORE$'
+		step[1] = step[1].replace('(', '$LB$')
+		step[1] = step[1].replace(')', '$RB$')
+		step[1] = step[1].replace('<', '$LTB$')
+		step[1] = step[1].replace('>', '$RTB$')
+		step[1] = step[1].replace('[', '$LSB$')
+		step[1] = step[1].replace(']', '$RSB$')
+		step[1] = step[1].replace('^', '$CARAT$')
+		step[1] = step[1].replace('_', '$UNDERSCORE$')
 		cats = step[1].split(':')
+		if len(cats) > 2:
+			cats[1] = cats[1] + ':' + cats[2]
 		if cats[0] != 'ACT0/AWA0':
 			preterm = '/'.join([x+'_' for x in cats[0].split(';')[-1].split('/')])
 			if fj[1] == '-' and fj[0] == '+':
@@ -64,10 +82,23 @@ for sentnum, line in enumerate(sys.stdin):
                     
 		thisStep.append(';'.join(stack))
 		tagword = cats[1].split(';')
+		if len(tagword) > 2:
+			tagword[1] = tagword[1] + ';' + tagword[2]
 		thisStep.append(tagword[0]+'_')
 		thisStep.append(relations)
+		if len(tagword) <=  1:
+			sys.stderr.write( str(sentnum)+' '+ line)
+			sys.stderr.write('::'.join(step))
 		if tagword[1] == 'COLON':
 			tagword[1] = ':'
+		elif tagword[1] == 'COLONS':
+			tagword[1] = '::'
+		elif tagword[1] == 'COLONSS':
+			tagword[1] = '::::'
+		elif tagword[1] == 'COLONSDOTS':
+			tagword[1] = ':::::.......'
+		elif tagword[1] == 'COLONSD':
+			tagword[1] = '::d'
 	#	if tagword[1] == 'SEMICOLON':
 	#		tagword[1] = ';'
 		thisStep.append(tagword[1] if len(tagword) > 1 else "Word%d"% index)
