@@ -60,7 +60,7 @@ for sentnum, line in enumerate(sys.stdin):
 		step[1] = step[1].replace('_', '$UNDERSCORE$')
 		cats = step[1].split(':')
 		if len(cats) > 2:
-			cats[1] = cats[1] + ':' + cats[2]
+			cats[1] = ':'.join(cats[1:])
 		if cats[0] != 'ACT0/AWA0':
 			preterm = '/'.join([x+'_' for x in cats[0].split(';')[-1].split('/')])
 			if fj[1] == '-' and fj[0] == '+':
@@ -79,11 +79,10 @@ for sentnum, line in enumerate(sys.stdin):
 						stack[depth-2] = preterm
 						stack[depth-1] = emptyCat
 						break
-                    
 		thisStep.append(';'.join(stack))
 		tagword = cats[1].split(';')
 		if len(tagword) > 2:
-			tagword[1] = tagword[1] + ';' + tagword[2]
+			tagword[1] = ';'.join( tagword[1:])
 		thisStep.append(tagword[0]+'_')
 		thisStep.append(relations)
 		if len(tagword) <=  1:
