@@ -95,7 +95,7 @@ data/%.m2.words.txt: data/%.words.txt
 #convert the output to bracketed trees. '.txt' is the output file, '.origSents' is the file of the original sentences
 %.brackets: MB=$(shell cat user-modelblocks-location.txt)
 %.brackets: %.txt user-modelblocks-location.txt
-	cat $< | python $(SCRIPTS)/uhhmm2efabp.py | PYTHONPATH=$(MB)/gcg/scripts python3 $(MB)/resource-lcparse/scripts/efabpout2linetrees.py  | sed 's/\^.,.//g;s/\^g//g;s/\_[0-9]*//g;s/\([^+ ]\)+\([^+ ]\)/\1-\2/g;' | sed 's/\([^+ ]\)+\([^+ ]\)/\1-\2/g;'  |  perl $(MB)/resource-lcparse/scripts/remove-at-cats.pl  | python scripts/brackets_cleanup.py>  $@
+	cat $< | python $(SCRIPTS)/uhhmm2efabp.py | PYTHONPATH=$(MB)/gcg/scripts python3 $(MB)/lcparse/scripts/efabpout2linetrees.py  | sed 's/\^.,.//g;s/\^g//g;s/\_[0-9]*//g;s/\([^+ ]\)+\([^+ ]\)/\1-\2/g;' | sed 's/\([^+ ]\)+\([^+ ]\)/\1-\2/g;'  |  perl $(MB)/lcparse/scripts/remove-at-cats.pl | python scripts/brackets_cleanup.py >  $@
 
 ############################
 # Targets for building input files for morphologically-rich languages (tested on Korean wikipedia)
