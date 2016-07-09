@@ -6,6 +6,7 @@
 
 cimport cython
 import numpy as np
+cimport numpy as np
 import sys, os, linecache
 import Sampler
 from State import State
@@ -64,14 +65,92 @@ class ParserCell:
 class HmmParser:    
     def __init__(self, models):
         (self.models, self.pi) = models.model
-#         self.lil_trans = self.pi.tolil()
+        ## lil seems to be fastest of sparse for indexing, also faster than using
+        ## csc and getting a slice
+        #self.pi = self.pi.tolil()
         unlog_models(self.models)
         self.indexer = Indexer(self.models)
         self.totalK = self.indexer.get_state_size()
         self.maxes = self.indexer.getVariableMaxes()
+        g_len = self.models.pos.dist.shape[1]
+        w_len = self.models.lex.dist.shape[1]
         self.lexMatrix = np.matrix(self.models.lex.dist, copy=False)
+        self.lexMultiplier = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, self.indexer.get_state_size() / g_len)))
+#        self.lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
+    
+    @cython.boundscheck(False)
+    def matrix_parse(self, list sent):
+        cdef np.ndarray[np.float64_t, ndim=2] prob_mat, full_prob_mat, expanded_lex
+        cdef np.ndarray[np.int_t, ndim=2] bp_mat
+        cdef int index, token, a_max, b_max, g_max, token_index, state_index
+        cdef list sent_states
+        
+        bp_mat = np.zeros( (len(sent), self.indexer.state_size), dtype=np.int)
+        prob_mat = np.zeros( (len(sent), self.indexer.state_size) )
+        
+        (a_max, b_max, g_max) = self.maxes
+        try:
+            for index,token in enumerate(sent):                    
+                t0 = time.time()
+                ## Still use special case for 0
+                if index == 0:
+                    prob_mat[0,1:g_max-1] = self.lexMatrix[1:g_max-1,token].transpose()
+                else:
+                    #print("Trans prob type = %s, shape=%s, prevState index=%d, curState=%d" % (type(trans_prob), trans_prob.shape, prevState.state_index, curState))
+                    ## Since we're grabbing a slice, it is a row by default and will multiply across
+                    ## rows. So we need to transpose pi to get multiplication across the right dimension
+                    ## and then transpose the result at the end.
+                    full_prob_mat = self.pi.transpose().multiply( prob_mat[index-1,:] ).transpose()
+                    ### Now we have a matrix of joint probabilites:
+                    ### p( x_t, x_{t-1} ). Multiply in observations:
 
+                    ## For this multiplication expanded_lex is not a slice but it is the wrong shape so we transpose after creating.
+                    expanded_lex = (self.lexMatrix[:,token].transpose() * self.lexMultiplier)
+                    #assert expanded_lex.shape[1] == 1
+
+                    full_prob_mat = np.multiply( expanded_lex, full_prob_mat)
+                    
+                    ## And take the max for each x_t:
+                    cutoff = full_prob_mat.max() / 10
+                    
+                    maxes = full_prob_mat.max(0)
+                    prob_mat[index, :] = full_prob_mat.max(0) #  np.multiply(maxes, (maxes > cutoff))
+                    bp_mat[index, :] = full_prob_mat.argmax(0)
+                    
+#                    cutoff = prob_mat[index,:].max() / 10
+                    
+#                    bad_indices = np.where( prob_mat[index,:] < cutoff)
+#                    nz_before = len(np.where( prob_mat[index,:] != 0)[0])
+#                    prob_mat[index, bad_indices] = 0
+#                    nz_after = len(np.where( prob_mat[index,:] != 0)[0])
+                    #print("Reduced from %d nnz to %d after filtering." % (nz_before, nz_after) )
+                    
+            ## Get the max probability at the end:
+            token_index = len(sent) - 1
+            state_index = prob_mat[index,:].argmax()
+            sent_states = []
+            while token_index >= 0:
+                sent_states.append( self.indexer.extractState(state_index) )
+                state_index = bp_mat[token_index, state_index]
+                token_index -= 1
+            
+            sent_states.reverse()
+        except Exception as e:
+            print("Encountered exception while parsing sentence %s" % (sent) )
+            raise Exception
+        
+        assert len(sent_states) == len(sent)
+        
+        return sent_states
+    
+    @cython.boundscheck(False)
     def parse(self, sent):
+        cdef int index, token, a_max, b_max, g_max, curState, g
+        cdef list forward
+        cdef float normalizer, t0, t1
+        
+        cdef np.ndarray trans_slice
+        
         (a_max, b_max, g_max) = self.maxes
         
         forward = []
@@ -96,11 +175,12 @@ class HmmParser:
                         ## Create the parser cell for this state:
                         max_trans = 0
                         max_bp = None
-                        trans_slice = self.pi[:,curState].toarray()
+#                        trans_slice = self.pi[:,curState].toarray()
                         
                         ## Find the input with the highest existing * transition prob:
                         for prevState in forward[-1]:
-                            trans_prob = prevState.prob * float(trans_slice[prevState.state_index])
+                            trans_prob = prevState.prob * float( self.pi[prevState.state_index, curState] )
+#                            trans_prob = prevState.prob * float(trans_slice[prevState.state_index])
                             #print("Trans prob type = %s, shape=%s, prevState index=%d, curState=%d" % (type(trans_prob), trans_prob.shape, prevState.state_index, curState))
                             ## See if the transition with highest probability
                             if trans_prob > max_trans:

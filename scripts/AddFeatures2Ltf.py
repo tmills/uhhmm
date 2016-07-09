@@ -7,7 +7,7 @@ import sys
 from State import State
 import logging
 import multiprocessing
-
+import os.path
 
 
 def main(args):
@@ -37,10 +37,15 @@ def main(args):
     files = glob.glob(args[2] + "/*.ltf.xml")
 
 #    jobs = []
-    pool = multiprocessing.Pool(processes=8, maxtasksperchild=1)
+    pool = multiprocessing.Pool(processes=3, maxtasksperchild=1)
 
     for ltf_file in files:
-        pool.apply_async(processLTF, (ltf_file, models, word_map, word_lookup, out_dir))
+        out_file = "%s/%s" % (out_dir, os.path.basename(ltf_file) )
+        if os.path.isfile(out_file):
+            logging.info("Skipping file that exists in output directory")
+        else:
+            pool.apply_async(processLTF, (ltf_file, models, word_map, word_lookup, out_dir))
+            
     pool.close()
     pool.join()
 #        p = multiprocessing.Process(target=processLTF, args=(ltf_file, parser, word_map, word_lookup, out_dir))
@@ -56,7 +61,11 @@ def processLTF(ltf_file, models, word_map, word_lookup, out_dir):
     root = tree.getroot()
     doc = root.find("DOC")
     docid = doc.get("id")
-
+    out_file = "%s/%s.ltf.xml" % (out_dir, docid)
+    if os.path.isfile(out_file):
+        logging.info("Skipping file that already exists in output directory")
+        return
+        
     for seg in root.iter("SEG"):
         cur_sent = []
         token_ids = []
@@ -79,7 +88,7 @@ def processLTF(ltf_file, models, word_map, word_lookup, out_dir):
 
         if len(int_tokens) > 0:
 #            token_ids.insert(0, None)
-            sent_list = parser.parse(int_tokens)
+            sent_list = parser.matrix_parse(int_tokens)
             for index, state in enumerate(sent_list):
 
 #                if index == 0:
@@ -92,7 +101,7 @@ def processLTF(ltf_file, models, word_map, word_lookup, out_dir):
                 addABG2TokenElement(token_elemsByID[token_ids[index]], state)
     parser = None
 
-    tree.write("%s/%s.ltf.xml" % (out_dir, docid), encoding='utf-8')
+    tree.write(out_file, encoding='utf-8')
 
 
 
