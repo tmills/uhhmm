@@ -85,7 +85,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     return_to_finite = False
     ready_for_sample = False
     
-    logging.basicConfig(level=getattr(logging, debug))
+    logging.basicConfig(level=getattr(logging, debug),filename=logfile)
     logging.info("Starting beam sampling")
 
     seed = int(params.get('seed', -1))
@@ -111,9 +111,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, a_max, b_max, g_max)
         hid_seqs = initialize_state(ev_seqs, models, depth, gold_seqs)
-        assert max_state(hid_seqs) <= models.pos.dist.shape[1]-2, \
-            "max state of hid_seqs is %s, pos dist size is %s" % (max_state(hid_seqs), models.pos.dist.shape[1])
-
+        max_state_check(hid_seqs, models)
+        
         sample = Sample()
         sample.alpha_a = models.root[0].alpha ## float(params.get('alphaa'))
         sample.alpha_b = float(params.get('alphab'))
@@ -163,8 +162,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         sample.log_prob = 0
         models = sample.models
         hid_seqs = sample.hid_seqs
-        assert max_state(hid_seqs) <= models.pos.dist.shape[1]-2, \
-            "max state of hid_seqs is %s, pos dist size is %s" % (max_state(hid_seqs), models.pos.dist.shape[1])
+        max_state_check(hid_seqs, models)
         
         a_max = models.act[0].dist.shape[-1]
         b_max = models.cont[0].dist.shape[-1]
@@ -349,15 +347,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 ready_for_sample = False
             
             if split_merge:
-                assert max_state(hid_seqs) <= models.pos.dist.shape[1]-2, \
-                    "max state of hid_seqs is %s, pos dist size is %s" % (max_state(hid_seqs), models.pos.dist.shape[1])
-                logging.debug("max state in hid_seqs = " + str(max_state(hid_seqs)))
+                max_state_check(hid_seqs, models)
                 logging.info("Starting split/merge operation")
                 models, sample = perform_split_merge_operation(models, sample, ev_seqs, params, iter)
                 hid_seqs = sample.hid_seqs
-                assert max_state(hid_seqs) <= models.pos.dist.shape[1]-2, \
-                    "max state of hid_seqs is %s, pos dist size is %s" % (max_state(hid_seqs), models.pos.dist.shape[1])
-                logging.debug("max state in hid_seqs = " + str(max_state(hid_seqs)))
+                max_state_check(hid_seqs, models)               
                 logging.info("Done with split/merge operation")
                 report_function(sample)
                 split_merge = False
@@ -388,7 +382,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             sample = next_sample
         
         logging.debug("pos dist size is %s" % models.pos.dist.shape[1])
-        logging.debug("max state in hid_seqs = " + str(max_state(hid_seqs)))
+        max_state_check(hid_seqs, models)
 
         t0 = time.time()
         
@@ -397,10 +391,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## After stick-breaking we probably need to re-sample all the models:
         remove_unused_variables(models, hid_seqs)
         logging.debug("after removing unused variables, pos dist size is %s" % models.pos.dist.shape[1])
-        logging.debug("max state in hid_seqs = " + str(max_state(hid_seqs)))
+        max_state_check(hid_seqs, models)
         resample_beta_g(models, sample.gamma)
-        logging.debug("after resampling beta g, pos dist size is %s" % models.pos.dist.shape[1])
-        logging.debug("max state in hid_seqs = " + str(max_state(hid_seqs)))
 
         models.lex.sampleDirichlet(params['h'])
         models.pos.selfSampleDirichlet()
@@ -454,15 +446,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     return (samples, stats)
 
 def max_state(hid_seqs):
-    mstate=0
-    num_tokens = sum(map(len, hid_seqs))
-    cum_length = np.cumsum(list(map(len, hid_seqs)))
-    for ind in range(num_tokens):
-        sent_ind, word_ind = indices(cum_length, ind)
-        state = hid_seqs[sent_ind][word_ind]
-        if (state.g > mstate):
-          mstate = state.g
-    return mstate
+    return max(a.g for b in hid_seqs for a in b)
+    
+def max_state_check(hid_seqs, models):
+    ms = max_state(hid_seqs)
+    assert ms == models.pos.dist.shape[1]-2, \
+        "max state of hid_seqs is %s, pos dist size is %s" % (ms, models.pos.dist.shape[1])
+    logging.debug("max state in hid_seqs = " + str(ms))
 
 def remove_unused_variables(models, hid_seqs):
     ## Have to check if it's greater than 2 -- empty state (0) and final state (-1) are not supposed to have any counts:
@@ -470,18 +460,14 @@ def remove_unused_variables(models, hid_seqs):
         pos = np.where(models.pos.pairCounts.sum(0)==0)[0][1]
         remove_pos_from_models(models, pos)
         remove_pos_from_hid_seqs(hid_seqs, pos)
-    assert max_state(hid_seqs) <= models.pos.dist.shape[1]-2, \
-        "max state of hid_seqs is %s, pos dist size is %s" % (max_state(hid_seqs), models.pos.dist.shape[1])
+    max_state_check(hid_seqs, models)
     
 def remove_pos_from_hid_seqs(hid_seqs, pos):
-    num_tokens = sum(map(len, hid_seqs))
-    cum_length = np.cumsum(list(map(len, hid_seqs)))
-    for ind in range(num_tokens):
-        sent_ind, word_ind = indices(cum_length, ind)
-        state = hid_seqs[sent_ind][word_ind]
-        assert state.g != pos, "Removed POS still exists in hid_seqs!"
-        if state.g > pos: 
-            state.g = state.g - 1
+    for a in hid_seqs:
+        for state in a:
+            assert state.g != pos, "Removed POS still exists in hid_seqs!"
+            if state.g > pos: 
+                state.g = state.g - 1          
 
 def remove_pos_from_models(models, pos):
     ## delete the 1st dimension from the fork distribution:
@@ -991,12 +977,6 @@ def increment_counts(hid_seq, sent, models, inc=1):
 ## WS: REMOVED THESE: WAS DISTORTING OUTPUTS BC F MODEL NOT REALLY CONSULTED AT END (MODEL ACTUALLY KNOWS ITS AT END)
 #    models.fork.count(prevBG, 0)
 #    models.reduce.count(hid_seq[-1].a, 1)
-
-# sentence and word indices at given position in sequence
-def indices (cum_length, ind):
-    sent_ind = np.where(cum_length > ind)[0][0]
-    word_ind = ind if sent_ind == 0 else ind - cum_length[sent_ind-1]
-    return sent_ind, int(word_ind)
 
 def decrement_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
     for ind in range(start_ind, end_ind):
