@@ -85,7 +85,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     return_to_finite = False
     ready_for_sample = False
     
-    logging.basicConfig(level=getattr(logging, debug),filename=logfile)
+    logging.basicConfig(level=getattr(logging, debug))#,filename=logfile)
     logging.info("Starting beam sampling")
 
     seed = int(params.get('seed', -1))
