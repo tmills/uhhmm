@@ -14,7 +14,7 @@ import scipy.sparse
 cimport Indexer
 import Indexer
 import Sampler
-cimport Sampler
+#cimport Sampler
 import State
 cimport State
 import subprocess
@@ -34,7 +34,7 @@ def boolean_depth(l):
         if val >= 0:
             return index
 
-cdef class HmmSampler(Sampler.Sampler):
+class HmmSampler(Sampler.Sampler):
     
     def __init__(self, seed):
         Sampler.Sampler.__init__(self, seed)
@@ -45,16 +45,16 @@ cdef class HmmSampler(Sampler.Sampler):
     def set_models(self, models):
         self.models = models[0]
         unlog_models(self.models)
-        self.lexMatrix = np.matrix(self.models.lex.dist, copy=False, dtype=np.float32)
+        self.lexMatrix = gpuarray.to_gpu( np.expand_dims(self.models.lex.dist.astype('float32'), 0) )
         self.depth = len(self.models.fork)
         self.indexer = Indexer.Indexer(self.models)
         
         g_len = self.models.pos.dist.shape[1]
         w_len = self.models.lex.dist.shape[1]
-        lexMultiplier = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, self.indexer.get_state_size() / g_len)))
-        self.data = lexMultiplier.data
-        self.indices = lexMultiplier.indices
-        self.indptr = lexMultiplier.indptr
+        self.lexMultiplier = gpuarray.to_gpu(np.tile(np.identity(g_len), (1, self.indexer.get_state_size() / g_len)).astype('float32'))
+#        self.data = lexMultiplier.data
+#        self.indices = lexMultiplier.indices
+#        self.indptr = lexMultiplier.indptr
         
     def initialize_dynprog(self, maxLen):
         self.maxLen = maxLen
@@ -62,41 +62,56 @@ cdef class HmmSampler(Sampler.Sampler):
     @cython.cdivision(True)
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    cpdef forward_pass(self, pi_gpu, list sent, int sent_index):
+    def forward_pass(self, pi_gpu, list sents, int sent_index):
         cdef float sentence_log_prob = 0, normalizer
         cdef double t0, t1
         cdef int a_max, b_max, g_max, index, token, g_len
         cdef tuple maxes
                 
+        batch_size = len(sents)
+        batch_max = max(map(len, sents))
         t0 = time.time()
         try:           
             ## keep track of forward probs for this sentence:
             maxes = self.indexer.getVariableMaxes()
             (a_max,b_max,g_max) = maxes
 
-            forward = gpuarray.zeros( (self.maxLen, self.indexer.state_size), np.float32)
-            gpu_lex = gpuarray.to_gpu(self.lexMatrix)
+            forward = gpuarray.zeros( (batch_size, batch_max, self.indexer.state_size), np.float32)
+            ones = gpuarray.zeros( (batch_size, g_max-2), np.float32) + 1
             
-            lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
-            next = gpuarray.zeros((1, self.indexer.state_size), dtype='float32')
+            #gpu_lex = gpuarray.to_gpu(self.lexMatrix)
             
-            for index,token in enumerate(sent):
+            #lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
+            #next = gpuarray.zeros((1, self.indexer.state_size), dtype='float32')
+            
+            for index in range(batch_max):
+                ## First do transition in a batch:
                 ## Still use special case for 0
                 if index == 0:
-                    next[0,1:g_max-1] = gpu_lex[1:-1,token]
+                    forward[:,0,1:g_max-1] = ones  #self.lexMatrix[:,1:-1,token]
                 else:
-                    next = linalg.dot(prev, pi_gpu)
+                    forward[:,index] = linalg.dot(forward[:,index-1], pi_gpu)
                     
+                ## Do observations sentence by sentence:
+                for sent_index, sent in enumerate(sents):
                     ## TODO -- make the inputs to this already gpu arrays so we don't have to convert every time
-                    expanded_lex = gpuarray.to_gpu( (self.lexMatrix[:,token].transpose() * lexMultiplier).astype(np.float32) )
+                    #expanded_lex = gpuarray.to_gpu( (self.lexMatrix[:,token].transpose() * lexMultiplier).astype(np.float32) )
+                    #logging.info("shape of lex col=%s, lex multiplier =%s" % ( str(self.lexMatrix[:,:,token].shape), str(self.lexMultiplier.shape) ) )
+                    token = sent[index]
                     
-                    next = linalg.multiply(next, expanded_lex)                       
+                    expanded_lex = linalg.dot(self.lexMatrix[:,:,token], self.lexMultiplier)
+                    
+                    logging.info("Shape of forward section=%s, expanded_lex=%s" % ( str(forward[sent_index,index,:].shape), str(expanded_lex[0].shape) ) )
+                    forward[sent_index, index, :] = linalg.multiply(forward[sent_index, index,:], expanded_lex[0])                       
 
-                normalizer = float (np.array (skcuda.misc.sum( next ).get() ) )
-                next = next / normalizer
+                normalizers = skcuda.misc.sum( forward[:,index,:] )
+                if normalizers == 0.0:
+                    logging.warn("Normalizer is zero at index %d of sentence %d" % (index, sent_index) )
+                    
+                forward[:,index,:] /= normalizers
                 
-                forward[index] += next[0,:]
-                prev = next
+                #forward[index] += next[0,:]
+                #prev = next
                            
                 ## Normalizer is p(y_t)
                 sentence_log_prob += np.log10(normalizer)
@@ -123,7 +138,7 @@ cdef class HmmSampler(Sampler.Sampler):
         self.ff_time += (t1-t0)
         return sentence_log_prob, forward
    
-    cpdef reverse_sample(self, forward, gpu_pi, list sent, int sent_index):
+    def reverse_sample(self, forward, gpu_pi, list sent, int sent_index):
         cdef int totalK, depth, last_index, sample_t, sample_depth, t, ind
         cdef int prev_depth, next_f_depth, next_awa_depth
         cdef float trans_prob, sample_log_prob
@@ -153,13 +168,12 @@ cdef class HmmSampler(Sampler.Sampler):
             ## 0 (i.e. the sentence must fully reduce to be a valid parse)
             #print(dyn_prog[:,last_index])
             while sample_t < 0 or sample_depth > 0:
-                sample_t = get_gpu_sample(forward[last_index,:])
+                sample_t = get_gpu_sample(forward[last_index,0,:])
                 sample_state = self.indexer.extractState(sample_t)
                 sample_depth = sample_state.max_awa_depth()
-                #logging.debug("Sampled final state %s with depth %d" % (sample_state.str(), sample_depth))
+                logging.info("Sampled final state %s with depth %d" % (sample_state.str(), sample_depth))
     
             sample_seq.append(sample_state)
-            #logging.debug("Sampled state %s at time %d" % (sample_seq[-1].str(), last_index))
             
             if last_index > 0 and (sample_seq[-1].a[0] == 0 or sample_seq[-1].b[0] == 0 or sample_seq[-1].g == 0):
                 logging.error("Error: First sample for sentence %d has index %d and has a|b|g = 0" % (sent_index, sample_t))
@@ -168,6 +182,7 @@ cdef class HmmSampler(Sampler.Sampler):
             for t in range(len(sent)-2,-1,-1):                
                 sample_state, sample_t = self._reverse_sample_inner(forward, gpu_pi, sample_t, t)
                 sample_seq.append(sample_state)
+                logging.info("Sampled state %s at time %d" % (sample_seq[-1].str(), t))
            
             sample_seq.reverse()
         except Exception as e:
@@ -181,15 +196,18 @@ cdef class HmmSampler(Sampler.Sampler):
     @cython.cdivision(True)
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    cdef _reverse_sample_inner(self, forward, gpu_pi, int sample_t, int t):
+    def _reverse_sample_inner(self, forward, gpu_pi, int sample_t, int t):
         cdef np.ndarray trans_slice
         cdef int ind
         cdef float normalizer
         
         ## TODO - see if we can get non-zero entries like before - might be faster
 #        for ind in np.where(forward[t,:] != 0.0)[0]:                     
-        for ind in range(len(forward[t,:])):
-            forward[t,ind] *= gpu_pi[ind, sample_t]
+        for ind in range(len(forward[t,0,:])):
+            forward[t,0,ind] *= gpu_pi[ind, sample_t]
+        
+        ## FIXME -- this product seems to be buggy!
+        #forward[t,0,:] = linalg.multiply(forward[t,:,:], gpu_pi[:, :, sample_t])
         
         normalizer = float(skcuda.misc.sum(forward[t,:]).get())
         if normalizer == 0.0:
@@ -197,9 +215,9 @@ cdef class HmmSampler(Sampler.Sampler):
         
         forward[t,:] /= normalizer
         
-        sample_t = get_gpu_sample(forward[t,:])
+        sample_t = get_gpu_sample(forward[t,0,:])
         sample_state = self.indexer.extractState(sample_t)
-        logging.log(logging.DEBUG-1, "Sampled state %s with index %d at time %d" % (sample_state.str(), sample_t, t))
+        logging.info("Sampled state %s with index %d at time %d" % (sample_state.str(), sample_t, t))
         
         if t > 0 and sample_state.g == 0:
             logging.error("Error: Sampled a g=0 state with state index %d in backwards pass: %s" % (sample_t, sample_state.str()) )

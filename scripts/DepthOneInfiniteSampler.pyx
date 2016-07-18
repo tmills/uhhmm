@@ -5,22 +5,24 @@ import time
 import numpy as np
 import sys
 import subprocess
-from PyzmqWorker import *
-from Sampler import *
+#from PyzmqWorker import *
+#from Sampler import *
 #cimport cython
-#cimport State
+cimport State
 #import pyximport; pyximport.install()
 import log_math as lm
-from Indexer import *
+#from Indexer import *
+import Indexer
+import Sampler
 
-class InfiniteSampler(Sampler):
+class InfiniteSampler(Sampler.Sampler):
     def __init__(self, seed):
-        Sampler.__init__(self, seed)
+        Sampler.Sampler.__init__(self, seed)
         self.indexer = None
         
     def set_models(self, models):
         self.models = models
-        self.indexer = Indexer(self.models)
+        self.indexer = Indexer.Indexer(self.models)
 
     def initialize_dynprog(self, maxLen):
         self.dyn_prog = np.zeros((2,2,self.models.act[0].dist.shape[-1], self.models.cont[0].dist.shape[-1], self.models.pos.dist.shape[-1], maxLen))
