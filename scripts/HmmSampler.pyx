@@ -45,7 +45,9 @@ class HmmSampler(Sampler.Sampler):
     def set_models(self, models):
         self.models = models[0]
         unlog_models(self.models)
-        self.lexMatrix = gpuarray.to_gpu( np.expand_dims(self.models.lex.dist.astype('float32'), 0) )
+        #self.lexMatrix = gpuarray.to_gpu( np.expand_dims(self.models.lex.dist.astype('float32'), 0) )
+        self.lexMatrix = self.models.lex.dist.astype('float32')
+        
         self.depth = len(self.models.fork)
         self.indexer = Indexer.Indexer(self.models)
         
@@ -69,14 +71,20 @@ class HmmSampler(Sampler.Sampler):
         cdef tuple maxes
                 
         batch_size = len(sents)
-        batch_max = max(map(len, sents))
+        batch_max_len = max(map(len, sents))
+        np_sents = get_sentence_array(sents, batch_max_len)
+        
+        logging.info("Processing a batch of size %d with max length %d" % (batch_size, batch_max_len) )
+        sentence_log_probs = np.zeros( len(sents) )
+        
         t0 = time.time()
         try:           
             ## keep track of forward probs for this sentence:
             maxes = self.indexer.getVariableMaxes()
             (a_max,b_max,g_max) = maxes
 
-            forward = gpuarray.zeros( (batch_size, batch_max, self.indexer.state_size), np.float32)
+            forward = gpuarray.zeros( (batch_max_len, batch_size, self.indexer.state_size), np.float32)
+            #forward = gpuarray.zeros( (batch_size, self.indexer.state_size, batch_max_len, np.float32)
             ones = gpuarray.zeros( (batch_size, g_max-2), np.float32) + 1
             
             #gpu_lex = gpuarray.to_gpu(self.lexMatrix)
@@ -84,39 +92,52 @@ class HmmSampler(Sampler.Sampler):
             #lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
             #next = gpuarray.zeros((1, self.indexer.state_size), dtype='float32')
             
-            for index in range(batch_max):
+            for index in range(batch_max_len):
+                logging.info("Index=%d" % (index) )
                 ## First do transition in a batch:
                 ## Still use special case for 0
                 if index == 0:
-                    forward[:,0,1:g_max-1] = ones  #self.lexMatrix[:,1:-1,token]
+                    forward[0,:,1:g_max-1] = ones  #self.lexMatrix[:,1:-1,token]
                 else:
-                    forward[:,index] = linalg.dot(forward[:,index-1], pi_gpu)
+                    forward[index] = linalg.dot(forward[index-1], pi_gpu)
                     
-                ## Do observations sentence by sentence:
-                for sent_index, sent in enumerate(sents):
-                    ## TODO -- make the inputs to this already gpu arrays so we don't have to convert every time
-                    #expanded_lex = gpuarray.to_gpu( (self.lexMatrix[:,token].transpose() * lexMultiplier).astype(np.float32) )
-                    #logging.info("shape of lex col=%s, lex multiplier =%s" % ( str(self.lexMatrix[:,:,token].shape), str(self.lexMultiplier.shape) ) )
-                    token = sent[index]
+                ## TODO -- make the inputs to this already gpu arrays so we don't have to convert every time
+                #expanded_lex = gpuarray.to_gpu( (self.lexMatrix[:,token].transpose() * lexMultiplier).astype(np.float32) )
+                #logging.info("shape of lex col=%s, lex multiplier =%s" % ( str(self.lexMatrix[:,:,token].shape), str(self.lexMultiplier.shape) ) )
+                
+                ## Get the column vector representing the token index of every sentence in the corpus at current index:
+                tokens = np_sents[:,index]
+                
+                gpu_lex = gpuarray.to_gpu( self.lexMatrix[:,tokens].transpose() )
+                
+                #logging.info("Shape of tokens=%s, lexMultipler=%s, gpu_lex=%s" % ( str(tokens.shape), str(self.lexMultiplier.shape), str(gpu_lex.shape) ) )
+                
+                expanded_lex = linalg.dot(gpu_lex, self.lexMultiplier)
                     
-                    expanded_lex = linalg.dot(self.lexMatrix[:,:,token], self.lexMultiplier)
-                    
-                    logging.info("Shape of forward section=%s, expanded_lex=%s" % ( str(forward[sent_index,index,:].shape), str(expanded_lex[0].shape) ) )
-                    forward[sent_index, index, :] = linalg.multiply(forward[sent_index, index,:], expanded_lex[0])                       
+                #logging.info("Shape of forward section=%s, expanded_lex=%s" % ( str(forward[index].shape), str(expanded_lex.shape) ) )
+                forward[index] = linalg.multiply(forward[index], expanded_lex)                       
 
-                normalizers = skcuda.misc.sum( forward[:,index,:] )
-                if normalizers == 0.0:
-                    logging.warn("Normalizer is zero at index %d of sentence %d" % (index, sent_index) )
-                    
-                forward[:,index,:] /= normalizers
+                normalizers = skcuda.misc.sum( forward[index], 1 )
+                
+                logging.info("Shape of normalizer=%s with %d sentences" % (str(normalizers.shape), batch_size ) )                
+                logging.info("Normalizers=%s" % (normalizers) )
+                
+                #if normalizers == 0.0:
+                #    logging.warn("Normalizer is zero at index %d of sentence %d" % (index, sent_index) )
+                 
+                forward[index] = skcuda.misc.div_matvec( forward[index].transpose(), normalizers ).transpose()
+                
+                normalizers = skcuda.misc.sum( forward[index], 1 )
+                logging.info("Normalizers after norm (should be 1s)=%s" % (normalizers) )
+                #forward[:] /= normalizers
                 
                 #forward[index] += next[0,:]
                 #prev = next
                            
                 ## Normalizer is p(y_t)
-                sentence_log_prob += np.log10(normalizer)
+                sentence_log_probs += np.log10(normalizers.get())
 
-            last_index = len(sent)-1
+            #last_index = len(sent)-1
             ## FIXME - for some reason this doesn't work with pycuda max.
             #if np.argwhere(skcuda.misc.max(forward,1)[0:last_index+1] == 0).size > 0:
                 #logging.error("Error; There is a word with no positive probabilities for its generation in the forward filter: %s" % skcuda.misc.max(forward, 1)[0:last_index+1])
@@ -133,13 +154,16 @@ class HmmSampler(Sampler.Sampler):
         except Exception as e:
             printException()
             raise e
-            
+        
+        debug_array = forward[ len(sents[0])-1, 0, :].get()
+        logging.info("End of forward, sum of values is %f and max is %f" % ( debug_array.sum(), debug_array.max() ) )
+
         t1 = time.time()
         self.ff_time += (t1-t0)
-        return sentence_log_prob, forward
+        return sentence_log_probs, forward
    
-    def reverse_sample(self, forward, gpu_pi, list sent, int sent_index):
-        cdef int totalK, depth, last_index, sample_t, sample_depth, t, ind
+    def reverse_sample(self, forward, gpu_pi, list sents, int sent_index):
+        cdef int totalK, depth, last_index, sample_t, sample_depth, t, ind, num_sents
         cdef int prev_depth, next_f_depth, next_awa_depth
         cdef float trans_prob, sample_log_prob
         cdef double t0, t1
@@ -147,51 +171,62 @@ class HmmSampler(Sampler.Sampler):
         cdef tuple maxes
         cdef np.ndarray trans_slice
         cdef State.State sample_state
+        cdef list sample_seqs
+        
+        num_sents = forward.shape[1]
+        sample_seqs = []
+
+        debug_array = forward[ len(sents[0])-1, 0, :].get()
+        logging.info("For first sentence, sum of values is %f and max is %f" % ( debug_array.sum(), debug_array.max() ) )
         
         t0 = time.time()
-        try:      
-            sample_seq = []
-            sample_log_prob = 0
-            maxes = self.indexer.getVariableMaxes()
-            totalK = self.indexer.get_state_size()
-            depth = len(self.models.fork)
+        try:
+            for ind in range(sent_index, sent_index+num_sents):
+                sample_seq = []
+                sample_log_prob = 0
+                maxes = self.indexer.getVariableMaxes()
+                totalK = self.indexer.get_state_size()
+                depth = len(self.models.fork)
         
-            ## Normalize and grab the sample from the forward probs at the end of the sentence
-            last_index = len(sent)-1
+                ## Normalize and grab the sample from the forward probs at the end of the sentence
+                last_index = len(sents[ind])-1
             
-            ## normalize after multiplying in the transition out probabilities
-            #forward[last_index,:] /= skcuda.misc.sum(forward[last_index,:]) #.sum()
+                logging.info("Attempting to sample sentence %d with length %d and last index %d from forward matrix with shape %s" % (ind, len(sents[ind]), last_index, str(forward.shape) ) )
+                ## normalize after multiplying in the transition out probabilities
+                #forward[last_index,:] /= skcuda.misc.sum(forward[last_index,:]) #.sum()
             
-            sample_t = -1
-            sample_depth = -1
-            ## We require that the sample comes from the set of states that are at depth
-            ## 0 (i.e. the sentence must fully reduce to be a valid parse)
-            #print(dyn_prog[:,last_index])
-            while sample_t < 0 or sample_depth > 0:
-                sample_t = get_gpu_sample(forward[last_index,0,:])
-                sample_state = self.indexer.extractState(sample_t)
-                sample_depth = sample_state.max_awa_depth()
-                logging.info("Sampled final state %s with depth %d" % (sample_state.str(), sample_depth))
+                sample_t = -1
+                sample_depth = -1
+                ## We require that the sample comes from the set of states that are at depth
+                ## 0 (i.e. the sentence must fully reduce to be a valid parse)
+                #print(dyn_prog[:,last_index])
+                while sample_t < 0 or sample_depth > 0:
+                    #sample_t = get_gpu_sample(forward[last_index, :, ind])
+                    sample_t = get_sample(forward[last_index, ind, :].get() )
+                    sample_state = self.indexer.extractState(sample_t)
+                    sample_depth = sample_state.max_awa_depth()
+                    logging.info("Sampled final state %s with depth %d" % (sample_state.str(), sample_depth))
     
-            sample_seq.append(sample_state)
-            
-            if last_index > 0 and (sample_seq[-1].a[0] == 0 or sample_seq[-1].b[0] == 0 or sample_seq[-1].g == 0):
-                logging.error("Error: First sample for sentence %d has index %d and has a|b|g = 0" % (sent_index, sample_t))
-                raise Exception
-  
-            for t in range(len(sent)-2,-1,-1):                
-                sample_state, sample_t = self._reverse_sample_inner(forward, gpu_pi, sample_t, t)
                 sample_seq.append(sample_state)
-                logging.info("Sampled state %s at time %d" % (sample_seq[-1].str(), t))
+            
+                #if last_index > 0 and (sample_seq[-1].a[0] == 0 or sample_seq[-1].b[0] == 0 or sample_seq[-1].g == 0):
+                #    logging.error("Error: First sample for sentence %d has index %d and has a|b|g = 0" % (sent_index, sample_t))
+                #    raise Exception
+  
+                for t in range(len(sents[ind])-2,-1,-1):                
+                    sample_state, sample_t = self._reverse_sample_inner(forward[:,ind,:], gpu_pi, sample_t, t)
+                    sample_seq.append(sample_state)
+                    logging.info("Sampled state %s at time %d" % (sample_seq[-1].str(), t))
            
-            sample_seq.reverse()
+                sample_seq.reverse()
+                sample_seqs.append(sample_seq)
         except Exception as e:
             printException()
             raise e
         
         t1 = time.time()
         self.bs_time += (t1-t0)
-        return sample_seq
+        return sample_seqs
 
     @cython.cdivision(True)
     @cython.boundscheck(False)
@@ -201,21 +236,30 @@ class HmmSampler(Sampler.Sampler):
         cdef int ind
         cdef float normalizer
         
+        logging.info("Before multiplying in transitions, forward = %s"  % ( str(forward[t,:]) ) )
+        
         ## TODO - see if we can get non-zero entries like before - might be faster
 #        for ind in np.where(forward[t,:] != 0.0)[0]:                     
-        for ind in range(len(forward[t,0,:])):
-            forward[t,0,ind] *= gpu_pi[ind, sample_t]
+        for ind in range(len(forward[t,:])):
+            forward[t,ind] *= gpu_pi[ind, sample_t]
+            
+        logging.info("After multiplying in transitions, forward = %s"  % ( str(forward[t,:]) ) )
+
+        #forward[t,:] = linalg.multiply(forward[t,:], gpu_pi[:, sample_t])
         
         ## FIXME -- this product seems to be buggy!
         #forward[t,0,:] = linalg.multiply(forward[t,:,:], gpu_pi[:, :, sample_t])
         
         normalizer = float(skcuda.misc.sum(forward[t,:]).get())
+        logging.info("Value of noramlizer is %s" % str(normalizer) )
+        
         if normalizer == 0.0:
             logging.warning("No positive probability states at this time step %d." % (t))
         
         forward[t,:] /= normalizer
         
-        sample_t = get_gpu_sample(forward[t,0,:])
+        #sample_t = get_gpu_sample(forward[t,0,:])
+        sample_t = get_sample(forward[t,:].get() )
         sample_state = self.indexer.extractState(sample_t)
         logging.info("Sampled state %s with index %d at time %d" % (sample_state.str(), sample_t, t))
         
@@ -238,9 +282,9 @@ cdef int max_awa_depth(np.ndarray b):
 @cython.boundscheck(False) # turn off bounds-checking for entire function
 @cython.wraparound(False)  # turn off negative index wrapping for entire function
 @cython.cdivision(True)    # faster division without checks
-cdef int get_sample(np.ndarray[np.float64_t] dist):
+cdef int get_sample(np.ndarray[np.float32_t] dist):
     cdef float dart
-    cdef np.ndarray[np.float64_t] sum_dist
+    cdef np.ndarray[np.float32_t] sum_dist
     cdef int start, end, cur, ret
     
     sum_dist = np.cumsum(dist)
@@ -298,6 +342,18 @@ cdef int old_get_sample(np.ndarray dist):
     for i in range(0, len(dist)):
         if dart < sum_dist[i]:
             return i
+
+def get_sentence_array(list sents, int max_len):
+    np_sents = np.zeros( (len(sents), max_len), dtype=np.int )
+    
+    for ind,sent in enumerate(sents):
+        copy_sent = sent.copy()
+        while len(copy_sent) < max_len:
+            copy_sent.append(0)
+        
+        np_sents[ind] += copy_sent
+    
+    return np_sents
     
 def unlog_models(models):
     depth = len(models.fork)

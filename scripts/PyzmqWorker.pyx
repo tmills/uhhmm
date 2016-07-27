@@ -151,7 +151,7 @@ cdef class PyzmqWorker:
             return
 
         longest_time = 10
-        batch_size = 1
+        batch_size = 5
         sent_batch = []
         epoch_done = False
         
@@ -188,7 +188,8 @@ cdef class PyzmqWorker:
         
             success = True
             
-            if len(sent_batch) == batch_size or quit:
+            if len(sent_batch) >= batch_size or epoch_done:
+                logging.info("Batch now has %d sentences and size is %d so starting to process" % (len(sent_batch), batch_size) )
                 t0 = time.time()
                 try:
                     (sent_samples, log_probs) = sampler.sample(pi_gpu, sent_batch, sent_index)
