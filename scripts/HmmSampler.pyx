@@ -86,6 +86,7 @@ class HmmSampler(Sampler.Sampler):
             forward = gpuarray.zeros( (batch_max_len, batch_size, self.indexer.state_size), np.float32)
             #forward = gpuarray.zeros( (batch_size, self.indexer.state_size, batch_max_len, np.float32)
             ones = gpuarray.zeros( (batch_size, g_max-2), np.float32) + 1
+            ones_mat = gpuarray.zeros( (batch_size, self.indexer.state_size), np.float32 ) + 1
             
             #gpu_lex = gpuarray.to_gpu(self.lexMatrix)
             
@@ -100,7 +101,9 @@ class HmmSampler(Sampler.Sampler):
                     forward[0,:,1:g_max-1] = ones  #self.lexMatrix[:,1:-1,token]
                 else:
                     forward[index] = linalg.dot(forward[index-1], pi_gpu)
-                    
+                
+                logging.info("max is %s and sum is %s" % ( skcuda.misc.max(forward[index], 1), skcuda.misc.sum(forward[index], 1) ) )
+                
                 ## TODO -- make the inputs to this already gpu arrays so we don't have to convert every time
                 #expanded_lex = gpuarray.to_gpu( (self.lexMatrix[:,token].transpose() * lexMultiplier).astype(np.float32) )
                 #logging.info("shape of lex col=%s, lex multiplier =%s" % ( str(self.lexMatrix[:,:,token].shape), str(self.lexMultiplier.shape) ) )
@@ -110,32 +113,38 @@ class HmmSampler(Sampler.Sampler):
                 
                 gpu_lex = gpuarray.to_gpu( self.lexMatrix[:,tokens].transpose() )
                 
-                #logging.info("Shape of tokens=%s, lexMultipler=%s, gpu_lex=%s" % ( str(tokens.shape), str(self.lexMultiplier.shape), str(gpu_lex.shape) ) )
+                logging.info("Shape of tokens=%s, lexMultipler=%s, gpu_lex=%s" % ( str(tokens.shape), str(self.lexMultiplier.shape), str(gpu_lex.shape) ) )
                 
                 expanded_lex = linalg.dot(gpu_lex, self.lexMultiplier)
                     
-                #logging.info("Shape of forward section=%s, expanded_lex=%s" % ( str(forward[index].shape), str(expanded_lex.shape) ) )
+                logging.info("Shape of forward section=%s, expanded_lex=%s" % ( str(forward[index].shape), str(expanded_lex.shape) ) )
                 forward[index] = linalg.multiply(forward[index], expanded_lex)                       
 
-                normalizers = skcuda.misc.sum( forward[index], 1 )
+                logging.info("max is %s and sum is %s" % ( skcuda.misc.max(forward[index], 1), skcuda.misc.sum(forward[index], 1) ) )
+
+                sums = skcuda.misc.sum( forward[index], 1 )
+                normalizers = skcuda.misc.mult_matvec(ones_mat.transpose(), 1.0 / sums).transpose()
+                
                 
                 logging.info("Shape of normalizer=%s with %d sentences" % (str(normalizers.shape), batch_size ) )                
+                logging.info("Sums=%s" % (sums) )
                 logging.info("Normalizers=%s" % (normalizers) )
                 
                 #if normalizers == 0.0:
                 #    logging.warn("Normalizer is zero at index %d of sentence %d" % (index, sent_index) )
                  
-                forward[index] = skcuda.misc.div_matvec( forward[index].transpose(), normalizers ).transpose()
+                #forward[index] = skcuda.misc.div_matvec( forward[index].transpose(), normalizers ).transpose()
+                forward[index] = linalg.multiply( forward[index], normalizers)
                 
-                normalizers = skcuda.misc.sum( forward[index], 1 )
-                logging.info("Normalizers after norm (should be 1s)=%s" % (normalizers) )
+                #normalizers = skcuda.misc.sum( forward[index], 1 )
+                logging.info("Sums after norm (should be 1s)=%s" % (skcuda.misc.sum( forward[index], 1 )) )
                 #forward[:] /= normalizers
                 
                 #forward[index] += next[0,:]
                 #prev = next
                            
                 ## Normalizer is p(y_t)
-                sentence_log_probs += np.log10(normalizers.get())
+                sentence_log_probs += np.log10(sums.get())
 
             #last_index = len(sent)-1
             ## FIXME - for some reason this doesn't work with pycuda max.
