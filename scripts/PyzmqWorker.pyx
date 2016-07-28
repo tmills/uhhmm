@@ -151,7 +151,7 @@ cdef class PyzmqWorker:
             return
 
         longest_time = 10
-        batch_size = 5
+        batch_size = 100
         sent_batch = []
         epoch_done = False
         
@@ -211,7 +211,7 @@ cdef class PyzmqWorker:
                 if not success:
                     logging.info("Worker %d was unsuccessful in attempt to parse sentence %d" % (self.tid, sent_index) )
 
-                if (t1-t0) > longest_time:
+                if batch_size > 1 or (t1-t0) > longest_time:
                     longest_time = t1-t0
                     logging.warning("Sentence %d was my slowest sentence to parse so far at %d s" % (sent_index, longest_time) )
 
@@ -220,6 +220,8 @@ cdef class PyzmqWorker:
                     sents_processed +=1        
                     results_socket.send_pyobj(CompletedJob(PyzmqJob.SENTENCE, parse, parse.success))
 
+                sent_batch = []
+                
             if self.quit:
                 break
 

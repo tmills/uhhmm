@@ -103,7 +103,7 @@ class HmmSampler(Sampler.Sampler):
                 else:
                     forward[index] = linalg.dot(forward[index-1], pi_gpu)
                 
-                logging.info("max is %s and sum is %s" % ( skcuda.misc.max(forward[index], 1), skcuda.misc.sum(forward[index], 1) ) )
+                #logging.info("max is %s and sum is %s" % ( skcuda.misc.max(forward[index], 1), skcuda.misc.sum(forward[index], 1) ) )
                 
                 ## TODO -- make the inputs to this already gpu arrays so we don't have to convert every time
                 #expanded_lex = gpuarray.to_gpu( (self.lexMatrix[:,token].transpose() * lexMultiplier).astype(np.float32) )
@@ -114,14 +114,14 @@ class HmmSampler(Sampler.Sampler):
                 
                 gpu_lex = gpuarray.to_gpu( self.lexMatrix[:,tokens].transpose() )
                 
-                logging.info("Shape of tokens=%s, lexMultipler=%s, gpu_lex=%s" % ( str(tokens.shape), str(self.lexMultiplier.shape), str(gpu_lex.shape) ) )
+                #logging.info("Shape of tokens=%s, lexMultipler=%s, gpu_lex=%s" % ( str(tokens.shape), str(self.lexMultiplier.shape), str(gpu_lex.shape) ) )
                 
                 expanded_lex = linalg.dot(gpu_lex, self.lexMultiplier)
                     
-                logging.info("Shape of forward section=%s, expanded_lex=%s" % ( str(forward[index].shape), str(expanded_lex.shape) ) )
+                #logging.info("Shape of forward section=%s, expanded_lex=%s" % ( str(forward[index].shape), str(expanded_lex.shape) ) )
                 forward[index] = linalg.multiply(forward[index], expanded_lex)                       
 
-                logging.info("max is %s and sum is %s" % ( skcuda.misc.max(forward[index], 1), skcuda.misc.sum(forward[index], 1) ) )
+                #logging.info("max is %s and sum is %s" % ( skcuda.misc.max(forward[index], 1), skcuda.misc.sum(forward[index], 1) ) )
 
                 sums = skcuda.misc.sum( forward[index], 1 )
                 
@@ -145,7 +145,7 @@ class HmmSampler(Sampler.Sampler):
                 #forward[index] = linalg.multiply( forward[index], normalizers)
                 
                 #normalizers = skcuda.misc.sum( forward[index], 1 )
-                logging.info("Sums after norm (should be 1s)=%s" % (skcuda.misc.sum( forward[index], 1 )) )
+                #logging.info("Sums after norm (should be 1s)=%s" % (skcuda.misc.sum( forward[index], 1 )) )
                 #forward[:] /= normalizers
                 
                 #forward[index] += next[0,:]
@@ -173,7 +173,7 @@ class HmmSampler(Sampler.Sampler):
             raise e
         
         debug_array = forward[ len(sents[0])-1, 0, :].get()
-        logging.info("End of forward, sum of values is %f and max is %f" % ( debug_array.sum(), debug_array.max() ) )
+        #logging.info("End of forward, sum of values is %f and max is %f" % ( debug_array.sum(), debug_array.max() ) )
 
         t1 = time.time()
         self.ff_time += (t1-t0)
@@ -194,11 +194,12 @@ class HmmSampler(Sampler.Sampler):
         sample_seqs = []
 
         debug_array = forward[ len(sents[0])-1, 0, :].get()
-        logging.info("For first sentence, sum of values is %f and max is %f" % ( debug_array.sum(), debug_array.max() ) )
+        #logging.info("For first sentence, sum of values is %f and max is %f" % ( debug_array.sum(), debug_array.max() ) )
         
         t0 = time.time()
         try:
-            for ind in range(sent_index, sent_index+num_sents):
+#            for ind in range(sent_index, sent_index+num_sents):
+            for ind in range( num_sents ):
                 sample_seq = []
                 sample_log_prob = 0
                 maxes = self.indexer.getVariableMaxes()
@@ -208,7 +209,7 @@ class HmmSampler(Sampler.Sampler):
                 ## Normalize and grab the sample from the forward probs at the end of the sentence
                 last_index = len(sents[ind])-1
             
-                logging.info("Attempting to sample sentence %d with length %d and last index %d from forward matrix with shape %s" % (ind, len(sents[ind]), last_index, str(forward.shape) ) )
+                #logging.info("Attempting to sample sentence %d with length %d and last index %d from forward matrix with shape %s" % (ind, len(sents[ind]), last_index, str(forward.shape) ) )
                 ## normalize after multiplying in the transition out probabilities
                 #forward[last_index,:] /= skcuda.misc.sum(forward[last_index,:]) #.sum()
             
@@ -218,11 +219,11 @@ class HmmSampler(Sampler.Sampler):
                 ## 0 (i.e. the sentence must fully reduce to be a valid parse)
                 #print(dyn_prog[:,last_index])
                 while sample_t < 0 or sample_depth > 0:
-                    #sample_t = get_gpu_sample(forward[last_index, :, ind])
+                    #sample_t = get_gpu_sample(forward[last_index, ind, :])
                     sample_t = get_sample(forward[last_index, ind, :].get() )
                     sample_state = self.indexer.extractState(sample_t)
                     sample_depth = sample_state.max_awa_depth()
-                    logging.info("Sampled final state %s with depth %d" % (sample_state.str(), sample_depth))
+                    #logging.info("Sampled final state %s with depth %d" % (sample_state.str(), sample_depth))
     
                 sample_seq.append(sample_state)
             
@@ -233,7 +234,7 @@ class HmmSampler(Sampler.Sampler):
                 for t in range(len(sents[ind])-2,-1,-1):                
                     sample_state, sample_t = self._reverse_sample_inner(forward[:,ind,:], gpu_pi, sample_t, t)
                     sample_seq.append(sample_state)
-                    logging.info("Sampled state %s at time %d" % (sample_seq[-1].str(), t))
+                    #logging.info("Sampled state %s at time %d" % (sample_seq[-1].str(), t))
            
                 sample_seq.reverse()
                 sample_seqs.append(sample_seq)
@@ -253,32 +254,31 @@ class HmmSampler(Sampler.Sampler):
         cdef int ind
         cdef float normalizer
         
-        logging.info("Before multiplying in transitions, forward = %s"  % ( str(forward[t,:]) ) )
+        #logging.info("Before multiplying in transitions, forward = %s"  % ( str(forward[t,:]) ) )
         
-        ## TODO - see if we can get non-zero entries like before - might be faster
-#        for ind in np.where(forward[t,:] != 0.0)[0]:                     
-        for ind in range(len(forward[t,:])):
-            forward[t,ind] *= gpu_pi[ind, sample_t]
+        #for ind in range(len(forward[t,:])):
+        #    forward[t,ind] *= gpu_pi[ind, sample_t]
             
-        logging.info("After multiplying in transitions, forward = %s"  % ( str(forward[t,:]) ) )
+        #logging.info("After multiplying in transitions, forward = %s"  % ( str(forward[t,:]) ) )
 
-        #forward[t,:] = linalg.multiply(forward[t,:], gpu_pi[:, sample_t])
+        trans_probs = gpuarray.zeros( gpu_pi.shape, np.float32) + gpu_pi[:, sample_t]
+        forward[t,:] = linalg.multiply(forward[t,:], trans_probs)
         
         ## FIXME -- this product seems to be buggy!
         #forward[t,0,:] = linalg.multiply(forward[t,:,:], gpu_pi[:, :, sample_t])
         
         normalizer = float(skcuda.misc.sum(forward[t,:]).get())
-        logging.info("Value of noramlizer is %s" % str(normalizer) )
+        #logging.info("Value of noramlizer is %s" % str(normalizer) )
         
         if normalizer == 0.0:
             logging.warning("No positive probability states at this time step %d." % (t))
         
         forward[t,:] /= normalizer
         
-        #sample_t = get_gpu_sample(forward[t,0,:])
+        #sample_t = get_gpu_sample(forward[t,:])
         sample_t = get_sample(forward[t,:].get() )
         sample_state = self.indexer.extractState(sample_t)
-        logging.info("Sampled state %s with index %d at time %d" % (sample_state.str(), sample_t, t))
+        #logging.info("Sampled state %s with index %d at time %d" % (sample_state.str(), sample_t, t))
         
         if t > 0 and sample_state.g == 0:
             logging.error("Error: Sampled a g=0 state with state index %d in backwards pass: %s" % (sample_t, sample_state.str()) )
