@@ -87,6 +87,7 @@ class HmmSampler(Sampler.Sampler):
             #forward = gpuarray.zeros( (batch_size, self.indexer.state_size, batch_max_len, np.float32)
             ones = gpuarray.zeros( (batch_size, g_max-2), np.float32) + 1
             ones_mat = gpuarray.zeros( (batch_size, self.indexer.state_size), np.float32 ) + 1
+            normalizers = gpuarray.zeros( (batch_size, self.indexer.state_size), np.float32 )
             
             #gpu_lex = gpuarray.to_gpu(self.lexMatrix)
             
@@ -123,18 +124,25 @@ class HmmSampler(Sampler.Sampler):
                 logging.info("max is %s and sum is %s" % ( skcuda.misc.max(forward[index], 1), skcuda.misc.sum(forward[index], 1) ) )
 
                 sums = skcuda.misc.sum( forward[index], 1 )
-                normalizers = skcuda.misc.mult_matvec(ones_mat.transpose(), 1.0 / sums).transpose()
+                
+                ## One normalizer per sentence at each token:
+                assert len(sums) == batch_size
+                
+                ## FIXME -- mult_matvec is buggy
+                #normalizers = skcuda.misc.mult_matvec(ones_mat.transpose(), 1.0 / sums).transpose()
+                for sent_ind in range(batch_size):
+                    forward[index,sent_ind] /= sums[sent_ind].get()
                 
                 
-                logging.info("Shape of normalizer=%s with %d sentences" % (str(normalizers.shape), batch_size ) )                
-                logging.info("Sums=%s" % (sums) )
-                logging.info("Normalizers=%s" % (normalizers) )
+                #logging.info("Shape of normalizer=%s with %d sentences" % (str(normalizers.shape), batch_size ) )                
+                #logging.info("Sums=%s" % (sums) )
+                #logging.info("Normalizers=%s" % (normalizers) )
                 
                 #if normalizers == 0.0:
                 #    logging.warn("Normalizer is zero at index %d of sentence %d" % (index, sent_index) )
                  
                 #forward[index] = skcuda.misc.div_matvec( forward[index].transpose(), normalizers ).transpose()
-                forward[index] = linalg.multiply( forward[index], normalizers)
+                #forward[index] = linalg.multiply( forward[index], normalizers)
                 
                 #normalizers = skcuda.misc.sum( forward[index], 1 )
                 logging.info("Sums after norm (should be 1s)=%s" % (skcuda.misc.sum( forward[index], 1 )) )
