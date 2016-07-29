@@ -54,9 +54,6 @@ class HmmSampler(Sampler.Sampler):
         g_len = self.models.pos.dist.shape[1]
         w_len = self.models.lex.dist.shape[1]
         self.lexMultiplier = gpuarray.to_gpu(np.tile(np.identity(g_len), (1, self.indexer.get_state_size() / g_len)).astype('float32'))
-#        self.data = lexMultiplier.data
-#        self.indices = lexMultiplier.indices
-#        self.indptr = lexMultiplier.indptr
         
     def initialize_dynprog(self, maxLen):
         self.maxLen = maxLen
@@ -132,29 +129,14 @@ class HmmSampler(Sampler.Sampler):
                 #normalizers = skcuda.misc.mult_matvec(ones_mat.transpose(), 1.0 / sums).transpose()
                 for sent_ind in range(batch_size):
                     forward[index,sent_ind] /= sums[sent_ind].get()
-                
-                
-                #logging.info("Shape of normalizer=%s with %d sentences" % (str(normalizers.shape), batch_size ) )                
+                                
                 #logging.info("Sums=%s" % (sums) )
-                #logging.info("Normalizers=%s" % (normalizers) )
                 
-                #if normalizers == 0.0:
-                #    logging.warn("Normalizer is zero at index %d of sentence %d" % (index, sent_index) )
-                 
-                #forward[index] = skcuda.misc.div_matvec( forward[index].transpose(), normalizers ).transpose()
-                #forward[index] = linalg.multiply( forward[index], normalizers)
-                
-                #normalizers = skcuda.misc.sum( forward[index], 1 )
                 #logging.info("Sums after norm (should be 1s)=%s" % (skcuda.misc.sum( forward[index], 1 )) )
-                #forward[:] /= normalizers
-                
-                #forward[index] += next[0,:]
-                #prev = next
                            
                 ## Normalizer is p(y_t)
                 sentence_log_probs += np.log10(sums.get())
 
-            #last_index = len(sent)-1
             ## FIXME - for some reason this doesn't work with pycuda max.
             #if np.argwhere(skcuda.misc.max(forward,1)[0:last_index+1] == 0).size > 0:
                 #logging.error("Error; There is a word with no positive probabilities for its generation in the forward filter: %s" % skcuda.misc.max(forward, 1)[0:last_index+1])
@@ -172,7 +154,7 @@ class HmmSampler(Sampler.Sampler):
             printException()
             raise e
         
-        debug_array = forward[ len(sents[0])-1, 0, :].get()
+        #debug_array = forward[ len(sents[0])-1, 0, :].get()
         #logging.info("End of forward, sum of values is %f and max is %f" % ( debug_array.sum(), debug_array.max() ) )
 
         t1 = time.time()
@@ -192,8 +174,11 @@ class HmmSampler(Sampler.Sampler):
         
         num_sents = forward.shape[1]
         sample_seqs = []
+        
+        ## Convert back to numpy, get a copy with fortran ordering, then copy back to GPU:
+        gpu_pi_f = gpuarray.to_gpu( gpu_pi.get().copy('f') )
 
-        debug_array = forward[ len(sents[0])-1, 0, :].get()
+        #debug_array = forward[ len(sents[0])-1, 0, :].get()
         #logging.info("For first sentence, sum of values is %f and max is %f" % ( debug_array.sum(), debug_array.max() ) )
         
         t0 = time.time()
@@ -232,7 +217,7 @@ class HmmSampler(Sampler.Sampler):
                 #    raise Exception
   
                 for t in range(len(sents[ind])-2,-1,-1):                
-                    sample_state, sample_t = self._reverse_sample_inner(forward[:,ind,:], gpu_pi, sample_t, t)
+                    sample_state, sample_t = self._reverse_sample_inner(forward[:,ind,:], gpu_pi_f, sample_t, t)
                     sample_seq.append(sample_state)
                     #logging.info("Sampled state %s at time %d" % (sample_seq[-1].str(), t))
            
@@ -254,6 +239,7 @@ class HmmSampler(Sampler.Sampler):
         cdef int ind
         cdef float normalizer
         
+        try:
         #logging.info("Before multiplying in transitions, forward = %s"  % ( str(forward[t,:]) ) )
         
         #for ind in range(len(forward[t,:])):
@@ -261,25 +247,29 @@ class HmmSampler(Sampler.Sampler):
             
         #logging.info("After multiplying in transitions, forward = %s"  % ( str(forward[t,:]) ) )
 
-        trans_probs = gpuarray.zeros( gpu_pi.shape, np.float32) + gpu_pi[:, sample_t]
-        forward[t,:] = linalg.multiply(forward[t,:], trans_probs)
+        #trans_probs = gpuarray.zeros( gpu_pi.shape, np.float32) + gpu_pi[:, sample_t]
+            forward[t,:] = linalg.multiply(forward[t,:], gpu_pi[:,sample_t])
         
         ## FIXME -- this product seems to be buggy!
         #forward[t,0,:] = linalg.multiply(forward[t,:,:], gpu_pi[:, :, sample_t])
         
-        normalizer = float(skcuda.misc.sum(forward[t,:]).get())
+            normalizer = float(skcuda.misc.sum(forward[t,:]).get())
         #logging.info("Value of noramlizer is %s" % str(normalizer) )
         
-        if normalizer == 0.0:
-            logging.warning("No positive probability states at this time step %d." % (t))
+        #if normalizer == 0.0:
+        #    logging.warning("No positive probability states at this time step %d." % (t))
         
-        forward[t,:] /= normalizer
+            forward[t,:] /= normalizer
         
         #sample_t = get_gpu_sample(forward[t,:])
-        sample_t = get_sample(forward[t,:].get() )
-        sample_state = self.indexer.extractState(sample_t)
+            sample_t = get_sample(forward[t,:].get() )
+            sample_state = self.indexer.extractState(sample_t)
         #logging.info("Sampled state %s with index %d at time %d" % (sample_state.str(), sample_t, t))
-        
+    
+        except Exception as e:
+            printException()
+            raise e
+                
         if t > 0 and sample_state.g == 0:
             logging.error("Error: Sampled a g=0 state with state index %d in backwards pass: %s" % (sample_t, sample_state.str()) )
             raise Exception
