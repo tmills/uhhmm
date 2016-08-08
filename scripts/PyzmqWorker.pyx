@@ -24,10 +24,11 @@ cimport Sampler
 import Indexer
 import FullDepthCompiler
 from uhhmm_io import printException, ParsingError
+import CHmmSampler
 
        
 cdef class PyzmqWorker:
-    def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, seed=0, level=logging.INFO):
+    def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, gpu=False, seed=0, level=logging.INFO):
         #Process.__init__(self)
         self.host = host
         self.jobs_port = jobs_port
@@ -41,6 +42,8 @@ cdef class PyzmqWorker:
         self.debug_level = level
         self.model_file_sig = None
         self.indexer = None
+        self.gpu = gpu
+        print('GPU %s' % self.gpu)
 
     def __reduce__(self):
         return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.seed, self.debug_level), None)
@@ -65,13 +68,14 @@ cdef class PyzmqWorker:
         while True:
             if self.quit:   
                 break
-
+            logging.info("GPU for worker is %s" % self.gpu)
             sampler = None
             #  Socket to talk to server
             logging.debug("Worker %d waiting for new models..." % self.tid)
             models_socket.send(b'0')
             msg = models_socket.recv_pyobj()
-            
+            if self.gpu:
+                msg = msg + '.gpu' # use gpu model for model
             in_file = open(msg, 'rb')
             try:
                 model_wrapper = pickle.load(in_file)
@@ -82,7 +86,7 @@ cdef class PyzmqWorker:
             in_file.close()
             self.model_file_sig = get_file_signature(msg)
             
-            if model_wrapper.model_type == ModelWrapper.HMM:
+            if model_wrapper.model_type == ModelWrapper.HMM and not self.gpu:
                 sampler = HmmSampler.HmmSampler(self.seed)
                 sampler.set_models(model_wrapper.model)
                 self.processSentences(sampler, model_wrapper.model[1], jobs_socket, results_socket)
@@ -93,6 +97,11 @@ cdef class PyzmqWorker:
             elif model_wrapper.model_type == ModelWrapper.COMPILE:
                 self.indexer = Indexer.Indexer(model_wrapper.model)
                 self.processRows(model_wrapper.model, jobs_socket, results_socket)
+            elif model_wrapper.model_type == ModelWrapper.HMM and self.gpu:
+                sampler = CHmmSampler.CHmmSampler(self.seed)
+                gpu_model = CHmmSampler.GPUModel(model_wrapper.model)
+                sampler.set_models(gpu_model)
+                self.processSentences(sampler, gpu_model, jobs_socket, results_socket)
             else:
                 logging.error("Received a model type that I don't know how to process!")
 

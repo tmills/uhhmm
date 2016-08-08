@@ -80,6 +80,7 @@ cdef class HmmSampler(Sampler.Sampler):
                 ## Still use special case for 0
                 if index == 0:
                     forward[0,1:g_max-1] = self.lexMatrix[1:-1,token].transpose()
+
                 else:
                     forward[index,:] = forward[index-1,:] * pi
                     
@@ -91,7 +92,6 @@ cdef class HmmSampler(Sampler.Sampler):
             
                 ## Normalizer is p(y_t)
                 sentence_log_prob += np.log10(normalizer)
-
             last_index = len(sent)-1
             if np.argwhere(forward.max(1)[0:last_index+1,:] == 0).size > 0 or np.argwhere(np.isnan(forward.max(1)[0:last_index+1,:])).size > 0:
                 logging.error("Error; There is a word with no positive probabilities for its generation in the forward filter: %s" % forward.max(1)[0:last_index+1,:])
@@ -105,6 +105,7 @@ cdef class HmmSampler(Sampler.Sampler):
             raise e
             
         t1 = time.time()
+        # print('forward time', t1-t0)
         self.ff_time += (t1-t0)
         return sentence_log_prob
    
@@ -160,6 +161,7 @@ cdef class HmmSampler(Sampler.Sampler):
             raise e
         
         t1 = time.time()
+        # print('backward time', t1-t0)
         self.bs_time += (t1-t0)
         return sample_seq
 
@@ -214,7 +216,6 @@ cdef int get_sample(np.ndarray[np.float64_t] dist):
     start = 0
     end = len(dist) - 1
     cur = (end + start) / 2
-    
     while True:
         if dart > sum_dist[cur]:
             if cur == end - 1:
