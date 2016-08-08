@@ -70,7 +70,7 @@ class DistributedModelCompiler(FullDepthCompiler):
         pi = pi.tocsc()
         if self.gpu == True:
             lex_dist = models.lex.dist.astype(np.float32)
-            model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max)), self.depth)
+            model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth), self.depth)
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
             logging.info("Saving GPU models for use")
             pickle.dump(model_gpu, gpu_out_file)

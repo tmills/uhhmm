@@ -46,7 +46,7 @@ cdef class PyzmqWorker:
         print('GPU %s' % self.gpu)
 
     def __reduce__(self):
-        return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.seed, self.debug_level), None)
+        return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.gpu, self.seed, self.debug_level), None)
         
     def run(self):
         logging.basicConfig(level=self.debug_level)
@@ -68,21 +68,20 @@ cdef class PyzmqWorker:
         while True:
             if self.quit:   
                 break
-            logging.info("GPU for worker is %s" % self.gpu)
+            # logging.info("GPU for worker is %s" % self.gpu)
             sampler = None
             #  Socket to talk to server
             logging.debug("Worker %d waiting for new models..." % self.tid)
             models_socket.send(b'0')
             msg = models_socket.recv_pyobj()
-            if self.gpu:
-                msg = msg + '.gpu' # use gpu model for model
+            # if self.gpu:
+            #     msg = msg + '.gpu' # use gpu model for model
             in_file = open(msg, 'rb')
             try:
                 model_wrapper = pickle.load(in_file)
             except Exception as e:
                 printException()
                 raise e
-
             in_file.close()
             self.model_file_sig = get_file_signature(msg)
             
@@ -98,10 +97,17 @@ cdef class PyzmqWorker:
                 self.indexer = Indexer.Indexer(model_wrapper.model)
                 self.processRows(model_wrapper.model, jobs_socket, results_socket)
             elif model_wrapper.model_type == ModelWrapper.HMM and self.gpu:
-                sampler = CHmmSampler.CHmmSampler(self.seed)
+                msg = msg + '.gpu'
+                in_file = open(msg, 'rb')
+                model_wrapper = pickle.load(in_file)
+                sampler = CHmmSampler.GPUHmmSampler(self.seed)
                 gpu_model = CHmmSampler.GPUModel(model_wrapper.model)
                 sampler.set_models(gpu_model)
+                in_file.close()
+                self.model_file_sig = get_file_signature(msg)
                 self.processSentences(sampler, gpu_model, jobs_socket, results_socket)
+
+
             else:
                 logging.error("Received a model type that I don't know how to process!")
 
@@ -218,7 +224,7 @@ cdef class PyzmqWorker:
             if log_prob > 0:
                 logging.error('Sentence %d had positive log probability %f' % (sent_index, log_prob))    
 
-        logging.info("Cumulative forward time %f and backward time %f" % (sampler.ff_time, sampler.bs_time))
+        # logging.info("Cumulative forward time %f and backward time %f" % (sampler.ff_time, sampler.bs_time))
         logging.debug("Worker %d processed %d sentences this iteration" % (self.tid, sents_processed))
 
 
