@@ -28,7 +28,7 @@ import CHmmSampler
 
        
 cdef class PyzmqWorker:
-    def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, gpu=False, seed=0, level=logging.INFO):
+    def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, gpu=False, seed=0, level=logging.DEBUG):
         #Process.__init__(self)
         self.host = host
         self.jobs_port = jobs_port
@@ -98,14 +98,16 @@ cdef class PyzmqWorker:
                 self.processRows(model_wrapper.model, jobs_socket, results_socket)
             elif model_wrapper.model_type == ModelWrapper.HMM and self.gpu:
                 msg = msg + '.gpu'
-                in_file = open(msg, 'rb')
+                in_file = open(msg, 'rb') # loading a specific gpu model and trick the system to believe it is the normal model
                 model_wrapper = pickle.load(in_file)
                 sampler = CHmmSampler.GPUHmmSampler(self.seed)
+                # print(model_wrapper.model)
                 gpu_model = CHmmSampler.GPUModel(model_wrapper.model)
                 sampler.set_models(gpu_model)
                 in_file.close()
-                self.model_file_sig = get_file_signature(msg)
-                self.processSentences(sampler, gpu_model, jobs_socket, results_socket)
+                # self.model_file_sig = get_file_signature(msg)
+                pi = 0 # placeholder
+                self.processSentences(sampler, pi, jobs_socket, results_socket)
 
 
             else:
@@ -171,7 +173,7 @@ cdef class PyzmqWorker:
                 logging.info("Exception raised while waiting for sentence: %s" % (e) )
                 self.quit = True
                 break
-        
+            print(job.type, job.resource)
             if job.type == PyzmqJob.SENTENCE:
                 sentence_job = job.resource
                 sent_index = sentence_job.index

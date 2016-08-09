@@ -285,7 +285,7 @@ class WorkDistributerServer():
     def submitSentenceJobs(self, start=-1, end=-1):
         ind = 0
         num_done = 0
-        
+        print(start, end)
         self.model_server.reset_models()
         model_sig = self.model_server.model_sig
         
