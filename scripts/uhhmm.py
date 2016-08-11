@@ -297,6 +297,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         
         logging.info("Sampling time of iteration %d: Model compilation: %d s; Sentence sampling: %d s" % (iter, t1-t0, t2-t1))
 
+
         ## Read the output and put it in a map -- use a map because sentences will
         ## finish asynchronously -- keep the sentence index so we can extract counts
         ## in whatever order we want (without aligning to sentences) but then order
