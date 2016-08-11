@@ -39,10 +39,8 @@ class DistributedModelCompiler(FullDepthCompiler):
         pickle.dump(model_wrapper, out_file)
         out_file.close()
          ## does not seem necessary
-        logging.info("4")
         t0 = time.time()
         self.work_server.submitBuildModelJobs(totalK)
-        logging.info("5")
         for prevIndex in range(0,totalK):
             indptr[prevIndex+1] = indptr[prevIndex]
             (local_indices, local_data) = self.work_server.get_model_row(prevIndex)
@@ -50,7 +48,6 @@ class DistributedModelCompiler(FullDepthCompiler):
             indptr[prevIndex+1] += len(local_indices)
             indices.append(local_indices)
             data.append(local_data)
-        logging.info("6")
         logging.info("Flattening sublists into main list")
         flat_indices = [item for sublist in indices for item in sublist]
         flat_data = [item for sublist in data for item in sublist]
