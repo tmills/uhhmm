@@ -95,7 +95,6 @@ cdef class GPUHmmSampler:
 	def sample(self, pi, vector[int] sent, int sent_index):  # need pi to conform to API
 		log_probs = self.forward_pass(sent, sent_index) 
 		states = self.reverse_sample(sent, sent_index) 
-		print("GPU WORKING!")
 		return (states, log_probs)
 
 # def test():
