@@ -289,7 +289,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 #            FullDepthCompiler.FullDepthCompiler(depth).compile_and_store_models(models, working_dir)
         else:
             NoopCompiler.NoopCompiler().compile_and_store_models(models, working_dir)
-        print(start_ind, end_ind)
         workDistributer.submitSentenceJobs(start_ind, end_ind)
         
         ## Wait for server to finish distributing sentences for this iteration:
