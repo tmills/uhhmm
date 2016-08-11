@@ -289,12 +289,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 #            FullDepthCompiler.FullDepthCompiler(depth).compile_and_store_models(models, working_dir)
         else:
             NoopCompiler.NoopCompiler().compile_and_store_models(models, working_dir)
+        t1 = time.time()
         workDistributer.submitSentenceJobs(start_ind, end_ind)
         
         ## Wait for server to finish distributing sentences for this iteration:
-        t1 = time.time()
+        t2 = time.time()
         
-        logging.info("Sampling time for iteration %d is %d s" % (iter, t1-t0))
+        logging.info("Sampling time of iteration %d: Model compilation: %d s; Sentence sampling: %d s" % (iter, t1-t0, t2-t1))
 
         ## Read the output and put it in a map -- use a map because sentences will
         ## finish asynchronously -- keep the sentence index so we can extract counts
