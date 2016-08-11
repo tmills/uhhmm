@@ -35,6 +35,7 @@ class DistributedModelCompiler(FullDepthCompiler):
         unlog_models(models, self.depth)
         fn = working_dir+"/models.bin"
         model_wrapper = ModelWrapper(ModelWrapper.COMPILE, models, self.depth)
+        out_file = open(fn, 'wb')
         pickle.dump(model_wrapper, out_file)
         out_file.close()
          ## does not seem necessary
