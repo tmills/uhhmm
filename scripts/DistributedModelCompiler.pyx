@@ -24,12 +24,9 @@ class DistributedModelCompiler(FullDepthCompiler):
         logging.info("Compiling component models into mega-HMM transition and observation matrices")
 
         maxes = indexer.getVariableMaxes()
-        logging.info("1")
         (a_max, b_max, g_max) = maxes
-        logging.info("2")
         totalK = indexer.get_state_size()
         indptr = np.zeros(totalK+1)
-        logging.info("3")
         indices =  []
         data = []
         
@@ -37,7 +34,6 @@ class DistributedModelCompiler(FullDepthCompiler):
         ## First unlog them so they are in form workers expect:
         unlog_models(models, self.depth)
         fn = working_dir+"/models.bin"
-        out_file = open(fn, 'wb')
         model_wrapper = ModelWrapper(ModelWrapper.COMPILE, models, self.depth)
         pickle.dump(model_wrapper, out_file)
         out_file.close()

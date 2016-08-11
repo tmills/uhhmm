@@ -28,7 +28,7 @@ import CHmmSampler
 
        
 cdef class PyzmqWorker:
-    def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, gpu=False, seed=0, level=logging.DEBUG):
+    def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, gpu=False, seed=0, level=logging.INFO):
         #Process.__init__(self)
         self.host = host
         self.jobs_port = jobs_port
@@ -43,7 +43,7 @@ cdef class PyzmqWorker:
         self.model_file_sig = None
         self.indexer = None
         self.gpu = gpu
-        print('GPU %s' % self.gpu)
+        # print('GPU %s' % self.gpu)
 
     def __reduce__(self):
         return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.gpu, self.seed, self.debug_level), None)
@@ -173,7 +173,6 @@ cdef class PyzmqWorker:
                 logging.info("Exception raised while waiting for sentence: %s" % (e) )
                 self.quit = True
                 break
-            print(job.type, job.resource)
             if job.type == PyzmqJob.SENTENCE:
                 sentence_job = job.resource
                 sent_index = sentence_job.index
