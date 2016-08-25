@@ -271,5 +271,5 @@ def main(args):
     ## Call run directly instead of start otherwise we'll have 2n workers    
     fs.run()
     
-if __name__ == '__main__':
-    main(args)
+# if __name__ == '__main__':
+#     main(args)

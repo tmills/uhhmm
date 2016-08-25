@@ -138,7 +138,6 @@ void HmmSampler::set_models(Model * models){
     // cout << '5' << endl;
     lexMultiplier = tile(g_len, p_indexer->get_state_size());
     // print(*lexMultiplier);
-    // cout << '6' << endl;
     pi = p_model -> pi;
     // print( *(pi->get_view()) );
     trans_slice = new Array(p_indexer->get_state_size(), 0.0f);
@@ -147,6 +146,7 @@ void HmmSampler::set_models(Model * models){
 }
 
 void HmmSampler::initialize_dynprog(int max_len){
+    cout << '2' << endl;
     dyn_prog = new Dense( max_len, p_indexer->get_state_size(), 0.0f );
 }
 
@@ -241,6 +241,7 @@ std::vector<State> HmmSampler::reverse_sample(std::vector<int> sent, int sent_in
         // cout << sample_t << endl;
         sample_state = p_indexer -> extractState(sample_t);
         sample_depth = sample_state.max_awa_depth();
+        // cout << sample_depth << endl;
     }
     // auto t3 = Clock::now();
     // cout << "x3" << endl;
@@ -258,6 +259,7 @@ std::vector<State> HmmSampler::reverse_sample(std::vector<int> sent, int sent_in
     }
     // auto t4 = Clock::now();
     std::reverse(sample_seq.begin(), sample_seq.end());
+    // cout << '3' << endl;
     // cout << sample_seq.size() << endl;
     // auto t5 = Clock::now();
     // cout << "backpass1: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t3 - t2).count() * nano_to_sec << " s" << endl;
