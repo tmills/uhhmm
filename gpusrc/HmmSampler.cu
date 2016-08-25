@@ -146,7 +146,7 @@ void HmmSampler::set_models(Model * models){
 }
 
 void HmmSampler::initialize_dynprog(int max_len){
-    cout << '2' << endl;
+    // cout << '2' << endl;
     dyn_prog = new Dense( max_len, p_indexer->get_state_size(), 0.0f );
 }
 
