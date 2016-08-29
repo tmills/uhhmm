@@ -1,6 +1,6 @@
 #!/bin/bash
 
-nvcc -rdc=true -c -o gpusrc/temp.o gpusrc/HmmSampler.cu -std=c++11 --shared -Xcompiler -fPIC -m64 -I~/include
+nvcc -rdc=true -c -o gpusrc/temp.o gpusrc/HmmSampler.cu -std=c++11 --shared -Xcompiler -fPIC -m64 -I../include
 nvcc -dlink -o gpusrc/hmmsampler.o gpusrc/temp.o -lcudart --shared -Xcompiler -fPIC -m64 -L/usr/local/cuda/6.5.14/lib64 -Xlinker -rpath -Xlinker /usr/local/cuda/6.5.14/lib64
 ar cru gpusrc/libhmm.a gpusrc/hmmsampler.o gpusrc/temp.o
 ranlib gpusrc/libhmm.a
