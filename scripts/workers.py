@@ -7,7 +7,7 @@ import os, os.path
 import signal
 import subprocess
 import sys
-
+import time
 import PyzmqWorker
 
 def start_cluster_workers(work_distributer, cluster_cmd, maxLen, gpu):
