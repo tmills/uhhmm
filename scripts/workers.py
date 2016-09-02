@@ -41,11 +41,11 @@ def start_local_workers(host, jobs_port, results_port, models_port, maxLen, num_
 def main(args):
     logging.basicConfig(level=logging.INFO)
     
-    if len(args) != 2 and len(args) != 6 and len(args) != 7:
+    if len(args) != 1 and len(args) != 5 and len(args) != 6:
         print("ERROR: Wrong number of arguments! Two run modes -- One argument of a file with properties or 5-6 arguments with properties.")
         sys.exit(-1)
         
-    if len(args) == 2:
+    if len(args) == 1:
         config_file = args[0] + "/masterConfig.txt"
         while True:
             if os.path.isfile(config_file):
@@ -58,7 +58,7 @@ def main(args):
                 time.sleep(10)
     
     num_workers = 1
-    if len(args) == 7:
+    if len(args) == 6:
         num_workers = int(args[5])
     
         processes = start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), num_workers, bool(args[6]))

@@ -242,35 +242,35 @@ cdef class PyzmqWorker:
         raise ParsingError("Worker hung while parsing sentence")
 
                 
-def main(args):
-    logging.basicConfig(level=logging.INFO)
+# def main(args):
+#     logging.basicConfig(level=logging.INFO)
     
-    if len(args) != 1 and len(args) != 5:
-        print("ERROR: Wrong number of arguments! Two run modes -- One argument of a file with properties or 5 arguments with properties.")
-        sys.exit(-1)
+#     if len(args) != 1 and len(args) != 5:
+#         print("ERROR: Wrong number of arguments! Two run modes -- One argument of a file with properties or 5 arguments with properties.")
+#         sys.exit(-1)
         
-    if len(args) == 1:
-        config_file = args[0] + "/masterConfig.txt"
-        while True:
-            if os.path.isfile(config_file):
-                configs = open(config_file).readlines()
-                if len(configs)==2 and 'OK' in configs[1]:
-                    logging.info('OSC setup acquired. Starting a worker with ' + config_file)
-                    args = configs[0].strip().split(' ')
-                    break
-            else:
-                time.sleep(10)
+#     if len(args) == 1:
+#         config_file = args[0] + "/masterConfig.txt"
+#         while True:
+#             if os.path.isfile(config_file):
+#                 configs = open(config_file).readlines()
+#                 if len(configs)==2 and 'OK' in configs[1]:
+#                     logging.info('OSC setup acquired. Starting a worker with ' + config_file)
+#                     args = configs[0].strip().split(' ')
+#                     break
+#             else:
+#                 time.sleep(10)
     
-    if len(args) == 6:
-        fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), gpu=bool(args[5]))
-    elif len(args) == 5:
-        fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]))
-    signal.signal(signal.SIGINT, fs.handle_sigint)
-    signal.signal(signal.SIGALRM, fs.handle_sigalarm)
+#     if len(args) == 6:
+#         fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), gpu=bool(args[5]))
+#     elif len(args) == 5:
+#         fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]))
+#     signal.signal(signal.SIGINT, fs.handle_sigint)
+#     signal.signal(signal.SIGALRM, fs.handle_sigalarm)
     
-    ## Call run directly instead of start otherwise we'll have 2n workers    
-    fs.run()
+#     ## Call run directly instead of start otherwise we'll have 2n workers    
+#     fs.run()
     
-if __name__ == '__main__':
-    args = sys.argv[1:]
-    main(args)
+# if __name__ == '__main__':
+#     args = sys.argv[1:]
+#     main(args)
