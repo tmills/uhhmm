@@ -58,10 +58,10 @@ def main(args):
                 time.sleep(10)
     
     num_workers = 1
-    if len(args) == 6:
-        num_workers = int(args[5])
+    if len(args) == 7:
+        num_workers = int(args[6])
     
-        processes = start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), num_workers, bool(args[6]))
+        processes = start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), num_workers, bool(args[5]))
     
 #         for i in range(0, num_workers):
 #             fs = PyzmqWorker.PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), tid=i)
@@ -76,7 +76,7 @@ def main(args):
             processes[i].join()
 
     else:
-        start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), 1, bool(args[6]))
+        start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), 1, bool(args[5]))
 
 if __name__ == "__main__":
     main(sys.argv[1:])
