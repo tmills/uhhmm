@@ -3,7 +3,6 @@ import numpy as np
 import logging
 import copy
 from scipy.special import gammaln
-import uhhmm
 
 # sentence and word indices at given position in sequence
 def indices (cum_length, ind):
@@ -14,34 +13,40 @@ def indices (cum_length, ind):
 # log emission posterior normalizing constant
 # assumes multinomial-dirichlet model
 # used for lex | pos and pos | awa
-def norm_const(obs_counts, alpha=.2):
+def norm_const(obs_counts, alpha):
     return sum(gammaln(obs_counts+alpha)) - gammaln(sum(obs_counts+alpha))
 
 # Sequentially Allocated Merge Split algorithm (Dahl 2005, section 4.1)
 # http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.131.3712&rep=rep1&type=pdf    
-def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=True):
+def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=False, ind = None):
     num_tokens = sum(map(len, ev_seqs))
     cum_length = np.cumsum(list(map(len, ev_seqs)))
     ## Need to copy the models otherwise we'll just have another pointer
     new_models = copy.deepcopy(models)
     new_sample = copy.deepcopy(sample)
 
-    ## Split-merge for pos tags:            
-    ind0 = np.random.randint(num_tokens) # anchor 0
+    ## Split-merge for pos tags:         
+    if ind:
+      ind0 = ind[0]
+      ind1 = ind[1]
+    else:
+      ind0 = np.random.randint(num_tokens) # anchor 0
+      sent0_ind, word0_ind = indices(cum_length, ind0)
+      pos0 = sample.hid_seqs[sent0_ind][word0_ind].g
+      if equal: 
+          split = (np.random.binomial(1, .5) > .5)
+          subset = np.array([]) 
+          for ind in range(num_tokens):
+              sent_ind, word_ind = indices(cum_length, ind)
+              state = sample.hid_seqs[sent_ind][word_ind]
+              if (((state.g == pos0) and split) or ((state.g != pos0) and not split)):
+                  subset = np.append(subset, ind)
+          ind1 = np.random.choice(subset)
+      else:
+          ind1 = np.random.randint(num_tokens) # anchor 1
+
     sent0_ind, word0_ind = indices(cum_length, ind0)
     pos0 = sample.hid_seqs[sent0_ind][word0_ind].g
-    if equal: 
-        split = (np.random.binomial(1, .5) > .5)
-        subset = np.array([]) 
-        for ind in range(num_tokens):
-            sent_ind, word_ind = indices(cum_length, ind)
-            state = sample.hid_seqs[sent_ind][word_ind]
-            if (((state.g == pos0) and split) or ((state.g != pos0) and not split)):
-                subset = np.append(subset, ind)
-        ind1 = np.random.choice(subset)
-    else:
-        ind1 = np.random.randint(num_tokens) # anchor 1
-
     sent1_ind, word1_ind = indices(cum_length, ind1)
     pos1 = sample.hid_seqs[sent1_ind][word1_ind].g
     split = (pos0 == pos1) # whether to split or merge
@@ -51,12 +56,16 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
     logging.debug(alpha_lex)
     logging.debug(np.shape(alpha_lex))
     alpha_pos_vec = models.pos.alpha * models.pos.beta[1:]
-    alpha_pos = np.array([alpha_pos_vec[pos0-1], alpha_pos_vec[pos1-1]])
+    if split:
+        alpha_pos = np.array([0.5*alpha_pos_vec[pos0-1], 0.5*alpha_pos_vec[pos0-1]])
+    else:
+        alpha_pos = np.array([alpha_pos_vec[pos0-1], alpha_pos_vec[pos1-1]])
     logging.debug("POS Dirichlet pseudocounts:")
     logging.debug(alpha_pos)
+    #logging.debug("Gamma is %f" % sample.gamma)
     
     # indices with state pos0 or pos1
-    subset = np.array([]) 
+    subset = np.array([], dtype=int) 
     nstates = models.pos.dist.shape[1]-2
     nawa = models.pos.dist.shape[0]
     for ind in range(num_tokens):
@@ -64,7 +73,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
         state = sample.hid_seqs[sent_ind][word_ind]
         if ((state.g == pos0) or (state.g == pos1)):
             subset = np.append(subset, ind)
-
+            
     np.random.shuffle(subset)
 
     # indices with state pos0 or pos1, excluding anchors
@@ -77,12 +86,12 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
         st = {pos0: 0, pos1: 1}
    
     unique_obs = set(sum(ev_seqs, []))
-    obs_counts = np.zeros((2, len(unique_obs)))
+    obs_counts = np.zeros((2, len(unique_obs)), dtype=int)
     obs_counts[0, ev_seqs[sent0_ind][word0_ind]-1] = 1
     obs_counts[1, ev_seqs[sent1_ind][word1_ind]-1] = 1
     awa0 = sample.hid_seqs[sent0_ind][word0_ind].b[0]
     awa1 = sample.hid_seqs[sent1_ind][word1_ind].b[0]
-    pos_counts = np.zeros((nawa, 2))
+    pos_counts = np.zeros((nawa, 2), dtype=int)
     pos_counts[awa0, 0] += 1
     pos_counts[awa1, 1] += 1
     norm_consts = np.array([norm_const(obs_counts[0], alpha_lex), norm_const(obs_counts[1], alpha_lex)])
@@ -105,17 +114,23 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
         norm_consts[newstate] += logterms1[newstate]
         obs_counts[newstate] = newcounts[newstate]
         pos_counts[awa] = newcounts_pos1 if (newstate == 1) else newcounts_pos0
+        
+    #logging.debug('pos counts:')
+    #logging.debug(pos_counts)
     
     logging.debug("During split-merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
     if split:
         logging.info("Performing split operation of pos tag %d at iteration %d" % (pos0,iter))
         from uhhmm import break_g_stick
         break_g_stick(new_models, new_sample, params) # add new pos tag variable
+        pos1 = nstates+1
+        new_models.pos.beta[pos0] = 0.5*new_models.pos.beta[pos0]
+        new_models.pos.beta[pos1] = new_models.pos.beta[pos0]
         for ind in sets[1]:
             sent_ind, word_ind = indices(cum_length, ind)
             state = new_sample.hid_seqs[sent_ind][word_ind]
             token = ev_seqs[sent_ind][word_ind]
-            state.g = nstates+1
+            state.g = pos1
             new_models.pos.count(state.b[0], pos0, -1)
             new_models.pos.count(state.b[0], state.g, 1)
             new_models.lex.count(pos0, token, -1)
@@ -142,6 +157,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
                 new_models.lex.count(pos0, token, 1)
                 new_models.lex.count(pos1, token, -1)
         from uhhmm import remove_pos_from_models, remove_pos_from_hid_seqs
+        new_models.pos.beta[pos0] = new_models.pos.beta[pos0] + new_models.pos.beta[pos1]
         remove_pos_from_models(new_models, pos1)
         remove_pos_from_hid_seqs(new_sample.hid_seqs, pos1)
         if new_models.pos.dist.shape[1] == 3:
@@ -166,8 +182,8 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=T
     if np.log(np.random.uniform()) < log_acc_ratio:
         logging.info("%s proposal was accepted." % ("Split" if split else "Merge") )
         new_sample.models = new_models
-        return new_models, new_sample
+        return new_models, new_sample #, [ind0, ind1]
     else:
         logging.info("%s proposal was rejected." % ("Split" if split else "Merge") )
-        return models, sample
+        return models, sample #, None
 
