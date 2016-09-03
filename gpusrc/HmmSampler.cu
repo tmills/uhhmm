@@ -205,7 +205,7 @@ float HmmSampler::forward_pass(std::vector<int> sent, int sent_index){
         blas::scal(dyn_prog_row, 1.0f/normalizer);
         // print( dyn_prog_row);
         sentence_log_prob += log10f(normalizer);
-        // cout << sentence_log_prob << endl;
+        // cout << normalizer << sentence_log_prob << endl;
         i++;
         // if (i>1){
         //     throw;

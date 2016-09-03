@@ -63,7 +63,7 @@ class DistributedModelCompiler(FullDepthCompiler):
         # if gpu then dumping out two models, the one used by worker should be *.bin.gpu
         pi = pi.tocsc()
         if self.gpu == True:
-            lex_dist = models.lex.dist.astype(np.float32)
+            lex_dist = 10**(models.lex.dist.astype(np.float32))
             model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth), self.depth)
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
             logging.info("Saving GPU models for use")
