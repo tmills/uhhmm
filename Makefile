@@ -5,6 +5,9 @@ SCRIPTS  := $(THISDIR)/scripts
 all:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt $(THISDIR)/train.sh
 	$(word 3, $^) $<
 
+osc:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt $(THISDIR)/train_osc.sh
+	$(word 3, $^) $<
+
 debug: config/debug.ini $(THISDIR)/debug.sh
 	$(word 2, $^) $<
 

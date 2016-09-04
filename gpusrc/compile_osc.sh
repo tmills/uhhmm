@@ -1,5 +1,14 @@
 #!/bin/bash
-
+# a 'include' folder will be created above uhhmm
+module load cuda/7.0.28
+module load python/3.4.2
+module load gnu/4.9.1
+cd ../
+mkdir include
+git clone git@github.com:cusplibrary/cusplibrary.git
+mv cusplibrary/cusp include/
+rm -rf cusplibrary
+cd - 
 nvcc -rdc=true -c -o gpusrc/temp.o gpusrc/HmmSampler.cu -std=c++11 --shared -Xcompiler -fPIC -m64 -I../include
 nvcc -dlink -o gpusrc/hmmsampler.o gpusrc/temp.o -lcudart --shared -Xcompiler -fPIC -m64 -L/usr/local/cuda/7.0.28/lib64 -Xlinker -rpath -Xlinker /usr/local/cuda/7.0.28/lib64
 ar cru gpusrc/libhmm.a gpusrc/hmmsampler.o gpusrc/temp.o
