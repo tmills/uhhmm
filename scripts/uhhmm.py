@@ -909,14 +909,14 @@ def increment_counts(hid_seq, sent, models, inc=1):
     for index,word in enumerate(sent):
         state = hid_seq[index]
         if index == 0:
-            # print('new sent')
+            ## print('new sent')
             prev_depth = -1
         else:
             prev_depth = prevState.max_awa_depth()
         
         fork_depth = prev_depth
         cur_depth = state.max_awa_depth()
-        # print(state.str())
+        ## print(state.str())
         if cur_depth <= 0:
             above_awa = 0
         else:

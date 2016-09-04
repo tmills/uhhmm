@@ -1,8 +1,5 @@
 #!/bin/bash
 # a 'include' folder will be created above uhhmm
-module load cuda/7.0.28
-module load python/3.4.2
-module load gnu/4.9.1
 cd ../
 mkdir include
 git clone git@github.com:cusplibrary/cusplibrary.git
