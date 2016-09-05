@@ -14,7 +14,7 @@ class HHMMLayer(Recurrent):
 
         self.embed_dim = embed_dim
         self.syn_dim = syn_dim
-        self.output_dim = syn_dim * 2 + embed_dim
+        self.output_dim = 2
         self.init = initializations.get(init)
         self.inner_init = initializations.get(inner_init)
         self.activation = activations.get(activation)
@@ -33,7 +33,10 @@ class HHMMLayer(Recurrent):
         if self.stateful:
             self.reset_states()
         else:
-            # initial states: all-zero tensor of shape (output_dim)
+            # initial states: f, j, a, b, x
+#            self.states = [ K.zeros((int(input_shape[0]), int(self.syn_dim))),
+#                            K.zeros((int(input_shape[0]), int(self.syn_dim))),
+#                            K.zeros((int(input_shape[0]), int(self.embed_dim))) ]
             self.states = [None] * 3
 
         self.input_dim = input_shape[2]
@@ -49,7 +52,7 @@ class HHMMLayer(Recurrent):
         self.W_a_mm = self.init( (self.syn_dim, self.syn_dim), name="W_a_mm")
         self.b_a_mm = K.zeros( (self.syn_dim,), name="b_a_mm")
         
-        self.W_a_pm = self.init( (self.syn_dim+self.embed_dim,self.syn_dim), name="W_a_pm")
+        self.W_a_pm = self.init( (self.syn_dim*2,self.syn_dim), name="W_a_pm")
         self.b_a_pm = K.zeros( (self.syn_dim,), name="b_a_pm")
         
         self.W_b_p = self.init( (self.syn_dim+self.embed_dim, self.syn_dim), name="W_b_p")
@@ -62,7 +65,26 @@ class HHMMLayer(Recurrent):
                                   self.W_j_p, self.b_j_p, self.W_j_m, self.b_j_m,
                                   self.W_a_mm, self.b_a_mm, self.W_a_pm, self.b_a_pm,
                                   self.W_b_p, self.b_b_p, self.W_b_m, self.b_b_m]
-            
+    
+    def get_initial_states(self, x):
+        ## x has shape (samples, timesteps, input_dim)
+        ## want initial states to have dimension:
+        ## [ (samples, syn_dim), (samples, syn_dim), (samples, embed_dim) ]
+        init_act = K.zeros_like(x)
+        init_act = K.sum(init_act, axis=(1,2)) # (samples,)
+        init_act = K.expand_dims(init_act) # (samples, 1)
+        init_act = K.tile(init_act, [1, self.syn_dim]) # (samples, syn_dim)
+        
+        init_awa = K.zeros_like(init_act)
+        
+        
+        init_embed = K.zeros_like( x )
+        init_embed = K.sum(init_embed, axis=(1,2)) # (samples,)
+        init_embed = K.expand_dims(init_embed) #(samples, 1)
+        init_embed = K.tile(init_embed, [1, self.embed_dim])
+        
+        return [init_act, init_awa, init_embed]
+
     ## Propagate information one step
     ## The Recurrent.call() method will call this
     def step(self, x, states):
@@ -75,18 +97,25 @@ class HHMMLayer(Recurrent):
         ## then dot by f weights:
         ## ( [embed_dim+syn_dim] x syn_dim )
         awa_em = K.concatenate( (prev_awa, prev_token) )
+        
         f = self.bool_act( K.dot( awa_em, self.W_f ) + self.b_f )
         
         j = self.bool_act( 
                 (f) * ( K.dot( awa_em, self.W_j_p ) + self.b_j_p ) + (1-f) * ( K.dot( prev_act, self.W_j_m ) + self.b_j_m ) )
         
         act_awa = K.concatenate( (prev_act, prev_awa) )
-        act = f * j * prev_act + (1-f) * (1-j) * self.activation( K.dot( prev_act, self.W_a_mm ) + self.b_a_mm ) + f * (1-j) * self.activation( K.dot( act_awa, self.W_a_pm ) + self.b_a_pm)
         
-        act_pair = K.concatenate( (prev_act, act) )
-        awa = j * self.activation( K.dot( awa_em, self.W_b_p ) + self.b_b_p ) + (1 - j) * self.activation( K.dot( act_pair, self.W_b_m ) + self.b_b_m )
+        pp_term = K.tile(f * j, [1, self.syn_dim] ) * prev_act
+        mm_term = K.tile( (1-f) * (1-j), [1, self.syn_dim])  * self.activation( K.dot( prev_act, self.W_a_mm ) + self.b_a_mm )
+        pm_term = K.tile(f * (1-j), [1, self.syn_dim]) * self.activation( K.dot( act_awa, self.W_a_pm ) + self.b_a_pm)
         
-        #output = np.array( [f, j] )
+        act = pp_term + mm_term + pm_term
+        
+        act_pair = K.concatenate( (prev_act, act) )       
+        p_term = K.tile(j, [1, self.syn_dim]) * self.activation( K.dot( awa_em, self.W_b_p ) + self.b_b_p )
+        m_term = K.tile((1 - j), [1, self.syn_dim]) * self.activation( K.dot( act_pair, self.W_b_m ) + self.b_b_m )
+        awa = p_term + m_term
+        
         output = K.concatenate( (f, j) )
         return output, [act, awa, x]
         

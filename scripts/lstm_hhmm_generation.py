@@ -53,8 +53,8 @@ for i, sentence in enumerate(sentences):
 
 # build the model: 2 stacked SimpleRNN
 print('Build model...')
-embed_dim = 100
-syn_dim = 50
+embed_dim = 50
+syn_dim = 40
 input = Input(shape=(maxlen,), dtype='int32')
 embed = Embedding(input_dim=len(types), output_dim=embed_dim)(input)
 hhmm = HHMMLayer(embed_dim=embed_dim, syn_dim=syn_dim)(embed)
@@ -80,7 +80,7 @@ for iteration in range(1, 60):
     print()
     print('-' * 50)
     print('Iteration', iteration)
-    model.fit(X, y, batch_size=128, nb_epoch=1)
+    model.fit(X, y, batch_size=64, nb_epoch=1)
 
     start_index = random.randint(0, len(tokens) - maxlen - 1)
 
@@ -90,15 +90,15 @@ for iteration in range(1, 60):
 
         generated = ''
         sentence = tokens[start_index: start_index + maxlen]
-        sentence_str = ' '.join(sentence)
+        sentence_str = ' '.join(sentence) + ' '
         generated += sentence_str
         print('----- Generating with seed: "' + sentence_str + '"')
         sys.stdout.write(generated)
 
         for i in range(400):
-            x = np.zeros((1, maxlen, len(types)))
+            x = np.zeros((1,maxlen))
             for t, token in enumerate(sentence):
-                x[0, t, token_indices[token]] = 1.
+                x[0,t] = token_indices[token]
 
             preds = model.predict(x, verbose=0)[0]
             next_index = sample(preds, diversity)
