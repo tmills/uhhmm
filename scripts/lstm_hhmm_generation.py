@@ -16,6 +16,7 @@ from keras.layers import Dense, Activation, Dropout, Input, Embedding
 from keras.layers import SimpleRNN
 from keras.optimizers import RMSprop
 from keras.utils.data_utils import get_file
+from keras.preprocessing.sequence import pad_sequences
 import numpy as np
 import random
 import sys
@@ -23,7 +24,8 @@ import re
 from HHMM import HHMMLayer
 
 path = get_file('nietzsche.txt', origin="https://s3.amazonaws.com/text-datasets/nietzsche.txt")
-text = open(path).read().lower()
+#text = open(path).read().lower()
+text = open('data/simplewiki_d2_all.words.lc.txt').read()
 tokens = re.compile('\s+').split(text)
 print('corpus length:', len(tokens))
 
@@ -33,23 +35,29 @@ token_indices = dict((c, i) for i, c in enumerate(types))
 indices_tokens = dict((i, c) for i, c in enumerate(types))
 
 # cut the text in semi-redundant sequences of maxlen tokens
-maxlen = 10
-step = 3
+#maxlen = 20
+#step = 3
 sentences = []
 next_tokens = []
-for i in range(0, len(tokens) - maxlen, step):
-    sentences.append(tokens[i: i + maxlen])
-    next_tokens.append(tokens[i + maxlen])
+
+for line in text.split('\n'):
+    tokens = line.split(' ')
+    this_len = np.random.randint( min(5, len(tokens)-1), len(tokens) )
+    sentences.append([ token_indices[x] for x in tokens[0: this_len]])
+    next_tokens.append(token_indices[tokens[this_len]])
+
 print('nb sequences:', len(sentences))
 
 print('Vectorization...')
-X = np.zeros((len(sentences), maxlen), dtype=np.bool)
+#X = np.zeros((len(sentences), maxlen), dtype=np.int)
+X = pad_sequences(sentences)
 y = np.zeros((len(sentences), len(types)), dtype=np.bool)
 for i, sentence in enumerate(sentences):
-    for t, token in enumerate(sentence):
-        X[i, t] = token_indices[token]
-    y[i, token_indices[next_tokens[i]]] = 1
+#    for t, token in enumerate(sentence):
+#        X[i, t] = token_indices[token]
+    y[i, next_tokens[i]] = 1
 
+maxlen = X.shape[1]
 
 # build the model: 2 stacked SimpleRNN
 print('Build model...')
