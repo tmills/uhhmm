@@ -6,7 +6,7 @@ all:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt $(THISDIR)/train.
 	$(word 3, $^) $<
 
 osc:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt $(THISDIR)/train_osc.sh
-	$(word 3, $^) $<
+	$(word 3, $^)
 
 debug: config/debug.ini $(THISDIR)/debug.sh
 	$(word 2, $^) $<
