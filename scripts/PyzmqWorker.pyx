@@ -24,10 +24,11 @@ cimport Sampler
 import Indexer
 import FullDepthCompiler
 from uhhmm_io import printException, ParsingError
+import CHmmSampler
 
        
 cdef class PyzmqWorker:
-    def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, seed=0, level=logging.INFO):
+    def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, gpu=False, seed=0, level=logging.INFO):
         #Process.__init__(self)
         self.host = host
         self.jobs_port = jobs_port
@@ -41,9 +42,11 @@ cdef class PyzmqWorker:
         self.debug_level = level
         self.model_file_sig = None
         self.indexer = None
+        self.gpu = gpu
+        # print('GPU %s' % self.gpu)
 
     def __reduce__(self):
-        return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.seed, self.debug_level), None)
+        return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.gpu, self.seed, self.debug_level), None)
         
     def run(self):
         logging.basicConfig(level=self.debug_level)
@@ -65,24 +68,24 @@ cdef class PyzmqWorker:
         while True:
             if self.quit:   
                 break
-
+            # logging.info("GPU for worker is %s" % self.gpu)
             sampler = None
             #  Socket to talk to server
             logging.debug("Worker %d waiting for new models..." % self.tid)
             models_socket.send(b'0')
             msg = models_socket.recv_pyobj()
-            
+            # if self.gpu:
+            #     msg = msg + '.gpu' # use gpu model for model
             in_file = open(msg, 'rb')
             try:
                 model_wrapper = pickle.load(in_file)
             except Exception as e:
                 printException()
                 raise e
-
             in_file.close()
             self.model_file_sig = get_file_signature(msg)
             
-            if model_wrapper.model_type == ModelWrapper.HMM:
+            if model_wrapper.model_type == ModelWrapper.HMM and not self.gpu:
                 sampler = HmmSampler.HmmSampler(self.seed)
                 sampler.set_models(model_wrapper.model)
                 self.processSentences(sampler, model_wrapper.model[1], jobs_socket, results_socket)
@@ -93,6 +96,20 @@ cdef class PyzmqWorker:
             elif model_wrapper.model_type == ModelWrapper.COMPILE:
                 self.indexer = Indexer.Indexer(model_wrapper.model)
                 self.processRows(model_wrapper.model, jobs_socket, results_socket)
+            elif model_wrapper.model_type == ModelWrapper.HMM and self.gpu:
+                msg = msg + '.gpu'
+                in_file = open(msg, 'rb') # loading a specific gpu model and trick the system to believe it is the normal model
+                model_wrapper = pickle.load(in_file)
+                sampler = CHmmSampler.GPUHmmSampler(self.seed)
+                # print(model_wrapper.model)
+                gpu_model = CHmmSampler.GPUModel(model_wrapper.model)
+                sampler.set_models(gpu_model)
+                in_file.close()
+                # self.model_file_sig = get_file_signature(msg)
+                pi = 0 # placeholder
+                self.processSentences(sampler, pi, jobs_socket, results_socket)
+
+
             else:
                 logging.error("Received a model type that I don't know how to process!")
 
@@ -156,7 +173,6 @@ cdef class PyzmqWorker:
                 logging.info("Exception raised while waiting for sentence: %s" % (e) )
                 self.quit = True
                 break
-        
             if job.type == PyzmqJob.SENTENCE:
                 sentence_job = job.resource
                 sent_index = sentence_job.index
@@ -209,7 +225,7 @@ cdef class PyzmqWorker:
             if log_prob > 0:
                 logging.error('Sentence %d had positive log probability %f' % (sent_index, log_prob))    
 
-        logging.info("Cumulative forward time %f and backward time %f" % (sampler.ff_time, sampler.bs_time))
+        # logging.info("Cumulative forward time %f and backward time %f" % (sampler.ff_time, sampler.bs_time))
         logging.debug("Worker %d processed %d sentences this iteration" % (self.tid, sents_processed))
 
 
@@ -228,11 +244,11 @@ cdef class PyzmqWorker:
                 
 # def main(args):
 #     logging.basicConfig(level=logging.INFO)
-#     
+    
 #     if len(args) != 1 and len(args) != 5:
 #         print("ERROR: Wrong number of arguments! Two run modes -- One argument of a file with properties or 5 arguments with properties.")
 #         sys.exit(-1)
-#         
+        
 #     if len(args) == 1:
 #         config_file = args[0] + "/masterConfig.txt"
 #         while True:
@@ -244,12 +260,17 @@ cdef class PyzmqWorker:
 #                     break
 #             else:
 #                 time.sleep(10)
-#     
-#     fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]))
+    
+#     if len(args) == 6:
+#         fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), gpu=bool(args[5]))
+#     elif len(args) == 5:
+#         fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]))
 #     signal.signal(signal.SIGINT, fs.handle_sigint)
 #     signal.signal(signal.SIGALRM, fs.handle_sigalarm)
-#     
+    
 #     ## Call run directly instead of start otherwise we'll have 2n workers    
 #     fs.run()
     
-
+# if __name__ == '__main__':
+#     args = sys.argv[1:]
+#     main(args)

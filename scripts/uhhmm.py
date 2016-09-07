@@ -81,7 +81,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     split_merge_iters = int(params.get('split_merge_iters', -1))
     infinite_sample_prob = float(params.get('infinite_prob', 0.0))
     batch_size = min(num_sents, int(params.get('batch_size', num_sents)))
-    
+    gpu = bool(int(params.get('gpu', 0)))
+
     return_to_finite = False
     ready_for_sample = False
     
@@ -180,21 +181,21 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     logging.debug(list(map(lambda x: x.str(), hid_seqs[0])))
 
     workDistributer = WorkDistributerServer(ev_seqs, working_dir)
-    
+    logging.info("GPU is %s" % gpu)
     logging.info("Start a new worker with python3 scripts/workers.py %s %d %d %d %d" % (workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1))
     
     ## Initialize all the sub-processes with their input-output queues
     ## and dimensions of matrix they'll need    
     if num_procs > 0:
-        inf_procs = start_local_workers_with_distributer(workDistributer, maxLen, num_procs)
+        inf_procs = start_local_workers_with_distributer(workDistributer, maxLen, num_procs, gpu)
         signal.signal(signal.SIGINT, lambda x,y: handle_sigint(x,y, inf_procs))
     
     elif cluster_cmd != None:
-        start_cluster_workers(workDistributer, cluster_cmd, maxLen)
+        start_cluster_workers(workDistributer, cluster_cmd, maxLen, gpu)
     else:
         master_config_file = './masterConfig.txt'
         with open(master_config_file, 'w') as c:
-            print(' '.join([str(x) for x in [workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port,maxLen+1]]), file=c)
+            print(' '.join([str(x) for x in [workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, gpu]]), file=c)
             print('OK', file=c)
        
     logging.info("Starting workers")
@@ -284,17 +285,18 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         t0 = time.time()
         if finite:
-            DistributedModelCompiler.DistributedModelCompiler(depth, workDistributer).compile_and_store_models(models, working_dir)
+            DistributedModelCompiler.DistributedModelCompiler(depth, workDistributer, gpu).compile_and_store_models(models, working_dir)
 #            FullDepthCompiler.FullDepthCompiler(depth).compile_and_store_models(models, working_dir)
         else:
             NoopCompiler.NoopCompiler().compile_and_store_models(models, working_dir)
-
+        t1 = time.time()
         workDistributer.submitSentenceJobs(start_ind, end_ind)
         
         ## Wait for server to finish distributing sentences for this iteration:
-        t1 = time.time()
+        t2 = time.time()
         
-        logging.info("Sampling time for iteration %d is %d s" % (iter, t1-t0))
+        logging.info("Sampling time of iteration %d: Model compilation: %d s; Sentence sampling: %d s" % (iter, t1-t0, t2-t1))
+
 
         ## Read the output and put it in a map -- use a map because sentences will
         ## finish asynchronously -- keep the sentence index so we can extract counts
@@ -907,13 +909,14 @@ def increment_counts(hid_seq, sent, models, inc=1):
     for index,word in enumerate(sent):
         state = hid_seq[index]
         if index == 0:
+            ## print('new sent')
             prev_depth = -1
         else:
             prev_depth = prevState.max_awa_depth()
         
         fork_depth = prev_depth
         cur_depth = state.max_awa_depth()
-
+        ## print(state.str())
         if cur_depth <= 0:
             above_awa = 0
         else:
