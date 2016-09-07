@@ -20,6 +20,8 @@ There is a sample config file in config/d1train.ini. If you run using make, the 
 
 The config has an 'io' (input/output) section and a 'params' (machine learning parameters) section. 'io' requires an input file, output directory, a dictionary file, and a working directory (filesystem location -- defaults to output directory) that both the workers and the job distributer have access to.
 
+The config contains a few important optional parameters. 'gpu' is one of them. If you do not write it in the config, the default is to run the CPU version. If you write 'gpu=1' then the GPU version will be run. 'num_procs' is the number of processes, however if you do not include it in the config, the program will automatically switch to OSC cluster mode.
+
 The input file should contain one sentence per line, with space-separated ints representing tokens (if evaluating for POS tagging, the system accepts space-separated tag/word tokens).
 
 The output directory is where all output will be stored. This is so multiple runs will be preserved if desired. The first thing the uhhmm-trainer.py script will do is copy the config file into the output directory, to promote reproducibility.
