@@ -128,6 +128,7 @@ void HmmSampler::set_models(Model * models){
     // cout << '2' << endl;
     if (p_indexer != NULL){
         delete p_indexer;
+	p_indexer = NULL;
     }
     p_indexer = new Indexer(models);
     // cout << '3' << endl;
@@ -135,12 +136,17 @@ void HmmSampler::set_models(Model * models){
     cudaMemset(&STATE_SIZE,0,sizeof(int));
     cudaMemcpyToSymbol(STATE_SIZE, &g_len, sizeof(int), 0, cudaMemcpyHostToDevice);
     // cout << '4' << endl;
+    //if (lexMatrix != NULL){
+    //    delete lexMatrix;
+    //    lexMatrix = NULL;
+    //}
     lexMatrix = p_model -> lex; 
     // print(*(lexMatrix->get_view()));
     // exp_array(lexMatrix->get_view()->values); // exp the lex dist // the gpu models are not logged, should not need this
     // cout << '5' << endl;
     if (lexMultiplier != NULL){
         delete lexMultiplier;
+        lexMultiplier = NULL;
     }
     lexMultiplier = tile(g_len, p_indexer->get_state_size());
     // print(*lexMultiplier);
@@ -148,6 +154,7 @@ void HmmSampler::set_models(Model * models){
     // print( *(pi->get_view()) );
     if (trans_slice != NULL){
         delete trans_slice;
+        trans_slice = NULL;
     }
     trans_slice = new Array(p_indexer->get_state_size(), 0.0f);
     expanded_lex = trans_slice;
@@ -328,13 +335,13 @@ HmmSampler::HmmSampler(int seed) : seed(seed){
     }
 }
 HmmSampler::~HmmSampler(){
-    delete p_model;
+    //delete p_model;
     delete p_indexer;
-    delete lexMatrix;
+    //delete lexMatrix;
     delete dyn_prog;
     delete lexMultiplier;
-    delete pi;
+    //delete pi;
     delete trans_slice;
-    delete expanded_lex;
-    delete sum_dict;
+    //delete expanded_lex;
+    //delete sum_dict;
 }

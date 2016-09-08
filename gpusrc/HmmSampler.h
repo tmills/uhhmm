@@ -79,16 +79,16 @@ public:
     int get_sample(AView &v);
 private:
     std::tuple<State, int> _reverse_sample_inner(int& sample_t, int& t);
-    Model * p_model;
-    Indexer * p_indexer;
-    DenseView* lexMatrix;
-    Dense* dyn_prog;
-    Sparse* lexMultiplier;
-    SparseView* pi;
-    Array* trans_slice;
+    Model * p_model = NULL;
+    Indexer * p_indexer = NULL;
+    DenseView* lexMatrix = NULL;
+    Dense* dyn_prog = NULL;
+    Sparse* lexMultiplier = NULL;
+    SparseView* pi = NULL;
+    Array* trans_slice = NULL;
     int seed;
-    Array* expanded_lex;
-    Array* sum_dict;
+    Array* expanded_lex = NULL;
+    Array* sum_dict = NULL;
     
 };
 

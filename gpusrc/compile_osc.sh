@@ -5,7 +5,7 @@ module load python/3.4.2
 module load gnu/4.9.1
 cd ../
 mkdir include
-git clone git@github.com:cusplibrary/cusplibrary.git
+git clone https://.github.com:cusplibrary/cusplibrary.git
 mv cusplibrary/cusp include/
 rm -rf cusplibrary
 cd - 
