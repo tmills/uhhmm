@@ -81,8 +81,6 @@ cdef class GPUHmmSampler:
 			self.hmmsampler = HmmSampler(seed)
 		else:
 			self.hmmsampler = HmmSampler()
-	def __dealloc__(self):
-		del self.hmmsampler
 	def set_models(self, GPUModel model):
 		self.hmmsampler.set_models(model.c_model)
 	def initialize_dynprog(self, int k):
