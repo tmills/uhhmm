@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -l
 
 
 /usr/local/cuda/bin/nvcc -rdc=true -c -o gpusrc/temp.o gpusrc/HmmSampler.cu -std=c++11 --shared -Xcompiler -fPIC -m64
@@ -16,5 +16,5 @@ rm gpusrc/hmmsampler.o
 rm gpusrc/libhmm.a
 rm gpusrc/CHmmSampler.o
 rm gpusrc/CHmmSampler.cpp
-# export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 # python3 test_suite.py

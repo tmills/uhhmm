@@ -69,6 +69,7 @@ class HmmSampler{
 public:
     HmmSampler(int seed);
     HmmSampler();
+    ~HmmSampler();
     void set_models(Model * models);
     void initialize_dynprog(int max_len);
     float forward_pass(std::vector<int> sent, int sent_index);

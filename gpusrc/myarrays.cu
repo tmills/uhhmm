@@ -40,10 +40,10 @@ csr_matrix_view<IndexArrayView, IndexArrayView, ValueArrayView>* SparseView::get
         return &sparse_view;
     }
 SparseView::~SparseView(){
-//        delete sparse_view;
-//        delete device_col_ptrs;
-//        delete device_row_offsets;
-//        delete device_vals;
+       delete sparse_view;
+       delete device_col_ptrs;
+       delete device_row_offsets;
+       delete device_vals;
     }
 //private:
 //    Array device_vals;
@@ -71,8 +71,8 @@ array2d_view<ValueArrayView, row_major>* DenseView::get_view(){
         return &dense_view;
     }
 DenseView::~DenseView(){
-//        delete dense_view;
-//        delete device_vals;
+       delete dense_view;
+       delete device_vals;
     }
 //private:
 //    Array device_vals;

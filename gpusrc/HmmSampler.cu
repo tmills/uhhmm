@@ -126,6 +126,9 @@ void HmmSampler::set_models(Model * models){
     // cout << '1' << endl;
     p_model = models;
     // cout << '2' << endl;
+    if (p_indexer != NULL){
+        delete p_indexer;
+    }
     p_indexer = new Indexer(models);
     // cout << '3' << endl;
     int g_len = p_model-> g_max;
@@ -136,10 +139,16 @@ void HmmSampler::set_models(Model * models){
     // print(*(lexMatrix->get_view()));
     // exp_array(lexMatrix->get_view()->values); // exp the lex dist // the gpu models are not logged, should not need this
     // cout << '5' << endl;
+    if (lexMultiplier != NULL){
+        delete lexMultiplier;
+    }
     lexMultiplier = tile(g_len, p_indexer->get_state_size());
     // print(*lexMultiplier);
     pi = p_model -> pi;
     // print( *(pi->get_view()) );
+    if (trans_slice != NULL){
+        delete trans_slice;
+    }
     trans_slice = new Array(p_indexer->get_state_size(), 0.0f);
     expanded_lex = trans_slice;
     sum_dict = trans_slice;
@@ -147,6 +156,9 @@ void HmmSampler::set_models(Model * models){
 
 void HmmSampler::initialize_dynprog(int max_len){
     // cout << '2' << endl;
+    if (dyn_prog != NULL){
+        delete dyn_prog;
+    }
     dyn_prog = new Dense( max_len, p_indexer->get_state_size(), 0.0f );
 }
 
@@ -314,4 +326,15 @@ HmmSampler::HmmSampler(int seed) : seed(seed){
     } else{
         srand(seed);
     }
+}
+HmmSampler::~HmmSampler(){
+    delete p_model;
+    delete p_indexer;
+    delete lexMatrix;
+    delete dyn_prog;
+    delete lexMultiplier;
+    delete pi;
+    delete trans_slice;
+    delete expanded_lex;
+    delete sum_dict;
 }
