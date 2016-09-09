@@ -14,6 +14,15 @@ debug: config/debug.ini $(THISDIR)/debug.sh
 config/myconfig.ini: config/d1train.ini
 	cp $< $@
 
+data/wsj_all_multiline.txt: user-ptb-location.txt
+	cat $(shell cat user-ptb-location.txt)/treebank_3/parsed/mrg/wsj/*/* > $@
+
+data/wsj_all.txt: data/wsj_all_multiline.txt
+	cat $< | perl -pe 's/^\(/<s>(/' | perl -pe 's/\n//' | perl -pe 's/<s>/\n/g' | perl -pe 's/  +/ /g' | grep -v "^$$" > $@
+
+data/wsj_all.tagwords.txt: data/wsj_all.txt
+	cat $< | perl -pe 's/\(([^()]+) ([^()]+)\)/\1\/\2/g;s/\(\S*//g;s/\)//g;s/-NONE-\/\S*//g;s/  +/ /g;s/^ *//g' > $@
+
 data/simplewiki_d1.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
 	cat $< | $(SCRIPTS)/extract_d1_trees.sh | $(SCRIPTS)/trees2words.sh > $@
 
@@ -47,6 +56,13 @@ data/%.1kvocab: data/%.txt
 data/%.1kvocabfilter.txt: data/%.1kvocab data/%.txt
 	python $(SCRIPTS)/filter_sentence_with_vocab.py $^ > $@
 
+user-ptb-location.txt:
+	echo '/home/tmill/mnt/r/resources/corpora/ptb/treebank_3/parsed/mrg/wsj_nps' > $@
+	@echo ''
+	@echo 'ATTENTION: I had to create "$@" for you, which may be wrong'
+	@echo 'edit it to point at your penn treebank repository, and re-run make to continue!'
+	@echo ''
+
 user-lorelei-location.txt:
 	echo '/home/corpora/original/various/lorelei' > $@
 	@echo ''
@@ -74,26 +90,38 @@ data/thailtf_tagwords.txt: user-lorelei-location.txt
 data/tamiltf_tagwords.txt: user-lorelei-location.txt
 	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Tamil_LDC2015E83_V1.1/data/annotation/pos_tagged/ltf > $@
 
-data/darpa_y1eval_set0_tagwords.txt: user-lorelei-location.txt
-	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/LDC2016E57_LORELEI_IL3_Incident_Language_Pack_for_Year_1_Eval/set0/data/monolingual_text/ltf/
-
-data/darpa_y1eval_setE_tagwords.txt: user-lorelei-location.txt
-	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/LDC2016E57_LORELEI_IL3_Incident_Language_Pack_for_Year_1_Eval/setE/data/monolingual_text/ltf/
+data/darpa_y1eval_set%.tagwords.txt: user-lorelei-location.txt
+	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/LDC2016E57_LORELEI_IL3_Incident_Language_Pack_for_Year_1_Eval/set$*/data/monolingual_text/ltf/ > $@
 
 data/darpa_y1eval_set0,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_setE.tagwords.txt
+	cat $^ > $@
+
+data/darpa_y1eval_set0,1.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_set1.tagwords.txt
+	cat $^ > $@
+
+data/darpa_y1eval_set0,1,2.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_set1.tagwords.txt data/darpa_y1eval_set2.tagwords.txt
+	cat $^ > $@
+
+data/darpa_y1eval_set0,1,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_set1.tagwords.txt data/darpa_y1eval_setE.tagwords.txt
 	cat $^ > $@
 
 data/%.words.txt: data/%.tagwords.txt
 	cat $^ | $(SCRIPTS)/tagwords2words.sh > $@
 
 data/%-l10.words.txt: data/%.words.txt
-	cat $^ | $(SCRIPTS)/words2l10words.sh > $@
+	cat $^ | $(SCRIPTS)/words2len_words.sh 10 > $@
+
+data/%-l20.words.txt: data/%.words.txt
+	cat $^ | $(SCRIPTS)/words2len_words.sh 20 > $@
 
 data/%-l3-10.words.txt: data/%-l10.words.txt
 	cat $^ | perl -lane 'if($$#F >= 2){ print $$_; }' > $@
 
 data/%.m2.words.txt: data/%.words.txt
 	cat $^ | perl $(SCRIPTS)/removeInfrequent.pl 2 > $@
+
+data/%.tagwords.txt: data/%.txt
+	cat $^ | $(SCRIPTS)/trees2tagwords.sh > $@
 
 #convert the output to bracketed trees. '.txt' is the output file, '.origSents' is the file of the original sentences
 %.brackets: MB=$(shell cat user-modelblocks-location.txt)
