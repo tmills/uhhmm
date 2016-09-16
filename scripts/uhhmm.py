@@ -74,7 +74,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     max_samples = int(params.get('num_samples'))
     num_procs = int(params.get('num_procs', 0))
     debug = params.get('debug', 'INFO')
-    logfile = params.get('logfile','uhhmm.log')
+    logfile = params.get('logfile','')
     profile = bool(int(params.get('profile', 0)))
     finite = bool(int(params.get('finite', 0)))
     cluster_cmd = params.get('cluster_cmd', None)
@@ -86,7 +86,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     return_to_finite = False
     ready_for_sample = False
     
-    logging.basicConfig(level=getattr(logging, debug))#,filename=logfile)
+    logging.basicConfig(level=getattr(logging, debug),filename=logfile)
     logging.info("Starting beam sampling")
 
     seed = int(params.get('seed', -1))
