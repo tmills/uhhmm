@@ -120,3 +120,5 @@ cdef class Models:
         self.start = d['start']
         self.pos = d['pos']
         self.lex = d['lex']
+        self.models = [self.fork, self.trans, self.reduce, self.act, self.root, self.next, self.cont, self.exp, self.start, self.pos, self.lex]
+

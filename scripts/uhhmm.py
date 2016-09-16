@@ -164,7 +164,12 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         models = sample.models
         hid_seqs = sample.hid_seqs
         max_state_check(hid_seqs, models)
-        
+        models.resetAll()
+
+        pos_counts = models.pos.pairCounts[:].sum()
+        lex_counts = models.lex.pairCounts[:].sum()
+        assert pos_counts == 0 and lex_counts == 0
+
         a_max = models.act[0].dist.shape[-1]
         b_max = models.cont[0].dist.shape[-1]
         g_max = models.pos.dist.shape[-1]
@@ -282,6 +287,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         else:
             logging.info("Resetting all counts to zero for next iteration")
             models.resetAll()
+            pos_counts = models.pos.pairCounts[:].sum()
+            lex_counts = models.lex.pairCounts[:].sum()
+            assert pos_counts == 0 and lex_counts == 0
 
         t0 = time.time()
         if finite:
