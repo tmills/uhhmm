@@ -112,7 +112,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, a_max, b_max, g_max)
         hid_seqs = initialize_state(ev_seqs, models, depth, gold_seqs)
-        max_state_check(hid_seqs, models)
+        max_state_check(hid_seqs, models, "initialization")
         
         sample = Sample()
         sample.alpha_a = models.root[0].alpha ## float(params.get('alphaa'))
@@ -163,7 +163,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         sample.log_prob = 0
         models = sample.models
         hid_seqs = sample.hid_seqs
-        max_state_check(hid_seqs, models)
+        max_state_check(hid_seqs, models, "reading sample from pickle file") 
         
         a_max = models.act[0].dist.shape[-1]
         b_max = models.cont[0].dist.shape[-1]
@@ -318,6 +318,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             logging.warning("Didn't receive the correct number of parses at iteration %d" % iter)
 
         logging.info("Parsed %d sentences this batch -- now have %d parses" % (end_ind-start_ind, end_ind ) )
+        max_state_check(hid_seqs, models, "parses")   
 
         pos_counts = models.pos.pairCounts[:].sum()
         lex_counts = models.lex.pairCounts[:].sum()
@@ -349,16 +350,14 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 ready_for_sample = False
             
             if split_merge:
-                max_state_check(hid_seqs, models)
                 logging.info("Starting split/merge operation")
                 models, sample = perform_split_merge_operation(models, sample, ev_seqs, params, iter)
                 hid_seqs = sample.hid_seqs
-                max_state_check(hid_seqs, models)               
+                max_state_check(hid_seqs, models, "split-merge")               
                 logging.info("Done with split/merge operation")
                 report_function(sample)
                 split_merge = False
                 logging.debug("After split-merge the shape of root is %s and exp is %s \n" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
-                logging.debug("pos dist size is %s" % models.pos.dist.shape[1])
                  
             next_sample = Sample()
             #next_sample.hid_seqs = hid_seqs        
@@ -383,8 +382,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             prev_sample = sample
             sample = next_sample
         
-        logging.debug("pos dist size is %s" % models.pos.dist.shape[1])
-        max_state_check(hid_seqs, models)
+        max_state_check(hid_seqs, models, "sampling hyperparameters")
 
         t0 = time.time()
         
@@ -392,8 +390,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## TODO -- make the Models class do this in a resample_all() method
         ## After stick-breaking we probably need to re-sample all the models:
         remove_unused_variables(models, hid_seqs)
-        logging.debug("after removing unused variables, pos dist size is %s" % models.pos.dist.shape[1])
-        max_state_check(hid_seqs, models)
         resample_beta_g(models, sample.gamma)
 
         models.lex.sampleDirichlet(params['h'])
@@ -450,11 +446,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 def max_state(hid_seqs):
     return max(a.g for b in hid_seqs for a in b)
     
-def max_state_check(hid_seqs, models):
+def max_state_check(hid_seqs, models, location): 
     ms = max_state(hid_seqs)
-    assert ms == models.pos.dist.shape[1]-2, \
-        "max state of hid_seqs is %s, pos dist size is %s" % (ms, models.pos.dist.shape[1])
-    logging.debug("max state in hid_seqs = " + str(ms))
+    logging.debug("max state in hid_seqs = " + str(ms) + ", pos dist size = " + str(models.pos.dist.shape[1]) + ", after " + location) 
+    assert ms <= models.pos.dist.shape[1]-2, \
+        "Too many states in hid_seqs: max state of hid_seqs is %s, pos dist size is %s" % (ms, models.pos.dist.shape[1])
+    if (ms < models.pos.dist.shape[1]-2):
+      logging.warning("Too few states in hid_seqs: there is at least one state that is never used during inference.")
 
 def remove_unused_variables(models, hid_seqs):
     ## Have to check if it's greater than 2 -- empty state (0) and final state (-1) are not supposed to have any counts:
@@ -462,7 +460,7 @@ def remove_unused_variables(models, hid_seqs):
         pos = np.where(models.pos.pairCounts.sum(0)==0)[0][1]
         remove_pos_from_models(models, pos)
         remove_pos_from_hid_seqs(hid_seqs, pos)
-    max_state_check(hid_seqs, models)
+    max_state_check(hid_seqs, models, "removing unused variables")
     
 def remove_pos_from_hid_seqs(hid_seqs, pos):
     for a in hid_seqs:
