@@ -21,7 +21,7 @@ int State::max_awa_depth(){
         return -1;
     }
     // cout << "getting in second loop" << endl;
-    for (int d = 1; d <= depth; d++) {
+    for (int d = 1; d < depth; d++) {
         if (b[d] == 0){
             return d - 1;
         }
