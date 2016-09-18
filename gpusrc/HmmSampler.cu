@@ -292,9 +292,9 @@ std::vector<State> HmmSampler::reverse_sample(std::vector<int> sent, int sent_in
     // cout << "backpass1: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t3 - t2).count() * nano_to_sec << " s" << endl;
     // cout << "backpass2: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t4 - t3).count() * nano_to_sec << " s" << endl;
     // cout << "backpass: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t5 - t2).count() * nano_to_sec << " s" << endl;
-    for (int k : sample_t_seq){
-        cout << sent_index << " : " << k  << endl;
-    }
+    //for (int k : sample_t_seq){
+    //    cout << sent_index << " : " << k  << endl;
+    //}
     return sample_seq;
 }
 
