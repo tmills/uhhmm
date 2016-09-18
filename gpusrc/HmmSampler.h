@@ -9,6 +9,7 @@
 //#include "Indexer.h"
 #include <vector>
 #include <tuple>
+#include <random>
 //#include "State.h"
 //using namespace cusp;
 
@@ -89,6 +90,8 @@ private:
     int seed;
     Array* expanded_lex = NULL;
     Array* sum_dict = NULL;
+    std::mt19937 mt;
+    std::uniform_real_distribution<float> dist{0.0,1.0};
     
 };
 

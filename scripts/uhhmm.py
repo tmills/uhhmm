@@ -310,7 +310,17 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         for parse in parses:
             num_processed += 1
             if parse.success:
-                increment_counts(parse.state_list, ev_seqs[ parse.index ], models)
+                try:
+                    increment_counts(parse.state_list, ev_seqs[ parse.index ], models)
+                    # logging.info('Good parse:')
+                    # logging.info(' '.join([x.str() for x in parse.state_list]))
+                    # logging.info('The index is %d' % parse.index)
+                except:
+                    logging.error('This parse is bad:')
+                    logging.error('The sentence is ' + ' '.join([str(x) for x in ev_seqs[parse.index]]))
+                    logging.error(' '.join([x.str() for x in parse.state_list]))
+                    logging.error('The index is %d' % parse.index)
+                    raise(ValueError)
                 sample.log_prob += parse.log_prob
             hid_seqs[parse.index] = parse.state_list
 
