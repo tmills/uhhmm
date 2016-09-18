@@ -24,7 +24,6 @@ cimport Sampler
 import Indexer
 import FullDepthCompiler
 from uhhmm_io import printException, ParsingError
-import CHmmSampler
 
        
 cdef class PyzmqWorker:
@@ -97,6 +96,7 @@ cdef class PyzmqWorker:
                 self.indexer = Indexer.Indexer(model_wrapper.model)
                 self.processRows(model_wrapper.model, jobs_socket, results_socket)
             elif model_wrapper.model_type == ModelWrapper.HMM and self.gpu:
+                import CHmmSampler
                 msg = msg + '.gpu'
                 in_file = open(msg, 'rb') # loading a specific gpu model and trick the system to believe it is the normal model
                 model_wrapper = pickle.load(in_file)

@@ -8,17 +8,14 @@ import numpy as np
 
 class HHMMLayer(Recurrent):
     def __init__(self, embed_dim, syn_dim,
-         init='glorot_uniform', inner_init='orthogonal',
-         forget_bias_init='one', activation='tanh',
-         inner_activation='relu', **kwargs):
+         init='glorot_uniform', 
+         activation='tanh', **kwargs):
 
         self.embed_dim = embed_dim
         self.syn_dim = syn_dim
-        self.output_dim = 2
+        self.output_dim = 2 + self.syn_dim * 2
         self.init = initializations.get(init)
-        self.inner_init = initializations.get(inner_init)
         self.activation = activations.get(activation)
-        self.bool_act = activations.get('sigmoid')
         super(HHMMLayer, self).__init__(**kwargs)
         
     ## Initialize everything:
@@ -30,6 +27,11 @@ class HHMMLayer(Recurrent):
     def build(self, input_shape):
         self.input_spec = [InputSpec(shape=input_shape)]
         
+        self.bool_act = activations.get('hard_sigmoid')
+        self.zero = K.zeros((1,))
+        self.one = K.zeros((1,)) + 1
+        self.threshold = K.zeros(1) + 0.5
+
         if self.stateful:
             self.reset_states()
         else:
@@ -60,7 +62,7 @@ class HHMMLayer(Recurrent):
         
         self.W_b_m = self.init( (self.syn_dim*2, self.syn_dim),name="W_b_m")
         self.b_b_m = K.zeros( (self.syn_dim,), name="b_b_m")
-        
+
         self.trainable_weights = [self.W_f, self.b_f,
                                   self.W_j_p, self.b_j_p, self.W_j_m, self.b_j_m,
                                   self.W_a_mm, self.b_a_mm, self.W_a_pm, self.b_a_pm,
@@ -105,25 +107,45 @@ class HHMMLayer(Recurrent):
         
         act_awa = K.concatenate( (prev_act, prev_awa) )
         
+        if K.greater(f, self.threshold):
+            f = f / f
+        else:
+            f = f * 0
+
+        if K.greater(j, self.threshold):
+            j  = j /j 
+        else:
+            j = j * 0
+            
         pp_term = K.tile(f * j, [1, self.syn_dim] ) * prev_act
         mm_term = K.tile( (1-f) * (1-j), [1, self.syn_dim])  * self.activation( K.dot( prev_act, self.W_a_mm ) + self.b_a_mm )
-        pm_term = K.tile(f * (1-j), [1, self.syn_dim]) * self.activation( K.dot( act_awa, self.W_a_pm ) + self.b_a_pm)
+        pm_term = K.tile(f * (1-j), [1, self.syn_dim]) * self.activation( K.dot( act_awa, self.W_a_pm ) + self.b_a_pm)      
         
         act = pp_term + mm_term + pm_term
+            
+#        if K.greater(f, self.zero) and K.greater(j, self.zero):
+#            act = prev_act
+#        elif K.lesser(f, self.zero) and K.lesser(j, self.zero):
+#            act = self.activation( K.dot( prev_act, self.W_a_mm ) + self.b_a_mm )
+#        elif K.greater(f, self.zero) and K.lesser(j, self.zero):
+#            act = self.activation( K.dot( act_awa, self.W_a_pm ) + self.b_a_pm)
+        
         
         act_pair = K.concatenate( (prev_act, act) )       
         p_term = K.tile(j, [1, self.syn_dim]) * self.activation( K.dot( awa_em, self.W_b_p ) + self.b_b_p )
         m_term = K.tile((1 - j), [1, self.syn_dim]) * self.activation( K.dot( act_pair, self.W_b_m ) + self.b_b_m )
         awa = p_term + m_term
         
-        output = K.concatenate( (f, j) )
+        output = K.concatenate( (f, j, act, awa) )
         return output, [act, awa, x]
         
     ## Return config variables (LSTM config shown in comments below)
     def get_config(self):
-        config = {'output_dim': self.output_dim,
+        config = {'embed_dim': self.embed_dim,
+                  'syn_dim': self.syn_dim,
+                  #'output_dim': self.output_dim,
                   'init': self.init.__name__,
-                  'inner_init': self.inner_init.__name__,
                   'activation': self.activation.__name__}
         base_config = super(HHMMLayer, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
+
