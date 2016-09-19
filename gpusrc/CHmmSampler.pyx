@@ -89,11 +89,15 @@ cdef class GPUHmmSampler:
 		return self.hmmsampler.forward_pass(sent, sent_index)
 	def reverse_sample(self, vector[int] sent, int sent_index):
 		cdef vector[State] state_list = self.hmmsampler.reverse_sample(sent, sent_index)
+		#states = self.hmmsampler.reverse_sample(sent, sent_index)
+		#state_list = states[0]
+		#print(states[1])
 		wrapped_list = []
 		for i in range(state_list.size()):
 			wrapped_list.append(wrap_state(state_list[i]))
 		return wrapped_list
 	def sample(self, pi, vector[int] sent, int sent_index):  # need pi to conform to API
+		# print "Sent Index is " + str(sent_index)
 		log_probs = self.forward_pass(sent, sent_index) 
 		states = self.reverse_sample(sent, sent_index) 
 		return (states, log_probs)
