@@ -961,26 +961,26 @@ def increment_counts(hid_seq, sent, models, inc=1):
                     
                 ## Count A & B
                 if state.f == 0 and state.j == 0:
-                    assert prev_depth == cur_depth
+                    assert prev_depth == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d" % (prev_depth, cur_depth, depth, index, len(sent) )
                     models.act[cur_depth].count((prevState.a[cur_depth], prev_above_awa), state.a[cur_depth], inc)
                     models.start[cur_depth].count((prevState.a[cur_depth], state.a[cur_depth]), state.b[cur_depth], inc)
                 elif state.f == 1 and state.j == 1:
-                    assert prev_depth == cur_depth
+                    assert prev_depth == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d" % (prev_depth, cur_depth, depth, index, len(sent) )
                     ## no change to act, awa increments cont model
                     models.cont[cur_depth].count((prevState.b[cur_depth], prevState.g), state.b[cur_depth], inc)
                 elif state.f == 1 and state.j == 0:
-                    assert prev_depth+1 == cur_depth
+                    assert prev_depth+1 == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d" % (prev_depth, cur_depth, depth, index, len(sent) )
                     ## run root and exp models at depth d+1
                     models.root[cur_depth].count((prevState.b[prev_depth], prevState.g), state.a[cur_depth], inc)
                     models.exp[cur_depth].count((prevState.g, state.a[cur_depth]), state.b[cur_depth], inc)
                 elif state.f == 0 and state.j == 1:
-                    assert prev_depth == cur_depth+1
+                    assert prev_depth == cur_depth+1, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d" % (prev_depth, cur_depth, depth, index, len(sent) )
                     ## lower level finished -- awaited can transition
                     ## Made the following deciison in a confusing rebase -- left other version
                     ## commented in in case I decided wrong.
                     models.next[cur_depth].count((prevState.a[prev_depth], prevState.b[cur_depth]), state.b[cur_depth], inc)
                 else:
-                    raise Exception("Unallowed value of f=%d and j=%d" % (state.f, state.j) )    
+                    raise Exception("Unallowed value of f=%d and j=%d, index=%d" % (state.f, state.j, index) )    
         
             ## Count G
             models.pos.count(state.b[cur_depth], state.g, inc)
