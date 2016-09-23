@@ -91,7 +91,7 @@ private:
     Array* expanded_lex = NULL;
     Array* sum_dict = NULL;
     std::mt19937 mt;
-    std::uniform_real_distribution<float> dist{0.0,1.0};
+    std::uniform_real_distribution<float> dist{0.0f,1.0f};
     
 };
 

@@ -50,9 +50,20 @@ int HmmSampler::get_sample(AView &v){
     // array1d<float, device_memory> sum_dict(v.size()); // building a new array, maybe not needed
     thrust::inclusive_scan(thrust::device, v.begin(), v.end(), sum_dict->begin());
     // dart =  static_cast <float> (rand()) / static_cast <float> (RAND_MAX);// / RAND_MAX;
-    dart = dist(mt);
-    // cout << "dart"<< dart << endl;
-    return thrust::lower_bound(thrust::device, sum_dict->begin(), sum_dict->end(), dart)  - sum_dict->begin();
+    int dart_target;
+    int condition = 1;
+    while (condition) {
+        dart = dist(mt);
+        if (dart != 0.0f and dart != 1.0f) {
+           cout << "dart: "<< dart << endl;
+           dart_target = thrust::upper_bound(thrust::device, sum_dict->begin(), sum_dict->end(), dart) - sum_dict->begin();
+           cout << "dart target: " << dart_target << " " << (*sum_dict)[dart_target - 1] << " " << (*sum_dict)[dart_target] << " " << (*sum_dict)[dart_target+ 1] << endl; 
+           if (dart != (*sum_dict)[dart_target]){
+                condition = 0;
+           }
+        }
+     }
+     return dart_target;
 }
 
 class cuda_exp : public thrust::unary_function<float, float>{
@@ -239,6 +250,7 @@ float HmmSampler::forward_pass(std::vector<int> sent, int sent_index){
 }
 
 std::vector<State> HmmSampler::reverse_sample(std::vector<int> sent, int sent_index){
+    cout << "Sent index is " << sent_index << "s" << endl;
     // auto t2 = Clock::now();
     std::vector<State> sample_seq;
     std::vector<int> sample_t_seq;
@@ -263,9 +275,9 @@ std::vector<State> HmmSampler::reverse_sample(std::vector<int> sent, int sent_in
         // sample_t = 0;
         // cout << sample_t << endl;
         sample_state = p_indexer -> extractState(sample_t);
-        // cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
+        cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
         sample_depth = sample_state.max_awa_depth();
-        // cout << sample_depth << endl;
+        //cout << "Sample depth is "<< sample_depth << endl;
     }
     // auto t3 = Clock::now();
     // cout << "x3" << endl;
@@ -277,7 +289,8 @@ std::vector<State> HmmSampler::reverse_sample(std::vector<int> sent, int sent_in
         // cout << 't' << t << endl;
         // auto t11 = Clock::now();
         std::tie(sample_state, sample_t) = _reverse_sample_inner(sample_t, t);
-        // cout << "Sample t is " << sample_t << endl;
+        cout << "Sample t is " << sample_t << endl;
+        cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
         sample_seq.push_back(sample_state);
         sample_t_seq.push_back(sample_t);
         // auto t12 = Clock::now();
@@ -326,6 +339,12 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t){
     //}
     // auto t15 = Clock::now();
     State sample_state = p_indexer -> extractState(sample_t);
+    // if ((sample_state.a[1] == 0 && sample_state.b[1] != 0)|| (sample_state.a[1] != 0 && sample_state.b[1] == 0) ){
+        cout << "Dyn Prog: " << dyn_prog_row[sample_t -1] << " "<< dyn_prog_row[sample_t] <<" "<<dyn_prog_row[sample_t + 1] <<endl;
+        cout << "Trans Slice: " <<" "<< (*trans_slice)[sample_t-1]<< " "<<(*trans_slice)[sample_t] <<" "<< (*trans_slice)[sample_t+1]<< endl;
+        cout << "sample_t: " << sample_t << endl;
+        
+    // }
     // cout << "backpass1reverseinner: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t12 - t11).count() * nano_to_sec << " s" << endl;
     // cout << "backpass1reverseinner: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t13 - t12).count() * nano_to_sec << " s" << endl;
     // cout << "backpass1reverseinner: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t14 - t13).count() * nano_to_sec << " s" << endl;
