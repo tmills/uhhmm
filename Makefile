@@ -2,6 +2,10 @@
 THISDIR := $(dir $(abspath $(word $(words $(MAKEFILE_LIST)),$(MAKEFILE_LIST))))
 SCRIPTS  := $(THISDIR)/scripts
 
+NUMPY_INC=env/lib/python3.4/site-packages/numpy/core/include 
+#/usr/local/lib/python3.4/dist-packages/numpy/core/include
+PY3_LOC=env/bin/python3.4
+
 all:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt $(THISDIR)/train.sh
 	$(word 3, $^) $<
 
@@ -10,6 +14,25 @@ osc:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt $(THISDIR)/train_
 
 debug: config/debug.ini $(THISDIR)/debug.sh
 	$(word 2, $^) $<
+
+scripts/CHmmSampler.so: gpusrc/ChmmSampler.o gpusrc/libhmm.a
+	g++-4.9 -pthread -shared -Wl,-O1 -Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,relro -g -fstack-protector-strong -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2 -std=c++11 $^ -Lgpusrc/ -lhmm -L/usr/local/cuda/lib64 -lcudart -o $@
+
+gpusrc/ChmmSampler.o: gpusrc/CHmmSampler.cpp
+	g++-4.9 -pthread -DNDEBUG -g -fwrapv -O2 -Wall -g -fstack-protector-strong -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2 -fPIC -I$(NUMPY_INC) -I/usr/include/python3.4m -I/usr/local/include/ -c $< -w -std=c++11  -L/usr/local/cuda/lib64 -lcudart -L/usr/lib/x86_64-linux-gnu -lpython3.4m -Lgpusrc/ -lhmm -o $@
+
+gpusrc/CHmmSampler.cpp: gpusrc/CHmmSampler.pyx
+	cython --cplus gpusrc/CHmmSampler.pyx
+
+gpusrc/libhmm.a: gpusrc/hmmsampler.o gpusrc/temp.o
+	ar cru $@ $^
+	ranlib $@ 
+
+gpusrc/hmmsampler.o: gpusrc/temp.o
+	nvcc -dlink -o $@ $^ -lcudart --shared -Xcompiler -fPIC -m64 -L/usr/local/cuda/lib64 -Xlinker -rpath -Xlinker /usr/local/cuda/lib64
+
+gpusrc/temp.o: gpusrc/HmmSampler.cu
+	nvcc -rdc=true -c -o $@ $^ -std=c++11 --shared -Xcompiler -fPIC -m64
 
 config/myconfig.ini: config/d1train.ini
 	cp $< $@
