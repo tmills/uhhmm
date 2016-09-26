@@ -31,8 +31,8 @@ gpusrc/libhmm.a: gpusrc/hmmsampler.o gpusrc/temp.o
 gpusrc/hmmsampler.o: gpusrc/temp.o
 	nvcc -dlink -o $@ $^ -lcudart --shared -Xcompiler -fPIC -m64 -L/usr/local/cuda/lib64 -Xlinker -rpath -Xlinker /usr/local/cuda/lib64
 
-gpusrc/temp.o: gpusrc/HmmSampler.cu
-	nvcc -rdc=true -c -o $@ $^ -std=c++11 --shared -Xcompiler -fPIC -m64
+gpusrc/temp.o: gpusrc/HmmSampler.cu gpusrc/State.cu gpusrc/State.h
+	nvcc -rdc=true -c -o $@ $< -std=c++11 --shared -Xcompiler -fPIC -m64
 
 config/myconfig.ini: config/d1train.ini
 	cp $< $@
