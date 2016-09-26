@@ -214,7 +214,10 @@ cdef class PyzmqWorker:
                 longest_time = t1-t0
                 logging.warning("Sentence %d was my slowest sentence to parse so far at %d s" % (sent_index, longest_time) )
 
-
+            for state in sent_sample:
+                if not state.depth_check():
+                    print("Sentence %d has an error with the depth!" % (sent_index) )
+                    
             parse = PyzmqParse(sent_index, sent_sample, log_prob, success)
             sents_processed +=1
         

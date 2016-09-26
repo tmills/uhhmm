@@ -276,6 +276,9 @@ std::vector<State> HmmSampler::reverse_sample(std::vector<int> sent, int sent_in
         // cout << sample_t << endl;
         sample_state = p_indexer -> extractState(sample_t);
         cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
+        if(!sample_state.depth_check()){
+          cout << "Depth error in state assigned to last index" << endl;
+        }
         sample_depth = sample_state.max_awa_depth();
         //cout << "Sample depth is "<< sample_depth << endl;
     }
@@ -291,6 +294,9 @@ std::vector<State> HmmSampler::reverse_sample(std::vector<int> sent, int sent_in
         std::tie(sample_state, sample_t) = _reverse_sample_inner(sample_t, t);
         cout << "Sample t is " << sample_t << endl;
         cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
+        if(!sample_state.depth_check()){
+          cout << "Depth error in state assigned at index" << t << endl;
+        }
         sample_seq.push_back(sample_state);
         sample_t_seq.push_back(sample_t);
         // auto t12 = Clock::now();

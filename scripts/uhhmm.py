@@ -961,20 +961,20 @@ def increment_counts(hid_seq, sent, models, inc=1):
                     
                 ## Count A & B
                 if state.f == 0 and state.j == 0:
-                    assert prev_depth == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d" % (prev_depth, cur_depth, depth, index, len(sent) )
+                    assert prev_depth == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
                     models.act[cur_depth].count((prevState.a[cur_depth], prev_above_awa), state.a[cur_depth], inc)
                     models.start[cur_depth].count((prevState.a[cur_depth], state.a[cur_depth]), state.b[cur_depth], inc)
                 elif state.f == 1 and state.j == 1:
-                    assert prev_depth == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d" % (prev_depth, cur_depth, depth, index, len(sent) )
+                    assert prev_depth == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
                     ## no change to act, awa increments cont model
                     models.cont[cur_depth].count((prevState.b[cur_depth], prevState.g), state.b[cur_depth], inc)
                 elif state.f == 1 and state.j == 0:
-                    assert prev_depth+1 == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d" % (prev_depth, cur_depth, depth, index, len(sent) )
+                    assert prev_depth+1 == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
                     ## run root and exp models at depth d+1
                     models.root[cur_depth].count((prevState.b[prev_depth], prevState.g), state.a[cur_depth], inc)
                     models.exp[cur_depth].count((prevState.g, state.a[cur_depth]), state.b[cur_depth], inc)
                 elif state.f == 0 and state.j == 1:
-                    assert prev_depth == cur_depth+1, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d" % (prev_depth, cur_depth, depth, index, len(sent) )
+                    assert prev_depth == cur_depth+1, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
                     ## lower level finished -- awaited can transition
                     ## Made the following deciison in a confusing rebase -- left other version
                     ## commented in in case I decided wrong.

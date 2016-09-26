@@ -30,7 +30,9 @@ public:
     State(int d, State state);
     
     int max_awa_depth();
-    
+    int max_act_depth();
+    bool depth_check();
+
     int depth;
     int f;
     int j;

@@ -60,6 +60,47 @@ cdef class State:
         ## Stack is full -- if d=4 then max depth index is 3
         return self.depth-1
 
+    def max_awa_depth_err(self):
+        ## Essentially empty -- used for first time step
+        print("A vector is: %s" % ( '::'.join(str(x) for x in self.a) ) )
+        print("B vector is: %s" % ( '::'.join(str(x) for x in self.b) ) )
+        
+        if self.b[0] == 0:
+            print("B is all zeros so I'm returning")
+            return -1
+        
+        ## If we encounter a zero at position 1, then the depth is 0
+        for d in range(1, self.depth):
+            print("Checking b at depth %d" % ( d ) )
+            if self.b[d] == 0:
+                print("b[%d] = 0 so i'm returning" % d)
+                return d-1
+        
+        ## Stack is full -- if d=4 then max depth index is 3
+        print("Did not find any zeros so returrning %d" % (self.depth-1) )
+        return self.depth-1
+
+    def max_act_depth(self):
+        ## Essentially empty -- used for first time step
+        if self.a[0] == 0:
+            return -1
+        
+        ## If we encounter a zero at position 1, then the depth is 0
+        for d in range(1, self.depth):
+            if self.a[d] == 0:
+                return d-1
+        
+        ## Stack is full -- if d=4 then max depth index is 3
+        return self.depth-1
+
+    def depth_check(self):
+        if not self.max_awa_depth() == self.max_act_depth():
+            print("ERROR: awa depth for this state is different than act depth")
+            print("Act=%s, awa=%s" % ('::'.join(str(x) for x in self.a), '::'.join(str(x) for x in self.b) ) )
+            return False
+        
+        return True
+                
     def __reduce__(self):
         d = {}
         d['depth'] = self.depth
