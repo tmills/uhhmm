@@ -1,7 +1,11 @@
 #!/bin/bash
-./gpusrc/compile_linux.sh
+#./gpusrc/compile_linux.sh
 #./gpusrc/compile.sh
 #./gpusrc/compile_osc.sh
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+
+make scripts/CHmmSampler.so || exit
+
 python3 setup.py build_ext || exit
 if [ $# -ne 1 ]; 
     then echo "Running the script requires a config argument; exiting."
