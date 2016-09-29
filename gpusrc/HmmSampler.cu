@@ -1,5 +1,6 @@
 
 #include "HmmSampler.h"
+#include <stdio.h>
 #include <thrust/transform.h>
 #include <thrust/reduce.h>
 #include <thrust/execution_policy.h>
@@ -22,12 +23,15 @@
 #include "State.cu"
 #include <chrono> // for testing
 #include <random>
-
+#include <limits>
+#include <iostream>
+#include <iomanip>
 using namespace cusp;
 using namespace std;
 typedef std::chrono::high_resolution_clock Clock;
 float nano_to_sec = 1.0e-9f;
 __device__ int STATE_SIZE;
+typedef std::numeric_limits<float> float_limit;
 
 Model::Model(int pi_num_rows, int pi_num_cols, float* pi_vals, int pi_vals_size, int* pi_row_offsets, int pi_row_offsets_size, int* pi_col_indices, int pi_col_indices_size, float* lex_vals, int lex_vals_size, int lex_num_rows, int lex_num_cols, int a_max, int b_max, int g_max, int depth): pi_num_rows(pi_num_rows), pi_num_cols(pi_num_cols), pi_vals(pi_vals), pi_vals_size(pi_vals_size), pi_row_offsets(pi_row_offsets), pi_row_offsets_size(pi_row_offsets_size), pi_col_indices(pi_col_indices), pi_col_indices_size(pi_col_indices_size), lex_vals(lex_vals), lex_vals_size(lex_vals_size), lex_num_rows(lex_num_rows), lex_num_cols(lex_num_cols), a_max(a_max), b_max(b_max), g_max(g_max), depth(depth){
     pi = new SparseView(pi_num_rows, pi_num_cols, pi_vals_size, pi_row_offsets, pi_col_indices, pi_vals, pi_row_offsets_size, pi_col_indices_size);
@@ -55,10 +59,19 @@ int HmmSampler::get_sample(AView &v){
     while (condition) {
         dart = dist(mt);
         if (dart != 0.0f and dart != 1.0f) {
-           cout << "dart: "<< dart << endl;
+           // cout << "dart: "<< scientific << dart << endl;
            dart_target = thrust::upper_bound(thrust::device, sum_dict->begin(), sum_dict->end(), dart) - sum_dict->begin();
-           cout << "dart target: " << dart_target << " " << (*sum_dict)[dart_target - 1] << " " << (*sum_dict)[dart_target] << " " << (*sum_dict)[dart_target+ 1] << endl; 
-           if (dart != (*sum_dict)[dart_target]){
+           // cout << "dart target (summed): " << dart_target << " " << scientific << (*sum_dict)[dart_target - 1] << " " << scientific << (*sum_dict)[dart_target] << " " << scientific  << (*sum_dict)[dart_target+ 1] << endl; 
+           // cout << "dart target (summed): " << dart_target << " ";
+           // float minus_one = (*sum_dict)[dart_target - 1];
+           // printf( "%A" , minus_one);
+           // cout  << " ";
+           // float on_target = (*sum_dict)[dart_target];
+           // printf("%A", on_target);
+           // cout << " ";
+           // float plus_one = (*sum_dict)[dart_target+ 1];
+           // printf("%A\n", plus_one); 
+           if (v[dart_target] != 0.0f){
                 condition = 0;
            }
         }
@@ -172,6 +185,7 @@ void HmmSampler::set_models(Model * models){
     trans_slice = new Array(p_indexer->get_state_size(), 0.0f);
     expanded_lex = trans_slice;
     sum_dict = trans_slice;
+    // cout.precision(float_limit::max_digits10);
 }
 
 void HmmSampler::initialize_dynprog(int max_len){
@@ -239,9 +253,6 @@ float HmmSampler::forward_pass(std::vector<int> sent, int sent_index){
         sentence_log_prob += log10f(normalizer);
         // cout << normalizer << sentence_log_prob << endl;
         i++;
-        // if (i>1){
-        //     throw;
-        // }
         // skipping some error handling stuff
     }
     // auto t2 = Clock::now();
@@ -275,7 +286,7 @@ std::vector<State> HmmSampler::reverse_sample(std::vector<int> sent, int sent_in
         // sample_t = 0;
         // cout << sample_t << endl;
         sample_state = p_indexer -> extractState(sample_t);
-        cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
+        // cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
         if(!sample_state.depth_check()){
           cout << "Depth error in state assigned to last index" << endl;
         }
@@ -292,8 +303,8 @@ std::vector<State> HmmSampler::reverse_sample(std::vector<int> sent, int sent_in
         // cout << 't' << t << endl;
         // auto t11 = Clock::now();
         std::tie(sample_state, sample_t) = _reverse_sample_inner(sample_t, t);
-        cout << "Sample t is " << sample_t << endl;
-        cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
+        // cout << "Sample t is " << sample_t << endl;
+        // cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
         if(!sample_state.depth_check()){
           cout << "Depth error in state assigned at index" << t << endl;
         }
@@ -322,6 +333,7 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t){
     //int ind;
     float normalizer;
     // auto t11 = Clock::now();
+    int prev_sample_t = sample_t;
     get_row(pi->get_view(), sample_t, *trans_slice);
     // cout << "trans_slice" << endl;
     // print(*trans_slice); 
@@ -330,10 +342,11 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t){
     // cout << "Dyn_prog_row" << endl;
     // print(dyn_prog_row);
     float trans_slice_sum = thrust::reduce(thrust::device, (*trans_slice).begin(), (*trans_slice).end());
-    if (trans_slice_sum != 0.0){
+    if (trans_slice_sum != 0.0f){
         cusp::blas::xmy(*trans_slice, dyn_prog_row, dyn_prog_row);
     }
     // auto t13 = Clock::now();
+    cusp::array1d<float, host_memory> un_normalized_sums(dyn_prog_row);
     normalizer = thrust::reduce(thrust::device, dyn_prog_row.begin(), dyn_prog_row.end());
     // cout << "normalizer" << normalizer <<endl;
     blas::scal(dyn_prog_row, 1.0f/normalizer);
@@ -346,9 +359,20 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t){
     // auto t15 = Clock::now();
     State sample_state = p_indexer -> extractState(sample_t);
     // if ((sample_state.a[1] == 0 && sample_state.b[1] != 0)|| (sample_state.a[1] != 0 && sample_state.b[1] == 0) ){
-        cout << "Dyn Prog: " << dyn_prog_row[sample_t -1] << " "<< dyn_prog_row[sample_t] <<" "<<dyn_prog_row[sample_t + 1] <<endl;
-        cout << "Trans Slice: " <<" "<< (*trans_slice)[sample_t-1]<< " "<<(*trans_slice)[sample_t] <<" "<< (*trans_slice)[sample_t+1]<< endl;
-        cout << "sample_t: " << sample_t << endl;
+    get_row(pi->get_view(), prev_sample_t, *trans_slice);
+        // cout << "Dyn Prog(normalized): " << scientific << dyn_prog_row[sample_t -1] << " " << scientific << dyn_prog_row[sample_t] <<" "<< scientific <<dyn_prog_row[sample_t + 1] <<endl;
+        // cout << "Trans Slice (Pi Row): " <<" " << scientific << (*trans_slice)[sample_t-1]<< " "<< scientific << (*trans_slice)[sample_t] <<" " << scientific << (*trans_slice)[sample_t+1]<< endl;
+        // cout << "Prefix Sum(unnormalized, before sum): " << scientific << un_normalized_sums[sample_t-1] << " " << scientific << un_normalized_sums[sample_t] << " " << scientific << un_normalized_sums[sample_t + 1] << endl;
+        // cout << "Prefix Sum(unnormalozed, before sum): ";
+        // float temp_1 = un_normalized_sums[sample_t-1];
+        // printf( "%A", temp_1);
+        // cout << " ";
+        // float temp_2 = un_normalized_sums[sample_t];
+        // printf("%A", temp_2);
+        // cout << " ";
+        // float temp_3 = un_normalized_sums[sample_t+1];
+        // printf("%A\n", temp_3);
+        // cout << "sample_t: " << sample_t << endl;
         
     // }
     // cout << "backpass1reverseinner: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t12 - t11).count() * nano_to_sec << " s" << endl;
