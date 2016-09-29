@@ -261,7 +261,7 @@ float HmmSampler::forward_pass(std::vector<int> sent, int sent_index){
 }
 
 std::vector<State> HmmSampler::reverse_sample(std::vector<int> sent, int sent_index){
-    cout << "Sent index is " << sent_index << "s" << endl;
+    // cout << "Sent index is " << sent_index << "s" << endl;
     // auto t2 = Clock::now();
     std::vector<State> sample_seq;
     std::vector<int> sample_t_seq;
