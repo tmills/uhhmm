@@ -37,7 +37,7 @@ def main(args):
     files = glob.glob(args[2] + "/*.ltf.xml")
 
 #    jobs = []
-    pool = multiprocessing.Pool(processes=3, maxtasksperchild=1)
+    pool = multiprocessing.Pool(processes=6, maxtasksperchild=1)
 
     for ltf_file in files:
         out_file = "%s/%s" % (out_dir, os.path.basename(ltf_file) )
