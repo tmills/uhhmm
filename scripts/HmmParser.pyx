@@ -65,6 +65,7 @@ class ParserCell:
 class HmmParser:    
     def __init__(self, models):
         (self.models, self.pi) = models.model
+        print("Type of pi matrix is: %s" % (type(self.pi)) )
         ## lil seems to be fastest of sparse for indexing, also faster than using
         ## csc and getting a slice
         #self.pi = self.pi.tolil()
@@ -80,27 +81,30 @@ class HmmParser:
     
     @cython.boundscheck(False)
     def matrix_parse(self, list sent):
-        cdef np.ndarray[np.float64_t, ndim=2] prob_mat, full_prob_mat, expanded_lex
+        #cdef np.ndarray prob_mat, full_prob_mat, expanded_lex
         cdef np.ndarray[np.int_t, ndim=2] bp_mat
         cdef int index, token, a_max, b_max, g_max, token_index, state_index
         cdef list sent_states
         
         bp_mat = np.zeros( (len(sent), self.indexer.state_size), dtype=np.int)
-        prob_mat = np.zeros( (len(sent), self.indexer.state_size) )
+        prob_mat = [] #np.zeros( (len(sent), self.indexer.state_size) )
         
         (a_max, b_max, g_max) = self.maxes
         try:
-            for index,token in enumerate(sent):                    
+            for index,token in enumerate(sent):
+                next_prob = np.zeros( (1, self.indexer.state_size) )
                 t0 = time.time()
                 ## Still use special case for 0
                 if index == 0:
-                    prob_mat[0,1:g_max-1] = self.lexMatrix[1:g_max-1,token].transpose()
+                    next_prob[0,1:g_max-1] = self.lexMatrix[1:g_max-1,token].transpose()
+                    prob_mat.append( scipy.sparse.csc_matrix( next_prob ) )
                 else:
                     #print("Trans prob type = %s, shape=%s, prevState index=%d, curState=%d" % (type(trans_prob), trans_prob.shape, prevState.state_index, curState))
                     ## Since we're grabbing a slice, it is a row by default and will multiply across
                     ## rows. So we need to transpose pi to get multiplication across the right dimension
                     ## and then transpose the result at the end.
-                    full_prob_mat = self.pi.transpose().multiply( prob_mat[index-1,:] ).transpose()
+                    next_prob = prob_mat[0] * self.pi
+                    # self.pi.transpose().multiply( prob_mat[index-1,:] ).transpose()
                     ### Now we have a matrix of joint probabilites:
                     ### p( x_t, x_{t-1} ). Multiply in observations:
 
@@ -108,14 +112,17 @@ class HmmParser:
                     expanded_lex = (self.lexMatrix[:,token].transpose() * self.lexMultiplier)
                     #assert expanded_lex.shape[1] == 1
 
-                    full_prob_mat = np.multiply( expanded_lex, full_prob_mat)
+                    next_prob = np.multiply( expanded_lex, next_prob)
                     
                     ## And take the max for each x_t:
-                    cutoff = full_prob_mat.max() / 10
+                    cutoff = next_prob.max() / 10
                     
-                    maxes = full_prob_mat.max(0)
-                    prob_mat[index, :] = full_prob_mat.max(0) #  np.multiply(maxes, (maxes > cutoff))
-                    bp_mat[index, :] = full_prob_mat.argmax(0)
+                    maxes = next_prob.max(0)
+                    prob_mat.append( next_prob.max(0) ) #  np.multiply(maxes, (maxes > cutoff))
+                    bp_mat[index, :] = next_prob.argmax(0)
+                    
+                    ## Remove the old thing that was t-1, moving t back to t-1 for the next iteration
+                    prob_mat.pop(0)
                     
 #                    cutoff = prob_mat[index,:].max() / 10
                     
@@ -127,7 +134,7 @@ class HmmParser:
                     
             ## Get the max probability at the end:
             token_index = len(sent) - 1
-            state_index = prob_mat[index,:].argmax()
+            state_index = prob_mat[-1].argmax()
             sent_states = []
             while token_index >= 0:
                 sent_states.append( self.indexer.extractState(state_index) )
