@@ -146,10 +146,6 @@ data/%.m2.words.txt: data/%.words.txt
 data/%.tagwords.txt: data/%.txt
 	cat $^ | $(SCRIPTS)/trees2tagwords.sh > $@
 
-#convert the output to bracketed trees. '.txt' is the output file, '.origSents' is the file of the original sentences
-%.brackets: MB=$(shell cat user-modelblocks-location.txt)
-%.brackets: %.txt user-modelblocks-location.txt
-	cat $< | python $(SCRIPTS)/uhhmm2efabp.py | PYTHONPATH=$(MB)/gcg/scripts python3 $(MB)/resource-lcparse/scripts/efabpout2linetrees.py  | sed 's/\^.,.//g;s/\^g//g;s/\_[0-9]*//g;s/\([^+ ]\)+\([^+ ]\)/\1-\2/g;' | sed 's/\([^+ ]\)+\([^+ ]\)/\1-\2/g;'  |  perl $(MB)/resource-lcparse/scripts/remove-at-cats.pl | python scripts/brackets_cleanup.py >  $@
 
 ############################
 # Targets for building input files for morphologically-rich languages (tested on Korean wikipedia)
@@ -166,6 +162,39 @@ genmodel:
 genmodel/%.morf.model: data/%.txt genmodel
 	morfessor-train -s $@ $<
 
+
+############################
+# Targets for converting from brackets output to tokdeps output (for dep evaluation)
+############################
+
+# You'll need to start with a %.brackets containing
+# parse trees, one sentence per line.
+
+# Replace this with the path to wherever you put the scripts
+LTREES-SCRIPTS = scripts/
+
+#convert the output to bracketed trees. '.txt' is the output file, '.origSents' is the file of the original sentences
+%.brackets: MB=$(shell cat user-modelblocks-location.txt)
+%.brackets: %.txt user-modelblocks-location.txt
+	cat $< | python $(SCRIPTS)/uhhmm2efabp.py | PYTHONPATH=$(MB)/gcg/scripts python3 $(MB)/resource-lcparse/scripts/efabpout2linetrees.py  | sed 's/\^.,.//g;s/\^g//g;s/\_[0-9]*//g;s/\([^+ ]\)+\([^+ ]\)/\1-\2/g;' | sed 's/\([^+ ]\)+\([^+ ]\)/\1-\2/g;'  |  perl $(MB)/resource-lcparse/scripts/remove-at-cats.pl | python scripts/brackets_cleanup.py >  $@
+
+# rules
+%.rules: %.brackets  $(LTREES-SCRIPTS)/trees2rules.pl
+	cat $< | sed 's/:/-COLON-/g;s/=/-EQUALS-/g' |  perl $(word 2,$^)  >  $@
+
+%.model: %.rules
+	cat $< | sort | uniq -c | sort -nr | awk '{"wc -l $< | perl -lane '\''print $$F[0]'\''" | getline t; u = $$1; $$1 = u/t; print;}' | awk '{p = $$1; for (i=1;i<NF;i++) $$i=$$(i+1);$$NF="="; $$(NF + 1)=p; tmp=$$2;$$2=$$3;$$3=tmp;$$1="R";print;}' > $@
+
+%.head.model: %.model $(LTREES-SCRIPTS)/rules2headmodel.py
+	cat $< | PYTHONPATH=$$PYTHONPATH:../modelblocks/resource-gcg/scripts python3 $(word 2, $^) > $@
+  
+# generates unlabeled stanford dependencies from linetrees file
+%.tokdeps: %.linetrees $(LTREES-SCRIPTS)/trees2deps.py %.head.model
+	cat $< | PYTHONPATH=$$PYTHONPATH:../modelblocks/resource-gcg/scripts python3 $(word 2, $^) $(word 3, $^) > $@
+  
+# generates shallow trees from unlabeled stanford dependencies
+%.fromdeps.linetrees: %.tokdeps $(LTREES-SCRIPTS)/deps2trees.py
+	cat $< | python $(word 2, $^) -f stanford > $@
+
 clean:
 	rm scripts/*.{c,so}
-
