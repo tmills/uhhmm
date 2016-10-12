@@ -70,8 +70,8 @@ cdef extern from "HmmSampler.h":
 		HmmSampler(int seed) except +
 		void set_models(Model*)
 		void initialize_dynprog(int)
-		float forward_pass(vector[int], int)
-		vector[State] reverse_sample(vector[int], int)
+		vector[float] forward_pass(vector[vector[int]], int)
+		vector[vector[State]] reverse_sample(vector[vector[int]], int)
 
 
 cdef class GPUHmmSampler:
@@ -85,21 +85,25 @@ cdef class GPUHmmSampler:
 		self.hmmsampler.set_models(model.c_model)
 	def initialize_dynprog(self, int k):
 		self.hmmsampler.initialize_dynprog(k)
-	def forward_pass(self, vector[int] sent, int sent_index):
-		return self.hmmsampler.forward_pass(sent, sent_index)
-	def reverse_sample(self, vector[int] sent, int sent_index):
-		cdef vector[State] state_list = self.hmmsampler.reverse_sample(sent, sent_index)
+	def forward_pass(self, vector[vector[int]] sents, int sent_index):
+		return self.hmmsampler.forward_pass(sents, sent_index)
+	def reverse_sample(self, vector[vector[int]] sents, int sent_index):
+		cdef vector[vector[State]] states_list = self.hmmsampler.reverse_sample(sents, sent_index)
 		#states = self.hmmsampler.reverse_sample(sent, sent_index)
 		#state_list = states[0]
 		#print(states[1])
-		wrapped_list = []
-		for i in range(state_list.size()):
-			wrapped_list.append(wrap_state(state_list[i]))
-		return wrapped_list
-	def sample(self, pi, vector[int] sent, int sent_index):  # need pi to conform to API
+		wrapped_lists = []
+		for sent in range(states_list.size()):
+			wrapped_list = []
+			state_list = states_list[sent]
+			for i in range(state_list.size()):
+				wrapped_list.append(wrap_state(state_list[i]))
+			wrapped_lists.append(wrapped_list)
+		return wrapped_lists
+	def sample(self, pi, vector[vector[int]] sents, int sent_index):  # need pi to conform to API
 		# print "Sent Index is " + str(sent_index)
-		log_probs = self.forward_pass(sent, sent_index) 
-		states = self.reverse_sample(sent, sent_index) 
+		log_probs = self.forward_pass(sents, sent_index) 
+		states = self.reverse_sample(sents, sent_index) 
 		return (states, log_probs)
 
 # def test():
