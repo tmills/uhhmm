@@ -243,7 +243,6 @@ cdef class PyzmqWorker:
             if log_prob > 0:
                 logging.error('Sentence %d had positive log probability %f' % (sent_index, log_prob))    
 
-        logging.info("Cumulative forward time %f and backward time %f" % (sampler.ff_time, sampler.bs_time))
         logging.debug("Worker %d processed %d sentences this iteration" % (self.tid, sents_processed))
 
     def handle_sigint(self, signum, frame):

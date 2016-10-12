@@ -238,10 +238,12 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
     std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();
     std::vector<int> sent = sents[0];
     std::vector<float> log_probs;
-    int batch_size = sents.size();
-    int batch_max_len = get_max_len(sents);
-    // np_sents is |batches| x max_len
-    Dense* np_sents = get_sentence_array(sents, batch_max_len);
+    
+    // no need to matrixize the dyn_prog
+    // assume sent is a vector of word indices
+    int i = 0;
+    // array1d<float, device_memory> temp_dyn_prog_row(p_indexer -> get_state_size());
+    blas::fill(dyn_prog -> values, 0.0f);
     csr_matrix_view<IndexArrayView,IndexArrayView,ValueArrayView>* pi_view = pi -> get_view();
     
     array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
@@ -294,27 +296,30 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             multiply(* lexMultiplier, lex_column, * expanded_lex);
             // print(expanded_lex);
             // cout << '7' << endl;
-            // dyn_prog_row is 1 x state_size
-            // dyn_prog_column is state_size x 1
-            array2d<float, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
-            // cout << "Multiplying expanded_lex by dyn prog row" << endl;
-            blas::xmy(*expanded_lex, dyn_prog_col, dyn_prog_col);
-            // cout << "Computing normalizer" << endl;
-            normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
-            // cout << "Normalizing over col with result: " << normalizer << endl;
-            //cout << "Scaling by normalizer" << endl;
-            blas::scal(dyn_prog_col, 1.0f/normalizer);
-            //    cout << "Adding logged normalizer to sentence logprobs" << endl;
-            log_probs[sent_ind] += log10f(normalizer);
-        }   
+            blas::xmy(*expanded_lex, dyn_prog_row, dyn_prog_row);
+            // cout << '8' << endl;
+            // copy(temp_dyn_prog_row, dyn_prog_row);
+        }
+        normalizer = thrust::reduce(thrust::device, dyn_prog_row.begin(), dyn_prog_row.end());
+        // print(dyn_prog_row);
+        blas::scal(dyn_prog_row, 1.0f/normalizer);
+        // print( dyn_prog_row);
+        if (i > 0 && normalizer > 1){
+            cout << "Found normalizer > 1...\n" << "normalizer: " << normalizer << endl << "sent: " << sent_index << "token: " << token << endl;
+        }
+        sentence_log_prob += log10f(normalizer);
+        // cout << normalizer << sentence_log_prob << endl;
+        log_probs.push_back(sentence_log_prob);
+        i++;
+        // skipping some error handling stuff
     }
-    
-    //cout << "Finished forward pass (cuda) and returning vector with " << log_probs.size() << " elements." << endl;
+    // auto t2 = Clock::now();
+    // cout << "fpass: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count() * nano_to_sec << " s" << endl;
     return log_probs;
 }
 
 std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vector<int>> sents, int sent_index){
-    //cout << "Reverse sampling batch with starting sent index of " << sent_index << endl;
+    // cout << "Sent index is " << sent_index << "s" << endl;
     // auto t2 = Clock::now();
     std::vector<std::vector<State>> sample_seqs;
     std::vector<State> sample_seq;
@@ -328,6 +333,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
 //    array1d<float, device_memory> trans_slice;
     State sample_state;
     //sample_log_prob = 0.0f;
+    std::vector<int> sent = sents[0];
     
 //    for(std::vector<int> sent : sents){
     for(int sent_ind = 0; sent_ind < batch_size; sent_ind++){
@@ -395,8 +401,18 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         //}
         sample_seqs.push_back(sample_seq);
     }
-    
-    //cout << "Done with reverse()" << endl;
+    // auto t4 = Clock::now();
+    std::reverse(sample_seq.begin(), sample_seq.end());
+    // cout << '3' << endl;
+    // cout << sample_seq.size() << endl;
+    // auto t5 = Clock::now();
+    // cout << "backpass1: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t3 - t2).count() * nano_to_sec << " s" << endl;
+    // cout << "backpass2: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t4 - t3).count() * nano_to_sec << " s" << endl;
+    // cout << "backpass: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t5 - t2).count() * nano_to_sec << " s" << endl;
+    //for (int k : sample_t_seq){
+    //    cout << sent_index << " : " << k  << endl;
+    //}
+    sample_seqs.push_back(sample_seq);
     return sample_seqs;
 }
 

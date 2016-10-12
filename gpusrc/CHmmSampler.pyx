@@ -71,7 +71,7 @@ cdef extern from "HmmSampler.h":
 		HmmSampler() except +
 		HmmSampler(int seed) except +
 		void set_models(Model*)
-		void initialize_dynprog(int, int)
+		void initialize_dynprog(int)
 		vector[float] forward_pass(vector[vector[int]], int)
 		vector[vector[State]] reverse_sample(vector[vector[int]], int)
 
@@ -85,8 +85,8 @@ cdef class GPUHmmSampler:
 			self.hmmsampler = HmmSampler()
 	def set_models(self, GPUModel model):
 		self.hmmsampler.set_models(model.c_model)
-	def initialize_dynprog(self, int batch_size, int k):
-		self.hmmsampler.initialize_dynprog(batch_size, k)
+	def initialize_dynprog(self, int k):
+		self.hmmsampler.initialize_dynprog(k)
 	def forward_pass(self, vector[vector[int]] sents, int sent_index):
 		return self.hmmsampler.forward_pass(sents, sent_index)
 	def reverse_sample(self, vector[vector[int]] sents, int sent_index):
@@ -103,7 +103,8 @@ cdef class GPUHmmSampler:
 			wrapped_lists.append(wrapped_list)
 		return wrapped_lists
 	def sample(self, pi, vector[vector[int]] sents, int sent_index):  # need pi to conform to API
-		log_probs = self.forward_pass(sents, sent_index)
+		# print "Sent Index is " + str(sent_index)
+		log_probs = self.forward_pass(sents, sent_index) 
 		states = self.reverse_sample(sents, sent_index) 
 		return (states, log_probs)
 

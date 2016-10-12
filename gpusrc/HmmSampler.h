@@ -74,7 +74,7 @@ public:
     HmmSampler();
     ~HmmSampler();
     void set_models(Model * models);
-    void initialize_dynprog(int batch_size, int max_len);
+    void initialize_dynprog(int max_len);
     std::vector<float> forward_pass(std::vector<std::vector<int> > sents, int sent_index);
     std::vector<std::vector<State> > reverse_sample(std::vector<std::vector<int> > sents, int sent_index);
     std::tuple<std::vector<std::vector<State> >, std::vector<float> > sample(std::vector<std::vector<int> > sents, int sent_index);
