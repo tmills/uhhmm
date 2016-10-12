@@ -56,12 +56,17 @@ cdef class HmmSampler(Sampler.Sampler):
     @cython.cdivision(True)
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    cpdef forward_pass(self, pi, list sent, int sent_index):
+    cpdef forward_pass(self, pi, list sents, int sent_index):
         cdef float sentence_log_prob = 0, normalizer
         cdef double t0, t1
         cdef int a_max, b_max, g_max, index, token, g_len
         cdef tuple maxes
+        cdef list sent
         
+        if len(sents) > 1:
+            raise Exception("Error: Python version only accepts batch size 1")
+        
+        sent = sents[0]
         t0 = time.time()
         try:           
             ## keep track of forward probs for this sentence:
@@ -107,18 +112,19 @@ cdef class HmmSampler(Sampler.Sampler):
         t1 = time.time()
         # print('forward time', t1-t0)
         self.ff_time += (t1-t0)
-        return sentence_log_prob
+        return [sentence_log_prob]
    
-    cpdef reverse_sample(self, pi, list sent, int sent_index):
+    cpdef reverse_sample(self, pi, list sents, int sent_index):
         cdef int totalK, depth, last_index, sample_t, sample_depth, t, ind
         cdef int prev_depth, next_f_depth, next_awa_depth
         cdef float trans_prob, sample_log_prob
         cdef double t0, t1
-        cdef list sample_seq
+        cdef list sample_seq, sent
         cdef tuple maxes
         cdef np.ndarray trans_slice
         cdef State.State sample_state
         
+        sent = sents[0]
         t0 = time.time()
         try:      
             sample_seq = []
@@ -163,7 +169,7 @@ cdef class HmmSampler(Sampler.Sampler):
         t1 = time.time()
         # print('backward time', t1-t0)
         self.bs_time += (t1-t0)
-        return sample_seq
+        return [sample_seq]
 
     @cython.cdivision(True)
     @cython.boundscheck(False)
