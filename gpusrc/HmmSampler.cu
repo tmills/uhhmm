@@ -333,34 +333,22 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
 //    array1d<float, device_memory> trans_slice;
     State sample_state;
     //sample_log_prob = 0.0f;
-    std::vector<int> sent = sents[0];
     
-//    for(std::vector<int> sent : sents){
-    for(int sent_ind = 0; sent_ind < batch_size; sent_ind++){
-        sample_seq = std::vector<State>();
-        //cout << "Processing sentence " << sent_ind << " of the batch" << endl;
-        std::vector<int> sent = sents[sent_ind];
-        //for(int token_ind = 0; token_ind < sent.size(); token_ind++){
-        //  cout << sent[token_ind] << " ";
-       // }
-        //cout << endl;
-        
+    for(std::vector<int> sent : sents){
         last_index = sent.size() - 1;
         // doubly normalized??
         // self.dyn_prog[last_index,:] /= self.dyn_prog[last_index,:].sum()
         sample_t = -1;
         sample_depth = -1;
-        //cout << "x1" << endl;
+        // cout << "x1" << endl;
         while (sample_t < 0 || (sample_depth > 0)) {
-            //cout << "Sampling last index: " << last_index << " for sentence" << endl;
-            array2d<float, device_memory>::column_view dyn_prog_temp_col_view = dyn_prog[last_index]->column(sent_ind);
-            //if(sample_t == -1) cusp::print(dyn_prog_temp_col_view);
-            //cout << dyn_prog_temp_col_view << endl;
-            sample_t = get_sample(dyn_prog_temp_col_view);
+            // cout << "x2" << endl;
+            array2d<float, device_memory>::row_view dyn_prog_temp_row_view = dyn_prog->row(last_index);
+            sample_t = get_sample(dyn_prog_temp_row_view);
             // sample_t = 0;
-            //cout << sample_t << endl;
+            // cout << sample_t << endl;
             sample_state = p_indexer -> extractState(sample_t);
-            //cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
+            // cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
             if(!sample_state.depth_check()){
               cout << "Depth error in state assigned to last index" << endl;
             }
@@ -368,15 +356,15 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
             //cout << "Sample depth is "<< sample_depth << endl;
         }
         // auto t3 = Clock::now();
-        //cout << "x3" << endl;
+        // cout << "x3" << endl;
         sample_seq.push_back(sample_state);
         sample_t_seq.push_back(sample_t);
         // skip some error handling
     
         for (int t = sent.size() - 2; t > -1; t --){
-            //cout << 't' << t << endl;
+            // cout << 't' << t << endl;
             // auto t11 = Clock::now();
-            std::tie(sample_state, sample_t) = _reverse_sample_inner(sample_t, t, sent_ind);
+            std::tie(sample_state, sample_t) = _reverse_sample_inner(sample_t, t);
             // cout << "Sample t is " << sample_t << endl;
             // cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
             if(!sample_state.depth_check()){
@@ -390,8 +378,8 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         }
         // auto t4 = Clock::now();
         std::reverse(sample_seq.begin(), sample_seq.end());
-        //cout << '3' << endl;
-        //cout << sample_seq->size() << endl;
+        // cout << '3' << endl;
+        // cout << sample_seq.size() << endl;
         // auto t5 = Clock::now();
         // cout << "backpass1: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t3 - t2).count() * nano_to_sec << " s" << endl;
         // cout << "backpass2: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t4 - t3).count() * nano_to_sec << " s" << endl;
@@ -401,18 +389,6 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         //}
         sample_seqs.push_back(sample_seq);
     }
-    // auto t4 = Clock::now();
-    std::reverse(sample_seq.begin(), sample_seq.end());
-    // cout << '3' << endl;
-    // cout << sample_seq.size() << endl;
-    // auto t5 = Clock::now();
-    // cout << "backpass1: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t3 - t2).count() * nano_to_sec << " s" << endl;
-    // cout << "backpass2: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t4 - t3).count() * nano_to_sec << " s" << endl;
-    // cout << "backpass: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t5 - t2).count() * nano_to_sec << " s" << endl;
-    //for (int k : sample_t_seq){
-    //    cout << sent_index << " : " << k  << endl;
-    //}
-    sample_seqs.push_back(sample_seq);
     return sample_seqs;
 }
 
