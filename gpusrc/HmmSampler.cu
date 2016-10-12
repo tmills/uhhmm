@@ -196,11 +196,13 @@ void HmmSampler::initialize_dynprog(int max_len){
     dyn_prog = new Dense( max_len, p_indexer->get_state_size(), 0.0f );
 }
 
-float HmmSampler::forward_pass(std::vector<int> sent, int sent_index){
+std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents, int sent_index){
     // auto t1 = Clock::now();
     float sentence_log_prob, normalizer;
     int a_max, b_max, g_max; // index, token, g_len;
     std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();
+    std::vector<int> sent = sents[0];
+    std::vector<float> log_probs;
     
     // no need to matrixize the dyn_prog
     // assume sent is a vector of word indices
@@ -252,17 +254,19 @@ float HmmSampler::forward_pass(std::vector<int> sent, int sent_index){
         // print( dyn_prog_row);
         sentence_log_prob += log10f(normalizer);
         // cout << normalizer << sentence_log_prob << endl;
+        log_probs.push_back(sentence_log_prob);
         i++;
         // skipping some error handling stuff
     }
     // auto t2 = Clock::now();
     // cout << "fpass: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count() * nano_to_sec << " s" << endl;
-    return sentence_log_prob;
+    return log_probs;
 }
 
-std::vector<State> HmmSampler::reverse_sample(std::vector<int> sent, int sent_index){
+std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vector<int>> sents, int sent_index){
     // cout << "Sent index is " << sent_index << "s" << endl;
     // auto t2 = Clock::now();
+    std::vector<std::vector<State>> sample_seqs;
     std::vector<State> sample_seq;
     std::vector<int> sample_t_seq;
     int last_index, sample_t, sample_depth; // , t, ind; totalK, depth,
@@ -272,6 +276,7 @@ std::vector<State> HmmSampler::reverse_sample(std::vector<int> sent, int sent_in
 //    array1d<float, device_memory> trans_slice;
     State sample_state;
     //sample_log_prob = 0.0f;
+    std::vector<int> sent = sents[0];
     
     last_index = sent.size() - 1;
     // doubly normalized??
@@ -325,7 +330,8 @@ std::vector<State> HmmSampler::reverse_sample(std::vector<int> sent, int sent_in
     //for (int k : sample_t_seq){
     //    cout << sent_index << " : " << k  << endl;
     //}
-    return sample_seq;
+    sample_seqs.push_back(sample_seq);
+    return sample_seqs;
 }
 
 
@@ -383,11 +389,11 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t){
     return std::make_tuple(sample_state, sample_t);
 }
 
-std::tuple<std::vector<State>, float> HmmSampler::sample(std::vector<int> sent, int sent_index) {
+std::tuple<std::vector<std::vector<State> >, std::vector<float>> HmmSampler::sample(std::vector<std::vector<int>> sents, int sent_index) {
     
-    float log_probs = forward_pass(sent, sent_index);
+    std::vector<float> log_probs = forward_pass(sents, sent_index);
     
-    std::vector<State> states = reverse_sample(sent, sent_index);
+    std::vector<std::vector<State> > states = reverse_sample(sents, sent_index);
     
     
     return std::make_tuple(states, log_probs);
