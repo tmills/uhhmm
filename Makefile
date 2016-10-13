@@ -52,7 +52,7 @@ data/wsj_all.tagwords.txt: data/wsj_all.txt
 data/simplewiki_d1.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
 	cat $< | $(SCRIPTS)/extract_d1_trees.sh | $(SCRIPTS)/trees2words.sh > $@
 
-data/simplewiki_d1_tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
+data/simplewiki_d1.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
 	cat $< | grep -v "#" | $(SCRIPTS)/extract_d1_trees.sh | grep "^(S" | $(SCRIPTS)/trees2poswords.sh > $@
 
 data/simplewiki_d2_5k.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
@@ -69,15 +69,6 @@ data/%.ints.txt: data/%.txt
 
 data/%.small.txt: data/%.txt
 	head -100 $< > $@
-
-data/%.lc.txt: data/%.txt
-	cat $^ | $(SCRIPTS)/lowercase.sh > $@
-
-data/%.len_gt3.txt: data/%.txt
-	cat $^ | perl -lane 'if($$#F > 2){ print $$_; }' > $@
-
-data/%.1kvocab: data/%.txt
-	cat $^ | $(SCRIPTS)/get_top_k_words.sh 1000 > $@
 
 data/%.1kvocabfilter.txt: data/%.1kvocab data/%.txt
 	python $(SCRIPTS)/filter_sentence_with_vocab.py $^ > $@
@@ -143,12 +134,26 @@ data/%-l20.words.txt: data/%.words.txt
 data/%-l3-10.words.txt: data/%-l10.words.txt
 	cat $^ | perl -lane 'if($$#F >= 2){ print $$_; }' > $@
 
+data/%-l3-20.words.txt: data/%-l20.words.txt
+	cat $^ | perl -lane 'if($$#F >= 2){ print $$_; }' > $@
+
 data/%.m2.words.txt: data/%.words.txt
 	cat $^ | perl $(SCRIPTS)/removeInfrequent.pl 2 > $@
 
 data/%.tagwords.txt: data/%.txt
 	cat $^ | $(SCRIPTS)/trees2tagwords.sh > $@
 
+data/%.lc.txt: data/%.txt
+	cat $^ | $(SCRIPTS)/lowercase.sh > $@
+
+data/%.len_gt3.txt: data/%.txt
+	cat $^ | perl -lane 'if($$#F > 2){ print $$_; }' > $@
+
+data/%.1kvocab: data/%.txt
+	cat $^ | $(SCRIPTS)/get_top_k_words.sh 1000 > $@
+
+data/%.rb.brackets: data/%.words.txt
+	cat $^ | perl $(SCRIPTS)/words2rb.pl > $@
 
 ############################
 # Targets for building input files for morphologically-rich languages (tested on Korean wikipedia)
@@ -192,12 +197,13 @@ LTREES-SCRIPTS = scripts/
 	cat $< | PYTHONPATH=$$PYTHONPATH:../modelblocks/resource-gcg/scripts python3 $(word 2, $^) > $@
   
 # generates unlabeled stanford dependencies from linetrees file
-%.tokdeps: %.linetrees $(LTREES-SCRIPTS)/trees2deps.py %.head.model
+%.tokdeps: %.brackets $(LTREES-SCRIPTS)/trees2deps.py %.head.model
 	cat $< | PYTHONPATH=$$PYTHONPATH:../modelblocks/resource-gcg/scripts python3 $(word 2, $^) $(word 3, $^) > $@
   
 # generates shallow trees from unlabeled stanford dependencies
+%.fromdeps.linetrees: MB=$(shell cat user-modelblocks-location.txt)
 %.fromdeps.linetrees: %.tokdeps $(LTREES-SCRIPTS)/deps2trees.py
-	cat $< | python $(word 2, $^) -f stanford > $@
+	cat $< | PYTHONPATH=$$PYTHONPATH:$(MB)/resource-gcg/scripts python $(word 2, $^) -f stanford > $@
 
 clean:
 	rm -f scripts/*.{c,so}
