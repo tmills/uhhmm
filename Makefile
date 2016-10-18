@@ -1,9 +1,29 @@
 #################################
 #
+# Global variables
+#
+#################################
+
+CXX:=g++
+THISDIR := $(dir $(abspath $(word $(words $(MAKEFILE_LIST)),$(MAKEFILE_LIST))))
+SCRIPTS  := $(THISDIR)/scripts
+CUDA_PATH:=/usr/local/cuda
+PYTHON_VERSION:=$(shell python3 --version | sed 's,Python \([0-9]\.[0-9]\)\.[0-9],python\1,')
+NUMPY_INC=$(shell find /usr -name numpy | grep "${PYTHON_VERSION}" | grep "numpy/core/include" | sed 's,include/.*,include,')
+#NUMPY_INC=env/lib/${PYTHON_VERSION}/site-packages/numpy/core/include 
+#/usr/local/lib/python3.4/dist-packages/numpy/core/include
+PY3_LOC=env/bin/${PYTHON_VERSION}
+VPATH := genmodel data
+
+
+
+#################################
+#
 # Default item
 # 
 #################################
 
+# This recipe no longer seems to work (?)
 all:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt $(THISDIR)/train.sh
 	$(word 3, $^) $<
 
@@ -34,22 +54,12 @@ coling2016-GPU: projects/eve/a4-b4-g8-d2-P-fin/eve.nt.lower.nounary.nolabel.uhhm
             
 #################################
 #
-# Variables and includes
+# Includes to external resources
 # 
 #################################
 
-# Global variables
-CXX:=g++
-THISDIR := $(dir $(abspath $(word $(words $(MAKEFILE_LIST)),$(MAKEFILE_LIST))))
-SCRIPTS  := $(THISDIR)/scripts
-CUDA_PATH:=/usr/local/cuda
-PYTHON_VERSION:=$(shell python3 --version | sed 's,Python \([0-9]\.[0-9]\)\.[0-9],python\1,')
-NUMPY_INC=$(shell find /usr -name numpy | grep "${PYTHON_VERSION}" | grep "numpy/core/include" | sed 's,include/.*,include,')
-#NUMPY_INC=env/lib/${PYTHON_VERSION}/site-packages/numpy/core/include 
-#/usr/local/lib/python3.4/dist-packages/numpy/core/include
-PY3_LOC=env/bin/${PYTHON_VERSION}
-VPATH := genmodel data
-
+# Modelblocks:
+#
 # Include relevant items from the Modelblocks (MB) repository.
 # On initialization, sets MB location to current directory,
 # which is wrong. Includes to MB resources are ignored
@@ -98,6 +108,7 @@ include $(MB)/resource-gcg/Makefile
 endif
 endif
 
+# Penn Treebank
 user-ptb-location.txt:
 	echo '/home/tmill/mnt/r/resources/corpora/ptb/treebank_3/parsed/mrg/wsj_nps' > $@
 	@echo ''
@@ -105,6 +116,7 @@ user-ptb-location.txt:
 	@echo 'edit it to point at your penn treebank repository, and re-run make to continue!'
 	@echo ''
 
+# Lorelei
 user-lorelei-location.txt:
 	echo '/home/corpora/original/various/lorelei' > $@
 	@echo ''
