@@ -16,7 +16,12 @@ all:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt $(THISDIR)/train.
 #################################
 
 # The first target trains with punctuation,
-# the second trains without
+# the second trains without. These can be run
+# in parallel with make -j, but keep in mind that
+# the system is already parallelized and each
+# of the two targets below will consume 10 parallel
+# processes.
+#
 coling2016: projects/eve/a4-b4-g8-d2-fin/eve.nt.lower.nounary.nolabel.uhhmm \
             projects/eve/a4-b4-g8-d2-fin/eve.induc.uhhmm
             
