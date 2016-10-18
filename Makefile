@@ -1,10 +1,39 @@
 #################################
 #
-# Pointer file initialization
-# to third-party resources
+# Default item
 # 
 #################################
 
+all:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt $(THISDIR)/train.sh
+	$(word 3, $^) $<
+
+  
+  
+#################################
+#
+# COLING 2016 Repro
+#
+#################################
+
+# The first target trains with punctuation,
+# the second trains without
+coling2016: projects/eve/a4-b4-g8-d2-fin/eve.nt.lower.nounary.nolabel.uhhmm \
+            projects/eve/a4-b4-g8-d2-fin/eve.induc.uhhmm
+            
+# If running on a system with a GPU, use
+# this target for a big speed increase
+coling2016-GPU: projects/eve/a4-b4-g8-d2-P-fin/eve.nt.lower.nounary.nolabel.uhhmm \
+            projects/eve/a4-b4-g8-d2-P-fin/eve.induc.uhhmm
+
+            
+            
+#################################
+#
+# Variables and includes
+# 
+#################################
+
+# Global variables
 CXX:=g++
 THISDIR := $(dir $(abspath $(word $(words $(MAKEFILE_LIST)),$(MAKEFILE_LIST))))
 SCRIPTS  := $(THISDIR)/scripts
@@ -14,9 +43,14 @@ NUMPY_INC=$(shell find /usr -name numpy | grep "${PYTHON_VERSION}" | grep "numpy
 #NUMPY_INC=env/lib/${PYTHON_VERSION}/site-packages/numpy/core/include 
 #/usr/local/lib/python3.4/dist-packages/numpy/core/include
 PY3_LOC=env/bin/${PYTHON_VERSION}
-
 VPATH := genmodel data
 
+# Include relevant items from the Modelblocks (MB) repository.
+# On initialization, sets MB location to current directory,
+# which is wrong. Includes to MB resources are ignored
+# if MB location == . in order to allow core UHHMM
+# recipes to execute without MB.
+#
 MSG1 := The current config file, 
 MSG2 := , points to an incorrect location (
 MSG3 := ). Fix it before re-running make.
@@ -24,8 +58,12 @@ MSG3 := ). Fix it before re-running make.
 define CONFIGWARN =
 
 ATTENTION! I had to create $(CONFIG),
-which may contain an incorrect default value.
-Fix it before re-running make.
+which is incorrectly set to the current directory.
+Until you manually update $(CONFIG) to point
+to your installation of Modelblocks
+(https://github.com/modelblocks/modelblocks-release),
+all recipes that require Modelblocks will
+not work correctly.
 
 endef
 
@@ -44,6 +82,8 @@ endif
 user-modelblocks-location.txt:
 	echo '.' > $@
 
+# Include relevant MB resources once the MB
+# location has been entered in the config file.
 ifdef MB
 ifneq ($(MB),.)
 include $(MB)/resource-general/Makefile
@@ -52,7 +92,6 @@ include $(MB)/resource-lcparse/Makefile
 include $(MB)/resource-gcg/Makefile
 endif
 endif
-
 
 user-ptb-location.txt:
 	echo '/home/tmill/mnt/r/resources/corpora/ptb/treebank_3/parsed/mrg/wsj_nps' > $@
@@ -76,8 +115,43 @@ user-lorelei-location.txt:
 #
 #################################
 
-all:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt $(THISDIR)/train.sh
+# One-liner to set up and run an UHHMM instance. Creates 
+# user-specified project directory, generates input
+# data files in it, generates a config file, and calls the 
+# UHHMM learner.
+# 
+# The stem follows the following template:
+#
+#   <data-basename>.<postprocessing>.<config-params>.uhhmm
+#
+# where <data-basename> is the name of an input
+# corpus.linetrees that must already exist in the genmodel
+# directory of this repository, <postprocessing> is any
+# hyphen-delimited postprocessing suffixes from Modelblocks
+# (e.g. 'induc', which strips out all punctuation, unary
+# branches, labels, etc. from the input), and config-params
+# is a string of config parameters that differ from the
+# the defaults in scripts/make_uhhmm_config.py. To see
+# a breakdown of available parameters and instructions
+# for how to specify them, run
+#
+#   python scripts/make_uhhmm_config.py -h
+#
+# This target requires Modelblocks.
+#
+/%.uhhmm: /%.ini /%.linetoks.ints.txt $(THISDIR)train.sh
 	$(word 3, $^) $<
+
+# Because of oddities in how Make handles wildcard expansion in prereqs,
+# this rule is necessary to allow relative-path targets
+%.uhhmm: $$(abspath $$@)
+	$(info )
+
+# Builds an UHHMM config file from parameters in the target stem
+.PRECIOUS: /%.ini
+/%.ini: $(SCRIPTS)/make_uhhmm_config.py
+	mkdir -p /$(dir $*)
+	python $< $(subst -, -,-$(lastword $(subst /, ,$(dir $*)))) -i /$*.linetoks.ints.txt -o /$(dir $*) -D /$*.linetoks.dict > $@
 
 osc:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt $(THISDIR)/train_osc.sh
 	$(word 3, $^)
@@ -106,6 +180,18 @@ gpusrc/temp.o: gpusrc/HmmSampler.cu gpusrc/State.cu
 
 config/myconfig.ini: config/d1train.ini
 	cp $< $@
+  
+clean:
+	rm -f scripts/*.{c,so}
+  
+  
+
+#################################
+#
+# Source data creation and
+# manipulation
+#
+#################################
 
 data/wsj_all_multiline.txt: user-ptb-location.txt
 	cat $(shell cat user-ptb-location.txt)/treebank_3/parsed/mrg/wsj/*/* > $@
@@ -200,9 +286,16 @@ data/darpa_y1eval_set0,1,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt dat
 %.rb.brackets: %.words.txt
 	cat $^ | perl $(SCRIPTS)/words2rb.pl > $@
 
-############################
-# Targets for building input files for morphologically-rich languages (tested on Korean wikipedia)
-############################
+  
+
+#################################
+# 
+# Targets for building input
+# files for morphologically-rich
+# languages (tested on Korean
+# wikipedia)
+#
+#################################
 
 .PRECIOUS: %.morf.txt genmodel/%.morf.model
 
@@ -212,13 +305,13 @@ data/darpa_y1eval_set0,1,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt dat
 # Requires Modelblocks
 genmodel/%.morf.model: %.txt genmodel
 	morfessor-train -s $@ $<
+
   
-clean:
-	rm -f scripts/*.{c,so}
 
 #################################
 #
-# Evaluation and plotting
+# Postprocessing, evaluation,
+# and plotting
 #
 #################################
 
@@ -227,19 +320,6 @@ clean:
 	cat $< | python $(SCRIPTS)/uhhmm2efabp.py | python $(LCPARSE-SCRIPTS)/efabpout2linetrees.py  | \
   sed 's/\^.,.//g;s/\^g//g;s/\_[0-9]*//g;s/\([^+ ]\)+\([^+ ]\)/\1-\2/g;' | sed 's/\([^+ ]\)+\([^+ ]\)/\1-\2/g;'  | \
   perl $(LCPARSE-SCRIPTS)/remove-at-cats.pl | python scripts/brackets_cleanup.py >  $@
-
-/%.uhhmm: /%.ini /%.linetoks.ints.txt $(THISDIR)train.sh
-	$(word 3, $^) $<
-
-# Because of oddities in how Make handles wildcard expansion in prereqs,
-# this rule is necessary to allow relative-path targets
-%.uhhmm: $$(abspath $$@)
-	$(info )
-
-.PRECIOUS: /%.ini
-/%.ini: $(SCRIPTS)/make_uhhmm_config.py
-	mkdir -p /$(dir $*)
-	python $< $(subst -, -,-$(lastword $(subst /, ,$(dir $*)))) -i /$*.linetoks.ints.txt -o /$(dir $*) -D /$*.linetoks.dict > $@
 
 # Generates linetrees from UHHMM sample output and renames the file
 # appropriately for use with syneval
