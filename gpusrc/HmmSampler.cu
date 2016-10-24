@@ -76,6 +76,7 @@ int HmmSampler::get_sample(AView &v){
            }
         }
      }
+     // cout << "dart_target: " << dart_target << endl;
      return dart_target;
 }
 
@@ -250,6 +251,9 @@ float HmmSampler::forward_pass(std::vector<int> sent, int sent_index){
         // print(dyn_prog_row);
         blas::scal(dyn_prog_row, 1.0f/normalizer);
         // print( dyn_prog_row);
+	if (normalizer > 1){
+            cout << 'Found normalizer > 1:\n' << 'normalizer: ' << normalizer << 'sent: ' << sent_index << 'token: ' << token << endl;
+	}
         sentence_log_prob += log10f(normalizer);
         // cout << normalizer << sentence_log_prob << endl;
         i++;
