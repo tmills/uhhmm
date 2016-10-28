@@ -50,14 +50,16 @@ for sentnum, line in enumerate(sys.stdin):
 		#	step[1] = step[1][:-1] +'$SEMICOLON$'
 		#elif step[1].endswith('_'):
 		#	step[1] = step[1][:-1] + '$UNDERSCORE$'
-		step[1] = step[1].replace('(', '$LB$')
-		step[1] = step[1].replace(')', '$RB$')
-		step[1] = step[1].replace('<', '$LTB$')
-		step[1] = step[1].replace('>', '$RTB$')
-		step[1] = step[1].replace('[', '$LSB$')
-		step[1] = step[1].replace(']', '$RSB$')
-		step[1] = step[1].replace('^', '$CARAT$')
-		step[1] = step[1].replace('_', '$UNDERSCORE$')
+		step[1] = step[1].replace('(', '-LRB-')
+		step[1] = step[1].replace(')', '-RRB-')
+		step[1] = step[1].replace('<', '-LTB-')
+		step[1] = step[1].replace('>', '-RTB-')
+		step[1] = step[1].replace('[', '-LSB-')
+		step[1] = step[1].replace(']', '-RSB-')
+		step[1] = step[1].replace('{', '-LCB-')
+		step[1] = step[1].replace('}', '-RCB-')
+		step[1] = step[1].replace('^', '-CARAT-')
+		step[1] = step[1].replace('_', '-UNDERSCORE-')
 		cats = step[1].split(':')
 		if len(cats) > 2:
 			cats[1] = ':'.join(cats[1:])
