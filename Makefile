@@ -99,14 +99,19 @@ user-modelblocks-location.txt:
 
 # Include relevant MB resources once the MB
 # location has been entered in the config file.
+
 ifdef MB
 ifneq ($(MB),.)
 include $(MB)/resource-general/Makefile
 include $(MB)/resource-linetrees/Makefile
 include $(MB)/resource-lcparse/Makefile
 include $(MB)/resource-gcg/Makefile
+include $(MB)/resource-upparse/Makefile
 endif
 endif
+
+LCPARSE-SCRIPTS=$(MB)/resource-lcparse/scripts
+LTREES-SCRIPTS=$(MB)/resource-linetrees/scripts
 
 # Penn Treebank
 user-ptb-location.txt:
@@ -464,6 +469,4 @@ genmodel/%.morf.model: %.txt genmodel
 %.fromdeps.linetrees: %.tokdeps $(LTREES-SCRIPTS)/deps2trees.py
 	cat $< | PYTHONPATH=$$PYTHONPATH:$(MB)/resource-gcg/scripts python $(word 2, $^) -f stanford > $@
 
-clean:
-	rm -f scripts/*.{c,so}
 
