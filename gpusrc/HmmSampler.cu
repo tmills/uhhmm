@@ -199,7 +199,9 @@ void HmmSampler::initialize_dynprog(int max_len){
 
 float HmmSampler::forward_pass(std::vector<int> sent, int sent_index){
     // auto t1 = Clock::now();
-    float sentence_log_prob, normalizer;
+    // float sentence_log_prob, normalizer;
+    float sentence_log_prob = 0.0f;
+    float normalizer = 0.0f;
     int a_max, b_max, g_max; // index, token, g_len;
     std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();
     
@@ -252,15 +254,20 @@ float HmmSampler::forward_pass(std::vector<int> sent, int sent_index){
         blas::scal(dyn_prog_row, 1.0f/normalizer);
         // print( dyn_prog_row);
 	if (normalizer > 1){
-            cout << 'Found normalizer > 1:\n' << 'normalizer: ' << normalizer << 'sent: ' << sent_index << 'token: ' << token << endl;
+            cout << "Found normalizer > 1...\n" << "normalizer: " << normalizer << "sent: " << sent_index << "token: " << token << endl;
 	}
         sentence_log_prob += log10f(normalizer);
-        // cout << normalizer << sentence_log_prob << endl;
+        // cout << sent_index << " " << i << " " << normalizer << " " << sentence_log_prob << endl;
         i++;
         // skipping some error handling stuff
     }
     // auto t2 = Clock::now();
     // cout << "fpass: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count() * nano_to_sec << " s" << endl;
+    // cout << "Checking sentence_log_prob" << endl;
+    if (sentence_log_prob > 0){
+        cout << "Found positive sentence_log_prob:\n" << "sent: " << sent_index << "\tlog_prob: " << sentence_log_prob << endl;
+    }
+    // cout << "sentence_log_prob checked" << endl;
     return sentence_log_prob;
 }
 
