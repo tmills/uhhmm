@@ -11,8 +11,16 @@ my $word;
 while(<STDIN>){
     push @lines, $_;
     my @words = split / /;
+    my $num_words = $#words + 1;
+    my $num_slashes = scalar(split /\//) - 1;
+    my $tagwords = 0;
+#    print "Num slashes is $num_slashes and num words is $num_words\n";
+    if($num_slashes >= $num_words){
+        $tagwords = 1;
+    }
+    
     for my $element (@words){
-        if($element =~ m/(.+)\/(.+)/){
+        if($tagwords == 1 && $element =~ m/(.+)\/(.+)/){
           $pos = $1;
           $word = $2;
         }else{
@@ -28,9 +36,16 @@ while(<STDIN>){
 for my $line (@lines){
     my $out = "";
     my @words = split / /, $line;
+    my $num_words = $#words + 1;
+    my $num_slashes = scalar(split /\//) - 1;
+    my $tagwords = 0;
+#    print "Num slashes is $num_slashes and num words is $num_words\n";
+    if($num_slashes >= $num_words){
+        $tagwords = 1;
+    }
     for my $element (@words){
         chomp($element);
-        if($element =~ m/(.+)\/(.+)/){
+        if($tagwords == 1 && $element =~ m/(.+)\/(.+)/){
           $pos = $1;
           $word = $2;
         }else{

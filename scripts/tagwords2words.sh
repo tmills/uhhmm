@@ -1,3 +1,3 @@
 #!/bin/bash
 
-perl -pe 's/\S*\/(\S+)/\1/g'
+perl -pe 's/[^\s\/]+\/(\S+)/\1/g'
