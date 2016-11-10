@@ -49,7 +49,8 @@ cdef class HmmSampler(Sampler.Sampler):
         self.indices = lexMultiplier.indices
         self.indptr = lexMultiplier.indptr
         
-    def initialize_dynprog(self, maxLen):
+    def initialize_dynprog(self, batch_size, maxLen):
+        ## We ignore batch size since python only processes one at a time
         #self.dyn_prog = np.zeros((self.indexer.get_state_size(), maxLen))
         self.dyn_prog = np.zeros((maxLen, self.indexer.get_state_size()))
 
