@@ -155,7 +155,8 @@ cdef class PyzmqWorker:
                 break
                 
     def processSentences(self, sampler, pi, jobs_socket, results_socket):
-        sampler.initialize_dynprog(self.batch_size, self.maxLen)
+        batch_size = 1
+        sampler.initialize_dynprog(batch_size, self.maxLen)
     
         sents_processed = 0
     
@@ -163,7 +164,6 @@ cdef class PyzmqWorker:
             return
 
         longest_time = 10
-        batch_size = 1
         sent_batch = []
         epoch_done = False
         
