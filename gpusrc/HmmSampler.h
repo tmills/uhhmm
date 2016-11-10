@@ -74,18 +74,18 @@ public:
     HmmSampler();
     ~HmmSampler();
     void set_models(Model * models);
-    void initialize_dynprog(int max_len);
+    void initialize_dynprog(int batch_size, int max_len);
     std::vector<float> forward_pass(std::vector<std::vector<int> > sents, int sent_index);
     std::vector<std::vector<State> > reverse_sample(std::vector<std::vector<int> > sents, int sent_index);
     std::tuple<std::vector<std::vector<State> >, std::vector<float> > sample(std::vector<std::vector<int> > sents, int sent_index);
     template <class AView>
     int get_sample(AView &v);
 private:
-    std::tuple<State, int> _reverse_sample_inner(int& sample_t, int& t);
+    std::tuple<State, int> _reverse_sample_inner(int& sample_t, int& t, int sent_ind);
     Model * p_model = NULL;
     Indexer * p_indexer = NULL;
     DenseView* lexMatrix = NULL;
-    Dense* dyn_prog = NULL;
+    Dense** dyn_prog = NULL;
     Sparse* lexMultiplier = NULL;
     SparseView* pi = NULL;
     Array* trans_slice = NULL;

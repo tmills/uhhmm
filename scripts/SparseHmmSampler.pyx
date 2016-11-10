@@ -46,7 +46,7 @@ class HmmSampler(Sampler.Sampler):
             self.lexMultipler = np.tile(np.identity(g_len), (1, self.indexer.get_state_size() / g_len))
             scipy = False
         
-    def initialize_dynprog(self, maxLen):
+    def initialize_dynprog(self, batch_size, maxLen):
         self.dyn_prog = np.zeros((self.indexer.get_state_size(), maxLen))
 
 #    @profile

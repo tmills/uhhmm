@@ -22,7 +22,7 @@ class InfiniteSampler(Sampler):
         self.models = models
         self.indexer = Indexer(self.models)
 
-    def initialize_dynprog(self, maxLen):
+    def initialize_dynprog(self, batch_size, maxLen):
         self.dyn_prog = np.zeros((2,2,self.models.act[0].dist.shape[-1], self.models.cont[0].dist.shape[-1], self.models.pos.dist.shape[-1], maxLen))
 
     def forward_pass(self, sent, sent_index):

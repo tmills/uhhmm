@@ -149,6 +149,28 @@ void get_row(csr_matrix_view<IndexArrayView, IndexArrayView, ValueArrayView>* s,
     }
 }
 
+int get_max_len(std::vector<std::vector<int> > sents){
+    int max_len = 0;
+    for(std::vector<int> sent : sents){
+        if(sent.size() > max_len){
+            max_len = sent.size();
+        }
+    }
+    return max_len;
+}
+
+Dense* get_sentence_array(std::vector<std::vector<int> > sents, int max_len){
+    Dense* array = new Dense( sents.size(), max_len, 0 );
+    
+    for(int i = 0; i < sents.size(); i++){
+      std::vector<int> sent = sents[i];
+      for(int token_ind = 0; token_ind < sent.size(); token_ind++){
+        array -> operator()(i, token_ind) = sent[token_ind];
+      }
+    }
+    return array; 
+}
+
 void HmmSampler::set_models(Model * models){
     // cout << '1' << endl;
     p_model = models;
@@ -189,24 +211,96 @@ void HmmSampler::set_models(Model * models){
     // cout.precision(float_limit::max_digits10);
 }
 
-void HmmSampler::initialize_dynprog(int max_len){
+void HmmSampler::initialize_dynprog(int batch_size, int max_len){
     // cout << '2' << endl;
     if (dyn_prog != NULL){
         delete dyn_prog;
     }
-    dyn_prog = new Dense( max_len, p_indexer->get_state_size(), 0.0f );
+    dyn_prog = new Dense*[max_len];
+    for(int i = 0; i < max_len; i++){
+      dyn_prog[i] = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
+    }
+    //dyn_prog = new Dense( max_len, p_indexer->get_state_size(), 0.0f );
 }
 
 std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents, int sent_index){
     // auto t1 = Clock::now();
-    // float sentence_log_prob, normalizer;
-    float sentence_log_prob = 0.0f;
-    float normalizer = 0.0f;
+    float normalizer;
     int a_max, b_max, g_max; // index, token, g_len;
     std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();
     std::vector<int> sent = sents[0];
     std::vector<float> log_probs;
+    int batch_size = sents.size();
+    int batch_max_len = get_max_len(sents);
+    // np_sents is |batches| x max_len
+    Dense* np_sents = get_sentence_array(sents, batch_max_len);
+    csr_matrix_view<IndexArrayView,IndexArrayView,ValueArrayView>* pi_view = pi -> get_view();
+
+    array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
     
+    for(int ind = 0; ind < batch_max_len; ind++){
+        Dense *cur_mat = dyn_prog[ind];
+        if(ind == 0){
+            // TODO if i can do the other case this one should be easier
+            // for now just do it sentence-by-sentence:
+            for(int sent_ind = 0; sent_ind < batch_size; sent_ind++){
+                int token = sents[ind][sent_ind];
+                // get the row in the dyn_prog matrix for this sentence
+                array2d<float, device_memory>::row_view dyn_prog_row = cur_mat->row(sent_ind);
+                // get the column in the p(word | pos) for this token
+                array2d<float, device_memory>::column_view lex_column = (lexMatrix->get_view())->column(token);
+                array2d<float, device_memory>::column_view no_head_tail_column = lex_column.subarray(1, lex_column.size() - 2);
+                array2d<float, device_memory>::row_view dyn_prog_row_section = dyn_prog_row.subarray(1, g_max - 2);
+                copy(no_head_tail_column, dyn_prog_row_section); // memory copy of array views
+                normalizer = thrust::reduce(thrust::device, dyn_prog_row.begin(), dyn_prog_row.end());
+                blas::scal(dyn_prog_row, 1.0f/normalizer);
+                log_probs[sent_ind] += log10f(normalizer);
+            }                     
+        }else{
+            // Grab the ind-1th row of dyn_prog and multiply it by the transition matrix and put it in
+            // the ind^th row.
+            Dense *prev_mat = dyn_prog[ind-1];
+            Dense *cur_mat = dyn_prog[ind];
+            
+            // prev_mat is |batches| x |states| at time ind-1
+            // pi_view is |states| x |states| transition matrix
+            // so after this multiply cur_mat is |batches| x |states| incorporating transition probabilities
+            // but not evidence
+            multiply(*pi_view, *prev_mat, *cur_mat);
+            
+            // for now incorporate the evidence sentence-by-sentence:
+            for(int sent_ind = 0; sent_ind < batch_size; sent_ind++){
+                int token = sents[ind][sent_ind];
+                
+                // lex_column is |g| x 1 
+                array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
+                
+                // print(lex_column);
+                // cout << '6' << endl;
+                // lexMultiplier is state_size x |g|, expanded_lex is state_size x 1
+                multiply(* lexMultiplier, lex_column, * expanded_lex);
+                // print(expanded_lex);
+                // cout << '7' << endl;
+                // dyn_prog_row is 1 x state_size
+                array2d<float, device_memory>::row_view dyn_prog_row = cur_mat->row(sent_ind);
+                blas::xmy(*expanded_lex, dyn_prog_row, dyn_prog_row);
+                normalizer = thrust::reduce(thrust::device, dyn_prog_row.begin(), dyn_prog_row.end());
+                blas::scal(dyn_prog_row, 1.0f/normalizer);
+                log_probs[sent_ind] += log10f(normalizer);
+            }
+            
+            
+            /* cancel this for now -- maybe come back later:
+            // incorporating evidence is optimized and less easy to understand -- evidence matrix
+            // is batch_size x vocab_size and massively redundant so we decompose it
+            // first get the vector representing the leading edge of every sentence in the batch:
+            array1d<float, device_memory>::column_view tokens = np_sents->column(ind);
+            */
+            
+        }
+    }
+    
+    /*
     // no need to matrixize the dyn_prog
     // assume sent is a vector of word indices
     int i = 0;
@@ -264,6 +358,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
         i++;
         // skipping some error handling stuff
     }
+    */
     // auto t2 = Clock::now();
     // cout << "fpass: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count() * nano_to_sec << " s" << endl;
     return log_probs;
@@ -276,6 +371,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
     std::vector<State> sample_seq;
     std::vector<int> sample_t_seq;
     int last_index, sample_t, sample_depth; // , t, ind; totalK, depth,
+    int batch_size = sents.size();
     // int prev_depth, next_f_depth, next_awa_depth;
     //float sample_log_prob;//trans_prob, 
     // double t0, t1;
@@ -283,7 +379,9 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
     State sample_state;
     //sample_log_prob = 0.0f;
     
-    for(std::vector<int> sent : sents){
+//    for(std::vector<int> sent : sents){
+    for(int sent_ind = 0; sent_ind < batch_size; sent_ind++){
+        std::vector<int> sent = sents[sent_ind];
         last_index = sent.size() - 1;
         // doubly normalized??
         // self.dyn_prog[last_index,:] /= self.dyn_prog[last_index,:].sum()
@@ -292,7 +390,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         // cout << "x1" << endl;
         while (sample_t < 0 || (sample_depth > 0)) {
             // cout << "x2" << endl;
-            array2d<float, device_memory>::row_view dyn_prog_temp_row_view = dyn_prog->row(last_index);
+            array2d<float, device_memory>::row_view dyn_prog_temp_row_view = dyn_prog[sent_ind]->row(last_index);
             sample_t = get_sample(dyn_prog_temp_row_view);
             // sample_t = 0;
             // cout << sample_t << endl;
@@ -313,7 +411,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         for (int t = sent.size() - 2; t > -1; t --){
             // cout << 't' << t << endl;
             // auto t11 = Clock::now();
-            std::tie(sample_state, sample_t) = _reverse_sample_inner(sample_t, t);
+            std::tie(sample_state, sample_t) = _reverse_sample_inner(sample_t, t, sent_ind);
             // cout << "Sample t is " << sample_t << endl;
             // cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
             if(!sample_state.depth_check()){
@@ -342,7 +440,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
 }
 
 
-std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t){
+std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, int sent_ind){
     //int ind;
     float normalizer;
     // auto t11 = Clock::now();
@@ -351,7 +449,7 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t){
     // cout << "trans_slice" << endl;
     // print(*trans_slice); 
     // auto t12 = Clock::now();
-    array2d<float, device_memory>::row_view dyn_prog_row = dyn_prog->row(t);
+    array2d<float, device_memory>::row_view dyn_prog_row = dyn_prog[sent_ind]->row(t);
     // cout << "Dyn_prog_row" << endl;
     // print(dyn_prog_row);
     float trans_slice_sum = thrust::reduce(thrust::device, (*trans_slice).begin(), (*trans_slice).end());
