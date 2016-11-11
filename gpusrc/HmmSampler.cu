@@ -54,10 +54,8 @@ int HmmSampler::get_sample(AView &v){
     // array1d<float, device_memory> sum_dict(v.size()); // building a new array, maybe not needed
     // this is the equivalent of np.cumsum() or partial_sum in the stl:
     thrust::inclusive_scan(thrust::device, v.begin(), v.end(), sum_dict->begin());
-    // cout << "v[0] = " << v[0] << "v[-1] = " << v[v.size()-1] << " with length " << v.size() << endl;
-    // cout << "sum_dict[0] = " << (*sum_dict)[0] << "sum_dict[-1] = " << (*sum_dict)[sum_dict->size()-1] << " with length: " << sum_dict->size() <<  endl;
-    //cusp::print(*sum_dict);
-    
+    cout << "v[0] = " << v[0] << "v[-1] = " << v[v.size()-1] << " with length " << v.size() << endl;
+    cout << "sum_dict[0] = " << (*sum_dict)[0] << "sum_dict[-1] = " << (*sum_dict)[sum_dict->size()-1] << " with length: " << sum_dict->size() <<  endl;
     // dart =  static_cast <float> (rand()) / static_cast <float> (RAND_MAX);// / RAND_MAX;
     int dart_target;
     int condition = 1;
@@ -224,9 +222,13 @@ void HmmSampler::initialize_dynprog(int batch_size, int max_len){
     }
     dyn_prog = new Dense*[max_len];
     for(int i = 0; i < max_len; i++){
-      dyn_prog[i] = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
+        dyn_prog[i] = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
     }
-    //dyn_prog = new Dense( max_len, p_indexer->get_state_size(), 0.0f );
+    
+    start_state = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
+    for(int i = 0; i < batch_size; i++){
+        start_state->operator()(0, i) = 1;
+    }
 }
 
 std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents, int sent_index){
@@ -241,94 +243,17 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
     // np_sents is |batches| x max_len
     Dense* np_sents = get_sentence_array(sents, batch_max_len);
     csr_matrix_view<IndexArrayView,IndexArrayView,ValueArrayView>* pi_view = pi -> get_view();
-
-    array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
-    
-    for(int ind = 0; ind < batch_max_len; ind++){
-        Dense *cur_mat = dyn_prog[ind];
-        if(ind == 0){
-            // TODO if i can do the other case this one should be easier
-            // for now just do it sentence-by-sentence:
-            for(int sent_ind = 0; sent_ind < batch_size; sent_ind++){
-                int token = sents[ind][sent_ind];
-                // get the row in the dyn_prog matrix for this sentence
-                array2d<float, device_memory>::row_view dyn_prog_row = cur_mat->row(sent_ind);
-                // get the column in the p(word | pos) for this token
-                array2d<float, device_memory>::column_view lex_column = (lexMatrix->get_view())->column(token);
-                array2d<float, device_memory>::column_view no_head_tail_column = lex_column.subarray(1, lex_column.size() - 2);
-                array2d<float, device_memory>::row_view dyn_prog_row_section = dyn_prog_row.subarray(1, g_max - 2);
-                copy(no_head_tail_column, dyn_prog_row_section); // memory copy of array views
-                normalizer = thrust::reduce(thrust::device, dyn_prog_row.begin(), dyn_prog_row.end());
-                blas::scal(dyn_prog_row, 1.0f/normalizer);
-                log_probs[sent_ind] += log10f(normalizer);
-            }                     
-        }else{
-            // Grab the ind-1th row of dyn_prog and multiply it by the transition matrix and put it in
-            // the ind^th row.
-            Dense *prev_mat = dyn_prog[ind-1];
-            Dense *cur_mat = dyn_prog[ind];
-            
-            // prev_mat is |batches| x |states| at time ind-1
-            // pi_view is |states| x |states| transition matrix
-            // so after this multiply cur_mat is |batches| x |states| incorporating transition probabilities
-            // but not evidence
-            multiply(*pi_view, *prev_mat, *cur_mat);
-            
-            // for now incorporate the evidence sentence-by-sentence:
-            for(int sent_ind = 0; sent_ind < batch_size; sent_ind++){
-                int token = sents[ind][sent_ind];
-                
-                // lex_column is |g| x 1 
-                array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
-                
-                // print(lex_column);
-                // cout << '6' << endl;
-                // lexMultiplier is state_size x |g|, expanded_lex is state_size x 1
-                multiply(* lexMultiplier, lex_column, * expanded_lex);
-                // print(expanded_lex);
-                // cout << '7' << endl;
-                // dyn_prog_row is 1 x state_size
-                array2d<float, device_memory>::row_view dyn_prog_row = cur_mat->row(sent_ind);
-                blas::xmy(*expanded_lex, dyn_prog_row, dyn_prog_row);
-                normalizer = thrust::reduce(thrust::device, dyn_prog_row.begin(), dyn_prog_row.end());
-                blas::scal(dyn_prog_row, 1.0f/normalizer);
-                log_probs[sent_ind] += log10f(normalizer);
-            }
-            
-            
-            /* cancel this for now -- maybe come back later:
-            // incorporating evidence is optimized and less easy to understand -- evidence matrix
-            // is batch_size x vocab_size and massively redundant so we decompose it
-            // first get the vector representing the leading edge of every sentence in the batch:
-            array1d<float, device_memory>::column_view tokens = np_sents->column(ind);
-            */
-            
-        }
-    }
-    
-    /*
-    // no need to matrixize the dyn_prog
-    // assume sent is a vector of word indices
-    int i = 0;
-    // array1d<float, device_memory> temp_dyn_prog_row(p_indexer -> get_state_size());
-    blas::fill(dyn_prog -> values, 0.0f);
-    csr_matrix_view<IndexArrayView,IndexArrayView,ValueArrayView>* pi_view = pi -> get_view();
+    cout << "pi has " << pi_view->values.size() << " entries." << endl;
     
     array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
     
-    // initialize likelihood vector:
-    for(int sent_ind = 0; sent_ind < sents.size(); sent_ind++){
-        log_probs.push_back(0);
-    }
-    
-    
     for(int ind = 0; ind < batch_max_len; ind++){
-        //cout << "Processing token index " << ind << " for " << batch_size << " sentences." << endl;
+        cout << "Processing token index " << ind << " for " << batch_size << " sentences." << endl;
         Dense *cur_mat = dyn_prog[ind];
         Dense *prev_mat;
-        
         if(ind == 0){
             prev_mat = start_state;
+            log_probs.push_back(0);
         }else{
             // Grab the ind-1th row of dyn_prog and multiply it by the transition matrix and put it in
             // the ind^th row.
@@ -339,19 +264,42 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
         // pi_view is |states| x |states| transition matrix with time t on rows and t-1 on columns (i.e. transposed)
         // so after this multiply cur_mat is |states| x |batches| incorporating transition probabilities
         // but not evidence
-        //cout << "Performing transition multiplication" << endl;
+//            cout << "Performing transition multiplication" << endl;
         multiply(*pi_view, *prev_mat, *cur_mat);
         
-        //cout << "Done with transition" << endl;
+        // this is all debugging the transition:
+        int sample_sent_ind = 0;
+        for(int i = 0; i < p_indexer->get_state_size(); i++){
+            if( (*prev_mat)(i, sample_sent_ind) > 0 ){
+                cout << "prev_mat[" << i << ", " << sample_sent_ind << "]: " << (*prev_mat)(i, sample_sent_ind) << endl;
+                //array2d<float, device_memory>::row_view pi_row = pi_view->row(i);
+                    
+                // look for all the non-zero elements in row i of the pi matrix:
+                //int row_nnzs = pi_view->row_offsets[i+1] - pi_view->row_offsets[i];
+                //cout << "The " << i << "^th row of the pi matrix has " << row_nnzs << " non-zero entries" << endl;
+                int col_nnzs = 0;
+                for(int j = 0; j < pi_view->column_indices.size(); j++){
+                    if(pi_view->column_indices[j] == i){
+                        // cout << "Found a column index with value " << i << endl;
+                        col_nnzs++;
+                    }
+                }
+                cout << "The " << i << "^th column of the pi matrix has " << col_nnzs << " non-zero entries" << endl;
+            }
+            if( (*cur_mat)(i, sample_sent_ind) > 0 ){
+                cout << "cur_mat[" << i << ", " << sample_sent_ind << "]: " << (*cur_mat)(i, sample_sent_ind) << endl;
+            }
+        }
+        cout << endl;
+            
 //            cout << "performing observation multiplications" << endl;
-
         // for now incorporate the evidence sentence-by-sentence:
-        for(int sent_ind = 0; sent_ind < sents.size(); sent_ind++){
+        for(int sent_ind = 0; sent_ind < batch_size; sent_ind++){
             // not every sentence in the batch will need the full batch size
             if(sents[sent_ind].size() <= ind){
                 continue;
             }
-            //cout << "Processing sentence index " << sent_ind << endl;
+//            cout << "Processing sentence index " << sent_ind << endl;
             int token = sents[sent_ind][ind];
                 
             // lex_column is |g| x 1 
@@ -360,35 +308,39 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             // print(lex_column);
             // cout << '6' << endl;
             // lexMultiplier is state_size x |g|, expanded_lex is state_size x 1
-            // cout << "Multiplying lex multiplier by lex column" << endl;
+//            cout << "Multiplying lex multiplier by lex column" << endl;
             multiply(* lexMultiplier, lex_column, * expanded_lex);
             // print(expanded_lex);
             // cout << '7' << endl;
-            blas::xmy(*expanded_lex, dyn_prog_row, dyn_prog_row);
-            // cout << '8' << endl;
-            // copy(temp_dyn_prog_row, dyn_prog_row);
+            // dyn_prog_row is 1 x state_size
+            // dyn_prog_column is state_size x 1
+            array2d<float, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
+//                cout << "Multiplying expanded_lex by dyn prog row" << endl;
+            blas::xmy(*expanded_lex, dyn_prog_col, dyn_prog_col);
+//                cout << "Computing normalizer" << endl;
+            normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
+            cout << "Normalizing over col with result: " << normalizer << endl;
+//                cout << "Scaling by normalizer" << endl;
+            blas::scal(dyn_prog_col, 1.0f/normalizer);
+//                cout << "Adding logged normalizer to sentence logprobs" << endl;
+            log_probs[sent_ind] += log10f(normalizer);
         }
-        normalizer = thrust::reduce(thrust::device, dyn_prog_row.begin(), dyn_prog_row.end());
-        // print(dyn_prog_row);
-        blas::scal(dyn_prog_row, 1.0f/normalizer);
-        // print( dyn_prog_row);
-        if (i > 0 && normalizer > 1){
-            cout << "Found normalizer > 1...\n" << "normalizer: " << normalizer << endl << "sent: " << sent_index << "token: " << token << endl;
-        }
-        sentence_log_prob += log10f(normalizer);
-        // cout << normalizer << sentence_log_prob << endl;
-        log_probs.push_back(sentence_log_prob);
-        i++;
-        // skipping some error handling stuff
+            
+            
+            /* cancel this for now -- maybe come back later:
+            // incorporating evidence is optimized and less easy to understand -- evidence matrix
+            // is batch_size x vocab_size and massively redundant so we decompose it
+            // first get the vector representing the leading edge of every sentence in the batch:
+            array1d<float, device_memory>::column_view tokens = np_sents->column(ind);
+            */
     }
-    */
-    // auto t2 = Clock::now();
-    // cout << "fpass: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count() * nano_to_sec << " s" << endl;
+    
+    cout << "Finished forward pass" << endl;
     return log_probs;
 }
 
 std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vector<int>> sents, int sent_index){
-    // cout << "Sent index is " << sent_index << "s" << endl;
+    cout << "Processing batch with starting sent index of " << sent_index << endl;
     // auto t2 = Clock::now();
     std::vector<std::vector<State>> sample_seqs;
     std::vector<State> sample_seq;
@@ -404,29 +356,31 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
     
 //    for(std::vector<int> sent : sents){
     for(int sent_ind = 0; sent_ind < batch_size; sent_ind++){
+        cout << "Processing sentence " << sent_ind << " of the batch" << endl;
         std::vector<int> sent = sents[sent_ind];
         last_index = sent.size() - 1;
         // doubly normalized??
         // self.dyn_prog[last_index,:] /= self.dyn_prog[last_index,:].sum()
         sample_t = -1;
         sample_depth = -1;
-        // cout << "x1" << endl;
+        cout << "x1" << endl;
         while (sample_t < 0 || (sample_depth > 0)) {
-            // cout << "x2" << endl;
-            array2d<float, device_memory>::row_view dyn_prog_temp_row_view = dyn_prog[sent_ind]->row(last_index);
-            sample_t = get_sample(dyn_prog_temp_row_view);
+            cout << "x2" << endl;
+            array2d<float, device_memory>::column_view dyn_prog_temp_col_view = dyn_prog[last_index]->column(sent_ind);
+            //cout << dyn_prog_temp_col_view << endl;
+            sample_t = get_sample(dyn_prog_temp_col_view);
             // sample_t = 0;
-            // cout << sample_t << endl;
+            cout << sample_t << endl;
             sample_state = p_indexer -> extractState(sample_t);
-            // cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
+            cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
             if(!sample_state.depth_check()){
               cout << "Depth error in state assigned to last index" << endl;
             }
             sample_depth = sample_state.max_awa_depth();
-            //cout << "Sample depth is "<< sample_depth << endl;
+            cout << "Sample depth is "<< sample_depth << endl;
         }
         // auto t3 = Clock::now();
-        // cout << "x3" << endl;
+        cout << "x3" << endl;
         sample_seq.push_back(sample_state);
         sample_t_seq.push_back(sample_t);
         // skip some error handling
@@ -472,7 +426,7 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
     // cout << "trans_slice" << endl;
     // print(*trans_slice); 
     // auto t12 = Clock::now();
-    array2d<float, device_memory>::row_view dyn_prog_row = dyn_prog[sent_ind]->row(t);
+    array2d<float, device_memory>::column_view dyn_prog_col = dyn_prog[t]->column(sent_ind);
     // cout << "Dyn_prog_row" << endl;
     // print(dyn_prog_row);
     float trans_slice_sum = thrust::reduce(thrust::device, (*trans_slice).begin(), (*trans_slice).end());
