@@ -4,60 +4,99 @@
 #include <iostream>
 
 #include <cusp/csr_matrix.h>
-#include <cusp/coo_matrix.h>
 #include <cusp/print.h>
-#include <cusp/functional.h>
-#include <cusp/multiply.h>
-#include <cusp/array2d.h>
-#include <cusp/array1d.h>
-#include <cusp/coo_matrix.h>
-#include <cusp/print.h>
-#include <cusp/gallery/poisson.h>
+#include "cusp/multiply.h"
+#include "myarrays.cu"
 
 using namespace std;
 
 int main()
 {
   int state_size = 15;
+  int batch_size = 1;
 
-  cusp::array2d<float, cusp::device_memory> pi(state_size, state_size);
-  pi(1,0) = 0.19; pi(2,0) = 0.2; pi(3,0) = 0.21; pi(4,0) = 0.22; pi(5,0) = 0.18;
-//  pi(1,1) = 0.191; pi(2,2) = 0.201; pi(3,3) = 0.211; pi(4,4) = 0.221; pi(5,5) = 0.181;
-//  pi(1,6) = 0.192; pi(2,7) = 0.202; pi(3,8) = 0.212; pi(4,9) = 0.222; pi(5,10) = 0.182;
-//  pi(5,1) = 0.29; pi(6,2) = 0.3; pi(7,3) = 0.31; pi(8,4) = 0.32; pi(9,5) = 0.28;
-//  pi(5,6) = 0.29; pi(6,7) = 0.3; pi(7,8) = 0.31; pi(8,9) = 0.32; pi(9,10) = 0.28;
+  // allocate storage for (10,10) matrix with 5 nonzeros
+  cusp::csr_matrix<int,float,cusp::host_memory> A(state_size, state_size, 5);
+  // initialize matrix entries on host
+  A.row_offsets[0] = 0;  // first offset is always zero
+  A.row_offsets[1] = 0;
+  A.row_offsets[2] = 1;
+  A.row_offsets[3] = 2;
+  A.row_offsets[4] = 3;
+  A.row_offsets[5] = 4;
+  A.row_offsets[6] = 5; A.row_offsets[7] = 5; A.row_offsets[8] = 5; A.row_offsets[9] = 5; A.row_offsets[10] = 5; A.row_offsets[11] = 5;
+  A.row_offsets[12] = 5; A.row_offsets[13] = 5; A.row_offsets[14] = 5; A.row_offsets[15] = 5;
   
-  cout << "Dense version of pi:" << endl;
-  cusp::print(pi);
-  cusp::csr_matrix<int,float,cusp::device_memory> pi_sparse(pi);
-  cout << "pi row offsets: " << endl;
-  cusp::print(pi_sparse.row_offsets);
-  cout << "pi column indices: " << endl;
-  cusp::print(pi_sparse.column_indices);
-  cout << "pi values: " << endl;
-  cusp::print(pi_sparse.values);
+  A.column_indices[0] = 0; A.values[0] = 0.19;
+  A.column_indices[1] = 0; A.values[1] = 0.2;
+  A.column_indices[2] = 0; A.values[2] = 0.21;
+  A.column_indices[3] = 0; A.values[3] = 0.22;
+  A.column_indices[4] = 0; A.values[4] = 0.18;
+  //A.column_indices[5] = 2; A.values[5] = 60;
+  // A now represents the following matrix
+  //    [10  0 20]
+  //    [ 0  0  0]
+  //    [ 0  0 30]
+  //    [40 50 60]
+  // copy to the device
+  cout << "Host version of pi (A): " << endl;
+  cusp::print(A);
   
-  for(int batch_size = 2; batch_size <= 16; batch_size*=2){
-      cusp::array2d<float, cusp::device_memory> prev_mat(state_size, batch_size, 0.0f);
-      cusp::array2d<float, cusp::device_memory> next_mat(state_size, batch_size, 0.0f);
-
-      for(int i = 0; i < batch_size; i++){
-          prev_mat(0, i) = 1;
-      }
+  cusp::array2d<float, cusp::host_memory> _A(A);
   
-      cusp::multiply(pi_sparse, prev_mat, next_mat);
+  cout << "Dense version of ip (_A): " << endl;
+  cusp::print(_A);
   
-      cout << "Previous matrix:" << endl;
-      cusp::print(prev_mat);
-      cout << "Next matrix non-zeros:" << endl;
+  cout << "Device version of pi (B): " << endl;
+  cusp::csr_matrix<int,float,cusp::device_memory> B(A);
+  cusp::print(B);
   
-      for(int i = 0; i < batch_size; i++){
-        for(int j = 0; j < state_size; j++){
-             if(next_mat(j,i) > 0){
-                 cout << "Value of next_mat[ " << j << ", " << i << "] = " << next_mat(j,i) << endl;
-             }
-          }
+  Dense *prev_mat = new Dense(state_size, batch_size, 0.0f);
+  Dense *next_mat = new Dense(state_size, batch_size, 0.0f);
+  for(int i = 0; i < batch_size; i++){
+      prev_mat->operator()(0, i) = 1;
+  }
+  
+  multiply(B, *prev_mat, *next_mat);
+  
+  cout << "Previous matrix:" << endl;
+  cusp::print(*prev_mat);
+  cout << "Next matrix:" << endl;
+  cusp::print(*next_mat);
+  
+  for(int i = 0; i < batch_size; i++){
+      for(int j = 0; j < state_size; j++){
+         cout << "Value of next_mat[ " << j << ", " << i << "] = " << next_mat->operator()(j,i) << endl;
       }
   }
+  
+  // initialize matrix
+  cusp::array2d<float, cusp::host_memory> C(2,2);
+  C(0,0) = 10;  C(0,1) = 20;
+  C(1,0) = 40;  C(1,1) = 50;
+  // initialize input vector
+  cusp::array1d<float, cusp::host_memory> x(2);
+  x[0] = 1;
+  x[1] = 2;
+  // allocate output vector
+  cusp::array1d<float, cusp::host_memory> y(2);
+  // compute y = C * x
+  cusp::multiply(C, x, y);
+  // print y
+  cusp::print(y);
+  
+  
+  cusp::array1d<float, cusp::device_memory> prev_array(15, 0.0f);
+  cusp::array1d<float, cusp::device_memory> next_array(15, 0.0f);
+  prev_array[0] = 1;
+  multiply(B, prev_array, next_array);
+  cusp::print(next_array);
+
+  cusp::array1d<float, cusp::device_memory> *prev_array_p = &prev_array;
+  cusp::array1d<float, cusp::device_memory> *next_array_p = &next_array;
+
+  multiply(B, *prev_array_p, *next_array_p);
+  cusp::print(*next_array_p);
+
 }
 
