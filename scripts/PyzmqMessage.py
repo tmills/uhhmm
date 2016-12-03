@@ -12,11 +12,25 @@ class PyzmqJob:
         self.type = msg_type
         self.resource = resource
 
+class JobRequest:
+    def __init__(self, request_size=1):
+        self.request_size = request_size
+        
+class SentenceRequest(JobRequest):
+    def __init__(self, resource_sig, request_size=1):
+        self.resource_sig = resource_sig
+        self.request_size = request_size
+        
 class SentenceJob:
     def __init__(self, index, ev_seq):
         self.index = index
         self.ev_seq = ev_seq
 
+class RowRequest(JobRequest):
+    def __init__(self, resource_sig):
+        self.resource_sig = resource_sig
+        self.request_size = 1
+        
 class CompileJob:
     def __init__(self, index):
         self.index = index

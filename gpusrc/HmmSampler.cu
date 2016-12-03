@@ -54,8 +54,10 @@ int HmmSampler::get_sample(AView &v){
     // array1d<float, device_memory> sum_dict(v.size()); // building a new array, maybe not needed
     // this is the equivalent of np.cumsum() or partial_sum in the stl:
     thrust::inclusive_scan(thrust::device, v.begin(), v.end(), sum_dict->begin());
-    cout << "v[0] = " << v[0] << "v[-1] = " << v[v.size()-1] << " with length " << v.size() << endl;
-    cout << "sum_dict[0] = " << (*sum_dict)[0] << "sum_dict[-1] = " << (*sum_dict)[sum_dict->size()-1] << " with length: " << sum_dict->size() <<  endl;
+    // cout << "v[0] = " << v[0] << "v[-1] = " << v[v.size()-1] << " with length " << v.size() << endl;
+    // cout << "sum_dict[0] = " << (*sum_dict)[0] << "sum_dict[-1] = " << (*sum_dict)[sum_dict->size()-1] << " with length: " << sum_dict->size() <<  endl;
+    //cusp::print(*sum_dict);
+    
     // dart =  static_cast <float> (rand()) / static_cast <float> (RAND_MAX);// / RAND_MAX;
     int dart_target;
     int condition = 1;
@@ -215,14 +217,26 @@ void HmmSampler::set_models(Model * models){
 }
 
 void HmmSampler::initialize_dynprog(int batch_size, int max_len){
-    // cout << '2' << endl;
-    if (dyn_prog != NULL){
-        delete dyn_prog;
-    }
-    dyn_prog = new Dense*[max_len];
-    for(int i = 0; i < max_len; i++){
-        dyn_prog[i] = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
-    }
+    //cout << "Initializing dyn_prog matrix with batch size = " << batch_size << " and max len = " << max_len << endl;
+    //for(int i = 0; i < dyn_prog.size(); i++){
+    //    delete dyn_prog[i];
+    //}
+    
+    max_sent_len = max_len;
+    //dyn_prog.clear();
+//    if(dyn_prog == NULL){    
+//        cout << "Allocating new dense matrices for dyn porg" << endl;
+        dyn_prog = new Dense*[max_len];
+        for(int i = 0; i < max_len; i++){
+            dyn_prog[i] = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
+        }
+/*    }else{
+        for(int i = 0; i < max_len; i++){
+            Dense* old_mat = dyn_prog[i];
+            dyn_prog[i] = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
+            delete old_mat;
+        }*/
+//    }
     
     start_state = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
     for(int i = 0; i < batch_size; i++){
@@ -242,17 +256,28 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
     // np_sents is |batches| x max_len
     Dense* np_sents = get_sentence_array(sents, batch_max_len);
     csr_matrix_view<IndexArrayView,IndexArrayView,ValueArrayView>* pi_view = pi -> get_view();
-    cout << "pi has " << pi_view->values.size() << " entries." << endl;
+    //cout << "pi has " << pi_view->values.size() << " entries." << endl;
+    //cout << "First 5 ind entries of pi are " << pi_view->row_offsets[0] << ", " << pi_view->row_offsets[1] << ", " << pi_view->row_offsets[2] << ", " << pi_view->row_offsets[3] << ", " << pi_view->row_offsets[4] << ", " << endl;
+    //cout << "First 5 col entries of pi are " << pi_view->column_indices[0] << ", " << pi_view->column_indices[1] << ", " << pi_view->column_indices[2] << ", " << pi_view->column_indices[3] << ", " << pi_view->column_indices[4] << ", " << endl;
+    //cout << "First 5 data entries of pi are " << pi_view->values[0] << ", " << pi_view->values[1] << ", " << pi_view->values[2] << ", " << pi_view->values[3] << ", " << pi_view->values[4] << ", " << endl;
     
     array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
     
+    // initialize likelihood vector:
+    for(int sent_ind = 0; sent_ind < sents.size(); sent_ind++){
+        log_probs.push_back(0);
+    }
+    // cout << "Pi " << endl;
+    // cusp::print(*pi_view);
+    
+    
     for(int ind = 0; ind < batch_max_len; ind++){
-        cout << "Processing token index " << ind << " for " << batch_size << " sentences." << endl;
+        //cout << "Processing token index " << ind << " for " << batch_size << " sentences." << endl;
         Dense *cur_mat = dyn_prog[ind];
         Dense *prev_mat;
+        
         if(ind == 0){
             prev_mat = start_state;
-            log_probs.push_back(0);
         }else{
             // Grab the ind-1th row of dyn_prog and multiply it by the transition matrix and put it in
             // the ind^th row.
@@ -263,42 +288,55 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
         // pi_view is |states| x |states| transition matrix with time t on rows and t-1 on columns (i.e. transposed)
         // so after this multiply cur_mat is |states| x |batches| incorporating transition probabilities
         // but not evidence
-//            cout << "Performing transition multiplication" << endl;
+        //cout << "Performing transition multiplication" << endl;
         multiply(*pi_view, *prev_mat, *cur_mat);
         
+        //cout << "Done with transition" << endl;
+        
         // this is all debugging the transition:
-        int sample_sent_ind = 0;
-        for(int i = 0; i < p_indexer->get_state_size(); i++){
-            if( (*prev_mat)(i, sample_sent_ind) > 0 ){
-                cout << "prev_mat[" << i << ", " << sample_sent_ind << "]: " << (*prev_mat)(i, sample_sent_ind) << endl;
+        //int sample_sent_ind = 0;
+//        for(int i = 0; i < p_indexer->get_state_size(); i++){
+/*
+        if(ind == 0){
+            if( (*prev_mat)(ind, sample_sent_ind) > 0 ){
+                cout << "prev_mat[" << ind << ", " << sample_sent_ind << "]: " << (*prev_mat)(ind, sample_sent_ind) << endl;
                 //array2d<float, device_memory>::row_view pi_row = pi_view->row(i);
+
+//                for(int j = 0; j < p_indexer->get_state_size(); j++){
+//                    if(pi->operator()(j)(i) > 0){
+//                      cout << "pi has a non-zero entry at [" << j << ", " << i << "]" << endl;
+//                    }
+//                }
                     
                 // look for all the non-zero elements in row i of the pi matrix:
                 //int row_nnzs = pi_view->row_offsets[i+1] - pi_view->row_offsets[i];
                 //cout << "The " << i << "^th row of the pi matrix has " << row_nnzs << " non-zero entries" << endl;
                 int col_nnzs = 0;
                 for(int j = 0; j < pi_view->column_indices.size(); j++){
-                    if(pi_view->column_indices[j] == i){
-                        // cout << "Found a column index with value " << i << endl;
+                    if(pi_view->column_indices[j] == ind){
+                        cout << "Found a column index with value " << ind << endl;
                         col_nnzs++;
                     }
                 }
-                cout << "The " << i << "^th column of the pi matrix has " << col_nnzs << " non-zero entries" << endl;
+                cout << "The " << ind << "^th column of the pi matrix has " << col_nnzs << " non-zero entries" << endl;
             }
-            if( (*cur_mat)(i, sample_sent_ind) > 0 ){
-                cout << "cur_mat[" << i << ", " << sample_sent_ind << "]: " << (*cur_mat)(i, sample_sent_ind) << endl;
+            for(int j = 0; j < p_indexer->get_state_size(); j++){
+                if( (*cur_mat)(j, sample_sent_ind) > 0 ){
+                    cout << "cur_mat[" << j << ", " << sample_sent_ind << "]: " << (*cur_mat)(j, sample_sent_ind) << endl;
+                }
             }
         }
         cout << endl;
-            
+*/
 //            cout << "performing observation multiplications" << endl;
+
         // for now incorporate the evidence sentence-by-sentence:
-        for(int sent_ind = 0; sent_ind < batch_size; sent_ind++){
+        for(int sent_ind = 0; sent_ind < sents.size(); sent_ind++){
             // not every sentence in the batch will need the full batch size
             if(sents[sent_ind].size() <= ind){
                 continue;
             }
-//            cout << "Processing sentence index " << sent_ind << endl;
+            //cout << "Processing sentence index " << sent_ind << endl;
             int token = sents[sent_ind][ind];
                 
             // lex_column is |g| x 1 
@@ -307,21 +345,21 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             // print(lex_column);
             // cout << '6' << endl;
             // lexMultiplier is state_size x |g|, expanded_lex is state_size x 1
-//            cout << "Multiplying lex multiplier by lex column" << endl;
+            // cout << "Multiplying lex multiplier by lex column" << endl;
             multiply(* lexMultiplier, lex_column, * expanded_lex);
             // print(expanded_lex);
             // cout << '7' << endl;
             // dyn_prog_row is 1 x state_size
             // dyn_prog_column is state_size x 1
             array2d<float, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
-//                cout << "Multiplying expanded_lex by dyn prog row" << endl;
+            // cout << "Multiplying expanded_lex by dyn prog row" << endl;
             blas::xmy(*expanded_lex, dyn_prog_col, dyn_prog_col);
-//                cout << "Computing normalizer" << endl;
+            // cout << "Computing normalizer" << endl;
             normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
-            cout << "Normalizing over col with result: " << normalizer << endl;
-//                cout << "Scaling by normalizer" << endl;
+            // cout << "Normalizing over col with result: " << normalizer << endl;
+            //cout << "Scaling by normalizer" << endl;
             blas::scal(dyn_prog_col, 1.0f/normalizer);
-//                cout << "Adding logged normalizer to sentence logprobs" << endl;
+            //    cout << "Adding logged normalizer to sentence logprobs" << endl;
             log_probs[sent_ind] += log10f(normalizer);
         }
             
@@ -334,18 +372,19 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             */
     }
     
-    cout << "Finished forward pass" << endl;
+    //cout << "Finished forward pass (cuda) and returning vector with " << log_probs.size() << " elements." << endl;
     return log_probs;
 }
 
 std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vector<int>> sents, int sent_index){
-    cout << "Processing batch with starting sent index of " << sent_index << endl;
+    //cout << "Reverse sampling batch with starting sent index of " << sent_index << endl;
     // auto t2 = Clock::now();
     std::vector<std::vector<State>> sample_seqs;
-    std::vector<State> sample_seq;
+    std::vector<State> *sample_seq;
     std::vector<int> sample_t_seq;
     int last_index, sample_t, sample_depth; // , t, ind; totalK, depth,
     int batch_size = sents.size();
+    int batch_max_len = get_max_len(sents);
     // int prev_depth, next_f_depth, next_awa_depth;
     //float sample_log_prob;//trans_prob, 
     // double t0, t1;
@@ -355,37 +394,44 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
     
 //    for(std::vector<int> sent : sents){
     for(int sent_ind = 0; sent_ind < batch_size; sent_ind++){
-        cout << "Processing sentence " << sent_ind << " of the batch" << endl;
+        sample_seq = new std::vector<State>();
+        //cout << "Processing sentence " << sent_ind << " of the batch" << endl;
         std::vector<int> sent = sents[sent_ind];
+        //for(int token_ind = 0; token_ind < sent.size(); token_ind++){
+        //  cout << sent[token_ind] << " ";
+       // }
+        //cout << endl;
+        
         last_index = sent.size() - 1;
         // doubly normalized??
         // self.dyn_prog[last_index,:] /= self.dyn_prog[last_index,:].sum()
         sample_t = -1;
         sample_depth = -1;
-        cout << "x1" << endl;
+        //cout << "x1" << endl;
         while (sample_t < 0 || (sample_depth > 0)) {
-            cout << "x2" << endl;
+            //cout << "Sampling last index: " << last_index << " for sentence" << endl;
             array2d<float, device_memory>::column_view dyn_prog_temp_col_view = dyn_prog[last_index]->column(sent_ind);
+            //if(sample_t == -1) cusp::print(dyn_prog_temp_col_view);
             //cout << dyn_prog_temp_col_view << endl;
             sample_t = get_sample(dyn_prog_temp_col_view);
             // sample_t = 0;
-            cout << sample_t << endl;
+            //cout << sample_t << endl;
             sample_state = p_indexer -> extractState(sample_t);
-            cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
+            //cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
             if(!sample_state.depth_check()){
               cout << "Depth error in state assigned to last index" << endl;
             }
             sample_depth = sample_state.max_awa_depth();
-            cout << "Sample depth is "<< sample_depth << endl;
+            //cout << "Sample depth is "<< sample_depth << endl;
         }
         // auto t3 = Clock::now();
-        cout << "x3" << endl;
-        sample_seq.push_back(sample_state);
+        //cout << "x3" << endl;
+        sample_seq->push_back(sample_state);
         sample_t_seq.push_back(sample_t);
         // skip some error handling
     
         for (int t = sent.size() - 2; t > -1; t --){
-            // cout << 't' << t << endl;
+            //cout << 't' << t << endl;
             // auto t11 = Clock::now();
             std::tie(sample_state, sample_t) = _reverse_sample_inner(sample_t, t, sent_ind);
             // cout << "Sample t is " << sample_t << endl;
@@ -393,16 +439,16 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
             if(!sample_state.depth_check()){
               cout << "Depth error in state assigned at index" << t << endl;
             }
-            sample_seq.push_back(sample_state);
+            sample_seq->push_back(sample_state);
             sample_t_seq.push_back(sample_t);
             // auto t12 = Clock::now();
             // cout << "backpass2inside: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t12 - t11).count() * nano_to_sec << " s" << endl;
 
         }
         // auto t4 = Clock::now();
-        std::reverse(sample_seq.begin(), sample_seq.end());
-        // cout << '3' << endl;
-        // cout << sample_seq.size() << endl;
+        std::reverse(sample_seq->begin(), sample_seq->end());
+        //cout << '3' << endl;
+        //cout << sample_seq->size() << endl;
         // auto t5 = Clock::now();
         // cout << "backpass1: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t3 - t2).count() * nano_to_sec << " s" << endl;
         // cout << "backpass2: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t4 - t3).count() * nano_to_sec << " s" << endl;
@@ -410,8 +456,14 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         //for (int k : sample_t_seq){
         //    cout << sent_index << " : " << k  << endl;
         //}
-        sample_seqs.push_back(sample_seq);
+        sample_seqs.push_back(*sample_seq);
     }
+    
+//    for(int i = 0; i < batch_max_len; i++){
+//        delete dyn_prog[i];
+//    }
+
+    //cout << "Done with reverse()" << endl;
     return sample_seqs;
 }
 
@@ -492,10 +544,11 @@ HmmSampler::HmmSampler(int seed) : seed(seed){
     }
 }
 HmmSampler::~HmmSampler(){
+    //delete[] dyn_prog;
     //delete p_model;
     delete p_indexer;
     //delete lexMatrix;
-    delete dyn_prog;
+    //delete dyn_prog;
     delete lexMultiplier;
     //delete pi;
     delete trans_slice;

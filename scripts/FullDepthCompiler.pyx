@@ -74,7 +74,18 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
         above_act = prevA[start_depth-1]
         above_awa = prevB[start_depth-1]
 
+
     t00 = time.time()
+    
+    ## special case for start state:
+    if prevIndex == 0:
+        state_index = 0
+        range_probs = models.pos.dist[0,:-1]
+        for g in range(1,len(range_probs)):
+            indices.append(state_index + g)
+            data.append(range_probs[g])
+        return indices, data
+        
     for f in (0,1):
         nextState.f = f
 
