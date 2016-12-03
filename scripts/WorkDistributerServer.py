@@ -6,7 +6,7 @@ import socket
 import time
 import zmq
 from queue import Queue
-from PyzmqMessage import SentenceJob, CompileJob, PyzmqJob, get_file_signature, resource_current
+from PyzmqMessage import SentenceJob, CompileJob, PyzmqJob, SentenceRequest, RowRequest, get_file_signature, resource_current
 from threading import Thread, Lock
 
 class ResetSignal():
@@ -63,18 +63,30 @@ class Ventilator(Thread):
             logging.debug("Ventilator received model signature sync signal")
 
             while not self.job_queue.empty():
-                msg = self.socket.recv_pyobj()
+                job_request = self.socket.recv_pyobj()
+                worker_resource_sig = job_request.resource_sig
                 
-                if not resource_current(current_resource_sig, msg):
+                if not resource_current(current_resource_sig, worker_resource_sig):
                     ## Send them a quit message:
-                    self.socket.send_pyobj(PyzmqJob(PyzmqJob.QUIT, None))
+                    quit_job = PyzmqJob(PyzmqJob.QUIT, None)
+                    if job_request.request_size > 1:
+                        quit_job = [quit_job]
+                        
+                    self.socket.send_pyobj(quit_job)
                     continue
+                
+                jobs = []
+                while not self.job_queue.empty() and len(jobs) < job_request.request_size:
+                    job = self.job_queue.get()
+                    jobs.append(job)
+                    self.job_queue.task_done()
                     
-                job = self.job_queue.get()
                 logging.log(logging.DEBUG-1, "Ventilator pushing job %d" % job.resource.index)
 
-                self.socket.send_pyobj(job)
-                self.job_queue.task_done()
+                if job_request.request_size > 1:
+                    self.socket.send_pyobj(jobs)
+                else:
+                    self.socket.send_pyobj(jobs[0])
                 
 #            for ind in range(self.start_ind, self.end_ind):
 #                sent = self.sent_list[ind]

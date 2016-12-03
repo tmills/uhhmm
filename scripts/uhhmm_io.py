@@ -11,7 +11,7 @@ import sys, linecache
 def read_input_file(filename):
     pos_seqs = list()
     token_seqs = list()
-    f = open(filename, 'r')
+    f = open(filename, 'r', encoding='utf-8')
     for line in f:
         pos_seq = list()
         token_seq = list()
@@ -31,7 +31,7 @@ def read_input_file(filename):
 
 def read_sample_file(filename):
     pos_seqs = list()
-    f = open(filename, 'r')
+    f = open(filename, 'r', encoding='utf-8')
     for line in f:
         pos_seq = list()
         line = line.replace('[', '').replace(']', '').replace("'", "")
@@ -60,11 +60,13 @@ def write_output(sample, stats, config, gold_pos=None):
     models = sample.models
     depth = len(models.fork)
     
+    #print("Default encoding is %s" % sys.getdefaultencoding() )
+    
     output_dir = config.get('io', 'output_dir')
     dict_file = config.get('io', 'dict_file')
     word_dict = dict()
     if dict_file != None:
-        f = open(dict_file, 'r')
+        f = open(dict_file, 'r', encoding='utf-8')
         for line in f:
             #pdb.set_trace()
             (word, index) = line.rstrip().split(" ")
@@ -73,16 +75,16 @@ def write_output(sample, stats, config, gold_pos=None):
     if gold_pos != None:
         sys_pos = extract_pos(sample)
         v = calcV.get_v(gold_pos, sys_pos)
-        f = open(output_dir + "/v_measure.txt", 'a')
+        f = open(output_dir + "/v_measure.txt", 'a', encoding='utf-8')
         f.write('%d\t%f\n' % (sample.iter,v))
         f.close()
         
         vi = calcV.get_vi(gold_pos, sys_pos)
-        f = open(output_dir + "/vi.txt", 'a')
+        f = open(output_dir + "/vi.txt", 'a', encoding='utf-8')
         f.write('%d\t%f\n' % (sample.iter,vi))
         f.close()
     
-    f = open(output_dir + "/beta.txt", 'a')
+    f = open(output_dir + "/beta.txt", 'a', encoding='utf-8')
     f.write('%d\t%s\n' % (sample.iter, np.array_str(models.pos.beta)))
     f.close()
     
@@ -115,13 +117,13 @@ def checkpoint(sample, config):
     pickle.dump(sample, out_file)
     out_file.close()
     
-    f = open(output_dir + "/logprobs.txt", 'a')
+    f = open(output_dir + "/logprobs.txt", 'a', encoding='utf-8')
     f.write('%d\t%f\n' % (sample.iter,sample.log_prob) )
     f.close()
     
 
 def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix="", depth=-1):
-    f = open(out_file, 'a' if depth > 0 else 'w')
+    f = open(out_file, 'a' if depth > 0 else 'w', encoding='utf-8')
     out_dim = dist.shape[-1]
     
     for ind,val in np.ndenumerate(dist):
@@ -140,7 +142,7 @@ def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix="",
     f.close()
 
 def write_lex_model(dist, out_file, word_dict=None):
-    f = open(out_file, 'w')
+    f = open(out_file, 'w', encoding='utf-8')
     out_dim = dist.shape[-1]
     for ind,val in np.ndenumerate(dist):
         lhs = ind[0:-1]
@@ -160,7 +162,7 @@ def write_lex_model(dist, out_file, word_dict=None):
 ## Here we add the word to the end separated by a semi-colon.
 ## One sentence per line, with tokens separated by spaces.
 def write_last_sample(sample, out_file, word_dict):
-    f = open(out_file, 'w')
+    f = open(out_file, 'w', encoding='utf-8')
     #pdb.set_trace()
     for sent_num,sent_state in enumerate(sample.hid_seqs):
         state_str = ""

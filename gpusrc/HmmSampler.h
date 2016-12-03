@@ -86,6 +86,7 @@ private:
     Indexer * p_indexer = NULL;
     DenseView* lexMatrix = NULL;
     Dense** dyn_prog = NULL;
+    //std::vector<Dense*> dyn_prog;
     Dense* start_state = NULL;
     Sparse* lexMultiplier = NULL;
     SparseView* pi = NULL;
@@ -95,7 +96,7 @@ private:
     Array* sum_dict = NULL;
     std::mt19937 mt;
     std::uniform_real_distribution<float> dist{0.0f,1.0f};
-    
+    int max_sent_len = 0;
 };
 
 #endif /* HmmSampler_hpp */

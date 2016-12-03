@@ -29,6 +29,8 @@ cdef class GPUModel:
 		cdef int pi_indptr_size = pi_indptr.size
 		cdef np.ndarray[float, ndim=2, mode="c"] lex = lex_dist
 		cdef int lex_dist_size = lex_dist.size
+		
+		#print("First 10 elements of data array are: %s" % (pi_data[0:10]) )
 		self.c_model = new Model(pi_num_rows, pi_num_cols, &pi_data[0], pi_data_size, &pi_indptr[0], pi_indptr_size, &pi_indices[0], pi_indices_size,\
 			&lex[0,0], lex_dist_size, lex_num_rows, lex_num_cols, a_max, b_max, g_max, depth)
 	def __dealloc__(self):
@@ -101,8 +103,7 @@ cdef class GPUHmmSampler:
 			wrapped_lists.append(wrapped_list)
 		return wrapped_lists
 	def sample(self, pi, vector[vector[int]] sents, int sent_index):  # need pi to conform to API
-		# print "Sent Index is " + str(sent_index)
-		log_probs = self.forward_pass(sents, sent_index) 
+		log_probs = self.forward_pass(sents, sent_index)
 		states = self.reverse_sample(sents, sent_index) 
 		return (states, log_probs)
 
