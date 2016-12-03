@@ -58,10 +58,14 @@ def main(argv):
     
     ## Store tag sequences of gold tagged sentences
     gold_seq = dict()
-    while len(gold_seq) < int(params.get('num_gold_sents', 0)) and len(gold_seq) < len(word_seq):
-      rand = randint(0,len(word_seq)-1)
-      if rand not in gold_seq.keys():
-        gold_seq[rand]=pos_seq[rand]
+    if 'num_gold_sents' in params and params['num_gold_sents'] == 'all':
+      for i in range(0, len(pos_seq)):
+        gold_seq[i] = pos_seq[i]
+    else:
+      while len(gold_seq) < int(params.get('num_gold_sents', 0)) and len(gold_seq) < len(word_seq):
+        rand = randint(0,len(word_seq)-1)
+        if rand not in gold_seq.keys():
+          gold_seq[rand]=pos_seq[rand]
     
     (samples, stats) = uhhmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), working_dir, pickle_file, gold_seq)
     

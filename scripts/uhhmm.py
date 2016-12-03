@@ -54,7 +54,7 @@ class Stats:
 # the EVidence SEQuenceS seen by the user (e.g., words in a sentence
 # mapped to ints).
 def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_dir, pickle_file=None, gold_seqs=None):    
-    
+
     global start_a, start_b, start_g
     global a_max, b_max, g_max
     start_a = int(params.get('starta'))
@@ -88,6 +88,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     
     logging.basicConfig(level=getattr(logging, debug),filename=logfile)
     logging.info("Starting beam sampling")
+
+    if (gold_seqs != None and 'num_gold_sents' in params):
+        logging.info('Using gold tags for %s sentences.' % str(params['num_gold_sents']))
 
     seed = int(params.get('seed', -1))
     if seed > 0:

@@ -99,19 +99,14 @@ user-modelblocks-location.txt:
 
 # Include relevant MB resources once the MB
 # location has been entered in the config file.
-
 ifdef MB
 ifneq ($(MB),.)
 include $(MB)/resource-general/Makefile
 include $(MB)/resource-linetrees/Makefile
 include $(MB)/resource-lcparse/Makefile
 include $(MB)/resource-gcg/Makefile
-include $(MB)/resource-upparse/Makefile
 endif
 endif
-
-LCPARSE-SCRIPTS=$(MB)/resource-lcparse/scripts
-LTREES-SCRIPTS=$(MB)/resource-linetrees/scripts
 
 # Penn Treebank
 user-ptb-location.txt:
@@ -242,10 +237,13 @@ data/simplewiki_all.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02t
 %.ints.txt: %.txt
 	cat $< | $(SCRIPTS)/lowercase.sh | perl $(SCRIPTS)/wordFile2IntFile.pl $*.dict > $@
 
+%.fromconll.linetoks: %.conll
+	cat $< | awk '{print $$5 "/" $$2}' | tr '\n' ' ' | sed 's/ \/ /\n/g' > $@
+
 %.small.txt: %.txt
 	head -100 $< > $@
 
-data/%.1kvocabfilter.txt: data/%.1kvocab data/%.txt
+%.1kvocabfilter.txt: %.1kvocab %.txt
 	python $(SCRIPTS)/filter_sentence_with_vocab.py $^ > $@
 
 data/hungltf_tagwords.txt: user-lorelei-location.txt
@@ -290,9 +288,6 @@ data/darpa_y1eval_set0,1,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt dat
 %-l3-20.words.txt: %-l20.words.txt
 	cat $^ | perl -lane 'if($$#F >= 2){ print $$_; }' > $@
 
-%-l3-20.words.txt: %-l20.words.txt
-	cat $^ | perl -lane 'if($$#F >= 2){ print $$_; }' > $@
-
 %.m2.words.txt: %.words.txt
 	cat $^ | perl $(SCRIPTS)/removeInfrequent.pl 2 > $@
 
@@ -304,12 +299,6 @@ data/darpa_y1eval_set0,1,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt dat
 
 %.len_gt3.txt: %.txt
 	cat $^ | perl -lane 'if($$#F > 2){ print $$_; }' > $@
-
-%.1kvocab: %.txt
-	cat $^ | $(SCRIPTS)/get_top_k_words.sh 1000 > $@
-
-%.rb.brackets: %.words.txt
-	cat $^ | perl $(SCRIPTS)/words2rb.pl > $@
 
 %.1kvocab: %.txt
 	cat $^ | $(SCRIPTS)/get_top_k_words.sh 1000 > $@
@@ -337,6 +326,7 @@ data/darpa_y1eval_set0,1,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt dat
 genmodel/%.morf.model: %.txt genmodel
 	morfessor-train -s $@ $<
 
+  
 
 #################################
 #
@@ -368,13 +358,15 @@ genmodel/%.morf.model: %.txt genmodel
 %.linetoks.txt: %.linetoks
 	cat $< > $@
 
+%.linetoks.txt: genmodel/$$*.linetoks
+	cat $< > $@
+
 # Generates a CoNLL-style table with test tags in column 4 and gold tags in column 5
 %.posgold.conll: %.conll $$(basename $$(basename %)).conll
 	paste <(cut -f -3 $<) <(cut -f 4 $(word 2, $^)) <(cut -f 5- $<) | sed 's/\t\t\+//g' > $@
   
 # Generates a space-delimited table of recall measures by iteration
 # for each sample file in the user-supplied project directory
-.PRECIOUS: /%.itermeasures
 /%.itermeasures: $(SCRIPTS)/extract_recall_curve.py $$(foreach file, $$(wildcard $$(dir /%)last_sample*txt), /$$(basename $$(basename $$(basename $$*))).$$(notdir $$(basename $$(basename $$(basename $$*))))-$$(subst last_sample,,$$(basename $$(notdir $$(file))))-$$(subst .,,$$(suffix $$(basename $$(basename $$*))))$$(suffix $$(basename $$*)).diffname.syneval) 
 	python $^ -m $(subst .,,$(suffix $*)) > $@
 
@@ -449,24 +441,3 @@ genmodel/%.morf.model: %.txt genmodel
 # Target is never made, so this always runs.
 %.plots: %.precision_curve.jpg %.recall_curve.jpg %.fscore_curve.jpg %.logprobs.jpg %.2.dfreq.jpg
 	$(info )
-
-# rules
-%.rules: %.brackets  $(LTREES-SCRIPTS)/trees2rules.pl
-	cat $< | sed 's/:/-COLON-/g;s/=/-EQUALS-/g' |  perl $(word 2,$^)  >  $@
-
-%.model: %.rules
-	cat $< | sort | uniq -c | sort -nr | awk '{"wc -l $< | perl -lane '\''print $$F[0]'\''" | getline t; u = $$1; $$1 = u/t; print;}' | awk '{p = $$1; for (i=1;i<NF;i++) $$i=$$(i+1);$$NF="="; $$(NF + 1)=p; tmp=$$2;$$2=$$3;$$3=tmp;$$1="R";print;}' > $@
-
-%.head.model: %.model $(LTREES-SCRIPTS)/rules2headmodel.py
-	cat $< | PYTHONPATH=$$PYTHONPATH:../modelblocks/resource-gcg/scripts python3 $(word 2, $^) > $@
-  
-# generates unlabeled stanford dependencies from linetrees file
-%.tokdeps: %.brackets $(LTREES-SCRIPTS)/trees2deps.py %.head.model
-	cat $< | PYTHONPATH=$$PYTHONPATH:../modelblocks/resource-gcg/scripts python3 $(word 2, $^) $(word 3, $^) > $@
-  
-# generates shallow trees from unlabeled stanford dependencies
-%.fromdeps.linetrees: MB=$(shell cat user-modelblocks-location.txt)
-%.fromdeps.linetrees: %.tokdeps $(LTREES-SCRIPTS)/deps2trees.py
-	cat $< | PYTHONPATH=$$PYTHONPATH:$(MB)/resource-gcg/scripts python $(word 2, $^) -f stanford > $@
-
-
