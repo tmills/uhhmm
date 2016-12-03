@@ -217,27 +217,13 @@ void HmmSampler::set_models(Model * models){
 }
 
 void HmmSampler::initialize_dynprog(int batch_size, int max_len){
-    //cout << "Initializing dyn_prog matrix with batch size = " << batch_size << " and max len = " << max_len << endl;
-    //for(int i = 0; i < dyn_prog.size(); i++){
-    //    delete dyn_prog[i];
-    //}
     
     max_sent_len = max_len;
-    //dyn_prog.clear();
-//    if(dyn_prog == NULL){    
-//        cout << "Allocating new dense matrices for dyn porg" << endl;
-        dyn_prog = new Dense*[max_len];
-        for(int i = 0; i < max_len; i++){
-            dyn_prog[i] = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
-        }
-/*    }else{
-        for(int i = 0; i < max_len; i++){
-            Dense* old_mat = dyn_prog[i];
-            dyn_prog[i] = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
-            delete old_mat;
-        }*/
-//    }
-    
+    dyn_prog = new Dense*[max_len];
+    for(int i = 0; i < max_len; i++){
+        dyn_prog[i] = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
+    }
+
     start_state = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
     for(int i = 0; i < batch_size; i++){
         start_state->operator()(0, i) = 1;
@@ -256,10 +242,6 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
     // np_sents is |batches| x max_len
     Dense* np_sents = get_sentence_array(sents, batch_max_len);
     csr_matrix_view<IndexArrayView,IndexArrayView,ValueArrayView>* pi_view = pi -> get_view();
-    //cout << "pi has " << pi_view->values.size() << " entries." << endl;
-    //cout << "First 5 ind entries of pi are " << pi_view->row_offsets[0] << ", " << pi_view->row_offsets[1] << ", " << pi_view->row_offsets[2] << ", " << pi_view->row_offsets[3] << ", " << pi_view->row_offsets[4] << ", " << endl;
-    //cout << "First 5 col entries of pi are " << pi_view->column_indices[0] << ", " << pi_view->column_indices[1] << ", " << pi_view->column_indices[2] << ", " << pi_view->column_indices[3] << ", " << pi_view->column_indices[4] << ", " << endl;
-    //cout << "First 5 data entries of pi are " << pi_view->values[0] << ", " << pi_view->values[1] << ", " << pi_view->values[2] << ", " << pi_view->values[3] << ", " << pi_view->values[4] << ", " << endl;
     
     array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
     
@@ -267,8 +249,6 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
     for(int sent_ind = 0; sent_ind < sents.size(); sent_ind++){
         log_probs.push_back(0);
     }
-    // cout << "Pi " << endl;
-    // cusp::print(*pi_view);
     
     
     for(int ind = 0; ind < batch_max_len; ind++){
@@ -292,42 +272,6 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
         multiply(*pi_view, *prev_mat, *cur_mat);
         
         //cout << "Done with transition" << endl;
-        
-        // this is all debugging the transition:
-        //int sample_sent_ind = 0;
-//        for(int i = 0; i < p_indexer->get_state_size(); i++){
-/*
-        if(ind == 0){
-            if( (*prev_mat)(ind, sample_sent_ind) > 0 ){
-                cout << "prev_mat[" << ind << ", " << sample_sent_ind << "]: " << (*prev_mat)(ind, sample_sent_ind) << endl;
-                //array2d<float, device_memory>::row_view pi_row = pi_view->row(i);
-
-//                for(int j = 0; j < p_indexer->get_state_size(); j++){
-//                    if(pi->operator()(j)(i) > 0){
-//                      cout << "pi has a non-zero entry at [" << j << ", " << i << "]" << endl;
-//                    }
-//                }
-                    
-                // look for all the non-zero elements in row i of the pi matrix:
-                //int row_nnzs = pi_view->row_offsets[i+1] - pi_view->row_offsets[i];
-                //cout << "The " << i << "^th row of the pi matrix has " << row_nnzs << " non-zero entries" << endl;
-                int col_nnzs = 0;
-                for(int j = 0; j < pi_view->column_indices.size(); j++){
-                    if(pi_view->column_indices[j] == ind){
-                        cout << "Found a column index with value " << ind << endl;
-                        col_nnzs++;
-                    }
-                }
-                cout << "The " << ind << "^th column of the pi matrix has " << col_nnzs << " non-zero entries" << endl;
-            }
-            for(int j = 0; j < p_indexer->get_state_size(); j++){
-                if( (*cur_mat)(j, sample_sent_ind) > 0 ){
-                    cout << "cur_mat[" << j << ", " << sample_sent_ind << "]: " << (*cur_mat)(j, sample_sent_ind) << endl;
-                }
-            }
-        }
-        cout << endl;
-*/
 //            cout << "performing observation multiplications" << endl;
 
         // for now incorporate the evidence sentence-by-sentence:
@@ -361,15 +305,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             blas::scal(dyn_prog_col, 1.0f/normalizer);
             //    cout << "Adding logged normalizer to sentence logprobs" << endl;
             log_probs[sent_ind] += log10f(normalizer);
-        }
-            
-            
-            /* cancel this for now -- maybe come back later:
-            // incorporating evidence is optimized and less easy to understand -- evidence matrix
-            // is batch_size x vocab_size and massively redundant so we decompose it
-            // first get the vector representing the leading edge of every sentence in the batch:
-            array1d<float, device_memory>::column_view tokens = np_sents->column(ind);
-            */
+        }   
     }
     
     //cout << "Finished forward pass (cuda) and returning vector with " << log_probs.size() << " elements." << endl;
@@ -380,7 +316,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
     //cout << "Reverse sampling batch with starting sent index of " << sent_index << endl;
     // auto t2 = Clock::now();
     std::vector<std::vector<State>> sample_seqs;
-    std::vector<State> *sample_seq;
+    std::vector<State> sample_seq;
     std::vector<int> sample_t_seq;
     int last_index, sample_t, sample_depth; // , t, ind; totalK, depth,
     int batch_size = sents.size();
@@ -394,7 +330,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
     
 //    for(std::vector<int> sent : sents){
     for(int sent_ind = 0; sent_ind < batch_size; sent_ind++){
-        sample_seq = new std::vector<State>();
+        sample_seq = std::vector<State>();
         //cout << "Processing sentence " << sent_ind << " of the batch" << endl;
         std::vector<int> sent = sents[sent_ind];
         //for(int token_ind = 0; token_ind < sent.size(); token_ind++){
@@ -426,7 +362,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         }
         // auto t3 = Clock::now();
         //cout << "x3" << endl;
-        sample_seq->push_back(sample_state);
+        sample_seq.push_back(sample_state);
         sample_t_seq.push_back(sample_t);
         // skip some error handling
     
@@ -439,14 +375,14 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
             if(!sample_state.depth_check()){
               cout << "Depth error in state assigned at index" << t << endl;
             }
-            sample_seq->push_back(sample_state);
+            sample_seq.push_back(sample_state);
             sample_t_seq.push_back(sample_t);
             // auto t12 = Clock::now();
             // cout << "backpass2inside: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t12 - t11).count() * nano_to_sec << " s" << endl;
 
         }
         // auto t4 = Clock::now();
-        std::reverse(sample_seq->begin(), sample_seq->end());
+        std::reverse(sample_seq.begin(), sample_seq.end());
         //cout << '3' << endl;
         //cout << sample_seq->size() << endl;
         // auto t5 = Clock::now();
@@ -456,13 +392,9 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         //for (int k : sample_t_seq){
         //    cout << sent_index << " : " << k  << endl;
         //}
-        sample_seqs.push_back(*sample_seq);
+        sample_seqs.push_back(sample_seq);
     }
     
-//    for(int i = 0; i < batch_max_len; i++){
-//        delete dyn_prog[i];
-//    }
-
     //cout << "Done with reverse()" << endl;
     return sample_seqs;
 }
@@ -544,6 +476,13 @@ HmmSampler::HmmSampler(int seed) : seed(seed){
     }
 }
 HmmSampler::~HmmSampler(){
+    if(dyn_prog != NULL){
+        for(int i = 0; i < max_sent_len; i++){
+            delete dyn_prog[i];
+        }
+        delete[] dyn_prog;
+    }
+    delete start_state;
     //delete[] dyn_prog;
     //delete p_model;
     delete p_indexer;
