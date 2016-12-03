@@ -82,7 +82,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     infinite_sample_prob = float(params.get('infinite_prob', 0.0))
     batch_size = min(num_sents, int(params.get('batch_size', num_sents)))
     gpu = bool(int(params.get('gpu', 0)))
-
+    gpu_batch_size = min(num_sents, int(params.get('gpu_batch_size', num_sents)))
     return_to_finite = False
     ready_for_sample = False
     
@@ -189,13 +189,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     logging.debug(list(map(lambda x: x.str(), hid_seqs[0])))
 
     workDistributer = WorkDistributerServer(ev_seqs, working_dir)
-    logging.info("GPU is %s" % gpu)
+    logging.info("GPU is %s with batch size %d" % (gpu, gpu_batch_size) )
     logging.info("Start a new worker with python3 scripts/workers.py %s %d %d %d %d" % (workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1))
     
     ## Initialize all the sub-processes with their input-output queues
     ## and dimensions of matrix they'll need    
     if num_procs > 0:
-        inf_procs = start_local_workers_with_distributer(workDistributer, maxLen, num_procs, gpu)
+        inf_procs = start_local_workers_with_distributer(workDistributer, maxLen, num_procs, gpu, gpu_batch_size)
         signal.signal(signal.SIGINT, lambda x,y: handle_sigint(x,y, inf_procs))
     
     elif cluster_cmd != None:
