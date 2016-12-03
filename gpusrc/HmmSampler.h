@@ -86,6 +86,7 @@ private:
     Indexer * p_indexer = NULL;
     DenseView* lexMatrix = NULL;
     Dense** dyn_prog = NULL;
+    //std::vector<Dense*> dyn_prog;
     Dense* start_state = NULL;
     Sparse* lexMultiplier = NULL;
     SparseView* pi = NULL;

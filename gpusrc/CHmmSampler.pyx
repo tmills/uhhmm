@@ -103,8 +103,7 @@ cdef class GPUHmmSampler:
 			wrapped_lists.append(wrapped_list)
 		return wrapped_lists
 	def sample(self, pi, vector[vector[int]] sents, int sent_index):  # need pi to conform to API
-		# print "Sent Index is " + str(sent_index)
-		log_probs = self.forward_pass(sents, sent_index) 
+		log_probs = self.forward_pass(sents, sent_index)
 		states = self.reverse_sample(sents, sent_index) 
 		return (states, log_probs)
 

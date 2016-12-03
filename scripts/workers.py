@@ -28,9 +28,6 @@ def start_local_workers(host, jobs_port, results_port, models_port, maxLen, num_
     processes = []
     logging.info("Worker intializing GPU status: %s" % gpu)
     for i in range(0, num_workers):
-        if i > 0:   
-            gpu = False
-            batch_size = 1
         fs = PyzmqWorker.PyzmqWorker(host, jobs_port, results_port, models_port, maxLen, tid=i, gpu=gpu, batch_size=batch_size)
         signal.signal(signal.SIGTERM, fs.handle_sigterm)
         signal.signal(signal.SIGINT, fs.handle_sigint)
