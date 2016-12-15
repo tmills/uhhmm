@@ -9,9 +9,7 @@ THISDIR := $(dir $(abspath $(word $(words $(MAKEFILE_LIST)),$(MAKEFILE_LIST))))
 SCRIPTS  := $(THISDIR)/scripts
 CUDA_PATH:=/usr/local/cuda
 PYTHON_VERSION:=$(shell python3 --version | sed 's,Python \([0-9]\.[0-9]\)\.[0-9],python\1,')
-NUMPY_INC=$(shell find /usr -name numpy | grep "${PYTHON_VERSION}" | grep "numpy/core/include" | sed 's,include/.*,include,')
-#NUMPY_INC=env/lib/${PYTHON_VERSION}/site-packages/numpy/core/include 
-#/usr/local/lib/python3.4/dist-packages/numpy/core/include
+NUMPY_INC=$(shell python3 -c 'import numpy; print(numpy.get_include())')
 PY3_LOC=env/bin/${PYTHON_VERSION}
 VPATH := genmodel data
 
