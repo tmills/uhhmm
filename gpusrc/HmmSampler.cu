@@ -273,7 +273,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
         multiply(*pi_view, *prev_mat, *cur_mat);
         
         //cout << "Done with transition" << endl;
-//            cout << "performing observation multiplications" << endl;
+        //cout << "performing observation multiplications" << endl;
 
         // for now incorporate the evidence sentence-by-sentence:
         for(int sent_ind = 0; sent_ind < sents.size(); sent_ind++){
@@ -352,7 +352,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
             //cout << dyn_prog_temp_col_view << endl;
             sample_t = get_sample(dyn_prog_temp_col_view);
             // sample_t = 0;
-            //cout << sample_t << endl;
+            //cout << "sample_t=" << sample_t << endl;
             sample_state = p_indexer -> extractState(sample_t);
             //cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
             if(!sample_state.depth_check()){
@@ -384,7 +384,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         }
         // auto t4 = Clock::now();
         std::reverse(sample_seq.begin(), sample_seq.end());
-        //cout << '3' << endl;
+        //cout << "x5" << endl;
         //cout << sample_seq->size() << endl;
         // auto t5 = Clock::now();
         // cout << "backpass1: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t3 - t2).count() * nano_to_sec << " s" << endl;
