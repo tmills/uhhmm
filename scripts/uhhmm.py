@@ -82,7 +82,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     infinite_sample_prob = float(params.get('infinite_prob', 0.0))
     batch_size = min(num_sents, int(params.get('batch_size', num_sents)))
     gpu = bool(int(params.get('gpu', 0)))
-    gpu_batch_size = min(num_sents, int(params.get('gpu_batch_size', num_sents)))
+    gpu_batch_size = min(num_sents, int(params.get('gpu_batch_size', 32)))
     return_to_finite = False
     ready_for_sample = False
     

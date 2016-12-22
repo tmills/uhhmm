@@ -44,7 +44,7 @@ cdef class HmmSampler(Sampler.Sampler):
         
         g_len = self.models.pos.dist.shape[1]
         w_len = self.models.lex.dist.shape[1]
-        lexMultiplier = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, self.indexer.get_state_size() / g_len)))
+        lexMultiplier = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, self.indexer.get_state_size() // g_len)))
         self.data = lexMultiplier.data
         self.indices = lexMultiplier.indices
         self.indptr = lexMultiplier.indptr
