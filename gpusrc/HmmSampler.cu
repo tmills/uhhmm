@@ -83,6 +83,7 @@ int HmmSampler::get_sample(AView &v){
         }
      }
      // cout << "get_sample() done." << endl;
+     // cout << "dart_target: " << dart_target << endl;
      return dart_target;
 }
 
