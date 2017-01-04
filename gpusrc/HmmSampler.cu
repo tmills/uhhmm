@@ -51,13 +51,14 @@ int Model::get_depth(){
 template <class AView>
 int HmmSampler::get_sample(AView &v){
     float dart;
+    // cout << "get_sample()" << endl;
     // array1d<float, device_memory> sum_dict(v.size()); // building a new array, maybe not needed
     // this is the equivalent of np.cumsum() or partial_sum in the stl:
     thrust::inclusive_scan(thrust::device, v.begin(), v.end(), sum_dict->begin());
     // cout << "v[0] = " << v[0] << "v[-1] = " << v[v.size()-1] << " with length " << v.size() << endl;
     // cout << "sum_dict[0] = " << (*sum_dict)[0] << "sum_dict[-1] = " << (*sum_dict)[sum_dict->size()-1] << " with length: " << sum_dict->size() <<  endl;
     //cusp::print(*sum_dict);
-    
+    // cout << "sum done" << endl; 
     // dart =  static_cast <float> (rand()) / static_cast <float> (RAND_MAX);// / RAND_MAX;
     int dart_target;
     int condition = 1;
@@ -67,7 +68,7 @@ int HmmSampler::get_sample(AView &v){
            // cout << "dart: "<< scientific << dart << endl;
            dart_target = thrust::upper_bound(thrust::device, sum_dict->begin(), sum_dict->end(), dart) - sum_dict->begin();
            // cout << "dart target (summed): " << dart_target << " " << scientific << (*sum_dict)[dart_target - 1] << " " << scientific << (*sum_dict)[dart_target] << " " << scientific  << (*sum_dict)[dart_target+ 1] << endl; 
-//           cout << "dart target (summed): " << dart_target << " ";
+           // cout << "dart target (summed): " << dart_target << " with v size=" << v.size() << endl;
            // float minus_one = (*sum_dict)[dart_target - 1];
            // printf( "%A" , minus_one);
            // cout  << " ";
@@ -76,11 +77,12 @@ int HmmSampler::get_sample(AView &v){
            // cout << " ";
            // float plus_one = (*sum_dict)[dart_target+ 1];
            // printf("%A\n", plus_one); 
-           if (v[dart_target] != 0.0f){
+           if (v[dart_target] != 0.0f && dart_target != v.size()){
                 condition = 0;
            }
         }
      }
+     // cout << "get_sample() done." << endl;
      return dart_target;
 }
 
@@ -232,6 +234,7 @@ void HmmSampler::initialize_dynprog(int batch_size, int max_len){
 
 std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents, int sent_index){
     // auto t1 = Clock::now();
+    // cout << "Forward" << endl;
     float normalizer;
     int a_max, b_max, g_max; // index, token, g_len;
     std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();
@@ -274,6 +277,8 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
         //cout << "Done with transition" << endl;
 //            cout << "performing observation multiplications" << endl;
 
+        auto trans_done = Clock::now();
+        
         // for now incorporate the evidence sentence-by-sentence:
         for(int sent_ind = 0; sent_ind < sents.size(); sent_ind++){
             // not every sentence in the batch will need the full batch size
@@ -305,7 +310,9 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             blas::scal(dyn_prog_col, 1.0f/normalizer);
             //    cout << "Adding logged normalizer to sentence logprobs" << endl;
             log_probs[sent_ind] += log10f(normalizer);
-        }   
+        }
+        
+        auto norm_done = Clock::now();
     }
     
     //cout << "Finished forward pass (cuda) and returning vector with " << log_probs.size() << " elements." << endl;
@@ -313,7 +320,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
 }
 
 std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vector<int>> sents, int sent_index){
-    //cout << "Reverse sampling batch with starting sent index of " << sent_index << endl;
+    // cout << "Reverse sampling batch with starting sent index of " << sent_index << endl;
     // auto t2 = Clock::now();
     std::vector<std::vector<State>> sample_seqs;
     std::vector<State> sample_seq;
@@ -455,10 +462,21 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
 }
 
 std::tuple<std::vector<std::vector<State> >, std::vector<float>> HmmSampler::sample(std::vector<std::vector<int>> sents, int sent_index) {
-    
-    std::vector<float> log_probs = forward_pass(sents, sent_index);
-    
-    std::vector<std::vector<State> > states = reverse_sample(sents, sent_index);
+    std::vector<float> log_probs;
+    std::vector<std::vector<State> > states;
+
+    try{
+        log_probs = forward_pass(sents, sent_index);
+    }catch(thrust::system_error &e){
+        cerr << "Error in forward pass: " << e.what() << endl;
+        exit(-1);
+    }
+    try{
+        states = reverse_sample(sents, sent_index);
+    }catch(thrust::system_error &e){
+        cerr << "Error in reverse sample: " << e.what() << endl;
+        exit(-1);
+    }
     
     
     return std::make_tuple(states, log_probs);
