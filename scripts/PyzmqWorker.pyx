@@ -216,9 +216,7 @@ cdef class PyzmqWorker:
                 success = True
                 t0 = time.time()
                 try:
-                    if len(sent_batch) > 32:
-                        logging.error("Max sentence batch is currently 32")
-                    elif len(sent_batch) in [1,2,4,8,16,32]:
+                    if len(sent_batch) in [1,2,4,8,16,32,64,128,256]:
                         #logging.info("Batch has acceptable length of %d" % (len(sent_batch)))
                         (sent_samples, log_probs) = sampler.sample(pi, sent_batch, sent_index)
                     else:
@@ -227,12 +225,17 @@ cdef class PyzmqWorker:
                         sent_samples = []
                         log_probs = []
                         
-                        for mini_batch_size in (16,8,4,2,1):
+                        for mini_batch_size in (256,128,64,32,16,8,4,2,1):
                             if len(sent_batch) >= mini_batch_size:
                                 sub_batch = sent_batch[0:mini_batch_size]
                                 sent_batch = sent_batch[mini_batch_size:]
                                
-                                (sub_samples, sub_probs) = sampler.sample(pi, sub_batch, sent_index)
+                                try:
+                                    (sub_samples, sub_probs) = sampler.sample(pi, sub_batch, sent_index)
+                                except e as Exception:
+                                    print("Exception in sampler: %s" % (str(e)))
+                                    raise Exception
+                                    
                                 sent_samples.extend(sub_samples)
                                 log_probs.extend(sub_probs)
                                 
