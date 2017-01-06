@@ -110,7 +110,7 @@ for sentnum, line in enumerate(sys.stdin):
 #		string.append(segmenter)
 	for subs in string[::-1]:
 		if subs != segmenter and subs != initial:
-			print subs[0], (';').join(subs[1:-1]), subs[-1]
+			print(subs[0], (';').join(subs[1:-1]), subs[-1])
 		else:
-			print subs
+			print(subs)
 #out.close()
