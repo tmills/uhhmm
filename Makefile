@@ -271,6 +271,9 @@ data/darpa_y1eval_set0,1,2.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt dat
 data/darpa_y1eval_set0,1,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_set1.tagwords.txt data/darpa_y1eval_setE.tagwords.txt
 	cat $^ > $@
 
+gendata/ktb.linetrees.txt: gendata/ktb.trees.txt
+	cat $^ | perl -pe 's/\n/<NEWLINE>/g' | perl -pe 's/;;.*?<NEWLINE>/\n/g;s/<NEWLINE>/ /g;s/  */ /g'  | perl -pe 's/^ *//g' | grep -v "^$$" > $@
+
 %.words.txt: %.tagwords.txt
 	cat $^ | $(SCRIPTS)/tagwords2words.sh > $@
 
