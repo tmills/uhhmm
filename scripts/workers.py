@@ -13,17 +13,17 @@ import PyzmqWorker
 def start_cluster_workers(work_distributer, cluster_cmd, maxLen, gpu):
     logging.debug("Cluster command is %s" % cluster_cmd)
 
-    cmd_str = 'python3 %s/scripts/workers.py %s %d %d %d %d %s' % (os.getcwd(), work_distributer.host, work_distributer.jobs_port, work_distributer.results_port, work_distributer.models_port, maxLen, gpu)
+    cmd_str = 'python3 %s/scripts/workers.py %s %d %d %d %d %s 1 None' % (os.getcwd(), work_distributer.host, work_distributer.jobs_port, work_distributer.results_port, work_distributer.models_port, maxLen, gpu)
     submit_cmd = [ cmd_arg.replace("%c", cmd_str) for cmd_arg in cluster_cmd.split()]
     logging.info("Making cluster submit call with the following command: %s" % str(submit_cmd))
     subprocess.call(submit_cmd)
     
 def start_local_workers_with_distributer(work_distributer, maxLen, num_workers, gpu, batch_size=10):
     logging.info("Starting workers with maxLen=%d and num_workers=%d" % (maxLen, num_workers) )
-    return start_local_workers(work_distributer.host, work_distributer.jobs_port, work_distributer.results_port, work_distributer.models_port, maxLen, num_workers, gpu, batch_size)
+    return start_local_workers(work_distributer.host, work_distributer.jobs_port, work_distributer.results_port, work_distributer.models_port, maxLen, num_workers, gpu, None, batch_size)
     
-def start_local_workers(host, jobs_port, results_port, models_port, maxLen, num_workers, gpu, batch_size=10):
-    logging.info("Starting %d workers at host %s with jobs_port=%d, results_port=%d, models_port=%d, maxLen=%d" % (num_workers, host, jobs_port, results_port, models_port, maxLen) )
+def start_local_workers(host, jobs_port, results_port, models_port, maxLen, num_workers, gpu, max_runtime, batch_size=10):
+    logging.info("Starting %d workers at host %s with jobs_port=%d, results_port=%d, models_port=%d, maxLen=%d, maxRuntime=%s" % (num_workers, host, jobs_port, results_port, models_port, maxLen, max_runtime) )
     multiprocessing.set_start_method('spawn')
     processes = []
     logging.info("Worker intializing GPU status: %s" % gpu)
@@ -31,7 +31,7 @@ def start_local_workers(host, jobs_port, results_port, models_port, maxLen, num_
         if i > 0:   
             gpu = False
             batch_size = 1
-        fs = PyzmqWorker.PyzmqWorker(host, jobs_port, results_port, models_port, maxLen, tid=i, gpu=gpu, batch_size=batch_size, level=logging.getLogger().getEffectiveLevel())
+        fs = PyzmqWorker.PyzmqWorker(host, jobs_port, results_port, models_port, maxLen, tid=i, gpu=gpu, batch_size=batch_size, max_runtime_in_seconds=max_runtime, level=logging.getLogger().getEffectiveLevel())
         signal.signal(signal.SIGTERM, fs.handle_sigterm)
         signal.signal(signal.SIGINT, fs.handle_sigint)
         signal.signal(signal.SIGALRM, fs.handle_sigalarm)
@@ -44,8 +44,8 @@ def start_local_workers(host, jobs_port, results_port, models_port, maxLen, num_
 def main(args):
     logging.basicConfig(level=logging.INFO)
     
-    if len(args) != 1 and len(args) != 5 and len(args) != 6:
-        print("ERROR: Wrong number of arguments! Two run modes -- One argument of a file with properties or 5-6 arguments with properties.")
+    if len(args) != 1 and len(args) != 6 and len(args) != 7 and len(args) != 8:
+        print("ERROR: Wrong number of arguments! Two run modes -- One argument of a file with properties or 6-8 arguments with properties.")
         sys.exit(-1)
         
     if len(args) == 1:
@@ -59,12 +59,16 @@ def main(args):
                     break
             else:
                 time.sleep(10)
-    
+
+    max_runtime = None
+    if len(args) == 8:
+        max_runtime = int(args[7])
+
     num_workers = 1
-    if len(args) == 7:
+    if len(args) >= 7:
         num_workers = int(args[6])
     
-        processes = start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), num_workers, bool(args[5]))
+        processes = start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), num_workers, bool(args[5]), max_runtime)
     
 #         for i in range(0, num_workers):
 #             fs = PyzmqWorker.PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), tid=i)
@@ -79,7 +83,7 @@ def main(args):
             processes[i].join()
 
     else:
-        start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), 1, bool(args[5]))
+        start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), 1, bool(args[5]), max_runtime)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
