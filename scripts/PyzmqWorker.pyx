@@ -220,13 +220,14 @@ cdef class PyzmqWorker:
                         #logging.info("Batch has acceptable length of %d" % (len(sent_batch)))
                         (sent_samples, log_probs) = sampler.sample(pi, sent_batch, sent_index)
                     else:
-                        #logging.info("Batch size doesn't match power of 2 -- breaking into sub-batches")
+                        logging.info("Batch size %d doesn't match power of 2 -- breaking into sub-batches" % (len(sent_batch) ) )
                         ## have some number of batches < 32 but not a power of 2
                         sent_samples = []
                         log_probs = []
                         
                         for mini_batch_size in (256,128,64,32,16,8,4,2,1):
                             if len(sent_batch) >= mini_batch_size:
+                                logging.info("Processing mini-batch of size %d" % (mini_batch_size) )
                                 sub_batch = sent_batch[0:mini_batch_size]
                                 sent_batch = sent_batch[mini_batch_size:]
                                
@@ -239,7 +240,7 @@ cdef class PyzmqWorker:
                                 sent_samples.extend(sub_samples)
                                 log_probs.extend(sub_probs)
                                 
-                        #logging.info("After chopping up final batch, we have %d samples processed." % (len(sent_samples)))
+                        logging.info("After chopping up final batch, we have %d samples processed." % (len(sent_samples)))
                 except Exception as e:
                     logging.warning("Warning: Sentence %d had a parsing error %s." % (sent_index, e))
                     sent_sample = None
