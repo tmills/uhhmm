@@ -20,3 +20,6 @@ analysis
 build
 data/countries
 gendata
+*.o
+*.so
+*.a

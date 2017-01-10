@@ -2,7 +2,7 @@
 
 import zmq
 from multiprocessing import Process
-from PyzmqMessage import get_file_signature, resource_current, ModelWrapper, PyzmqJob, SentenceJob, CompileJob, CompletedJob, PyzmqParse, CompiledRow
+from PyzmqMessage import get_file_signature, resource_current, ModelWrapper, PyzmqJob, SentenceJob, CompileJob, CompletedJob, PyzmqParse, CompiledRow, SentenceRequest, RowRequest
 import multiprocessing
 import logging
 import os
@@ -27,7 +27,7 @@ from uhhmm_io import printException, ParsingError
 
        
 cdef class PyzmqWorker:
-    def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, gpu=False, seed=0, level=logging.INFO):
+    def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, gpu=False, batch_size=8, seed=0, level=logging.INFO):
         #Process.__init__(self)
         self.host = host
         self.jobs_port = jobs_port
@@ -42,10 +42,11 @@ cdef class PyzmqWorker:
         self.model_file_sig = None
         self.indexer = None
         self.gpu = gpu
-        # print('GPU %s' % self.gpu)
+        self.batch_size = batch_size
+        #print('GPU %s with batch size %d' % (self.gpu, self.batch_size) )
 
     def __reduce__(self):
-        return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.gpu, self.seed, self.debug_level), None)
+        return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.gpu, self.batch_size, self.seed, self.debug_level), None)
         
     def run(self):
         logging.basicConfig(level=self.debug_level)
@@ -127,7 +128,7 @@ cdef class PyzmqWorker:
     def processRows(self, models, jobs_socket, results_socket):
         while True:
             try:
-                ret_val = jobs_socket.send_pyobj(self.model_file_sig)
+                ret_val = jobs_socket.send_pyobj(RowRequest(self.model_file_sig))
                 job = jobs_socket.recv_pyobj()
             except Exception as e:
                 ## Timeout in the job socket probably means we're done -- quit
@@ -154,7 +155,7 @@ cdef class PyzmqWorker:
                 break
                 
     def processSentences(self, sampler, pi, jobs_socket, results_socket):
-        sampler.initialize_dynprog(self.maxLen)        
+        sampler.initialize_dynprog(self.batch_size, self.maxLen)
     
         sents_processed = 0
     
@@ -162,24 +163,42 @@ cdef class PyzmqWorker:
             return
 
         longest_time = 10
+        sent_batch = []
+        epoch_done = False
         
         while True: 
             logging.log(logging.DEBUG-1, "Worker %d waiting for job" % self.tid)
             try:
-                ret_val = jobs_socket.send_pyobj(self.model_file_sig)
-                job = jobs_socket.recv_pyobj()
+                
+                ret_val = jobs_socket.send_pyobj(SentenceRequest(self.model_file_sig, self.batch_size))
+                jobs = jobs_socket.recv_pyobj()
+                if self.batch_size == 1:
+                    job = jobs
+                else:
+                    job = jobs[0]
             except Exception as e:
                 ## Timeout in the job socket probably means we're done -- quit
                 logging.info("Exception raised while waiting for sentence: %s" % (e) )
                 self.quit = True
                 break
             if job.type == PyzmqJob.SENTENCE:
-                sentence_job = job.resource
-                sent_index = sentence_job.index
-                sent = sentence_job.ev_seq
+                if self.batch_size > 1:
+                    sent_index = job.resource.index
+                    for job in jobs:
+                        sentence_job = job.resource
+                        sent = sentence_job.ev_seq
+                        sent_batch.append(sent)
+                else:
+                    sentence_job = job.resource
+                    sent_index = sentence_job.index
+                    sent = sentence_job.ev_seq
+                    sent_batch.append(sent)
             elif job.type == PyzmqJob.QUIT:
-                logging.debug('Worker %d received signal from job server to check for new model' % self.tid)
-                break
+                logging.info('Worker %d received signal from job server to check for new model' % self.tid)
+                epoch_done = True
+                if len(sent_batch) == 0:
+                    ## We got the epoch done signal with no sentences to process
+                    break
             elif job.type == PyzmqJob.COMPILE:
                 logging.error("Worker %d received compile job from job server when expecting sentence job!")
                 raise Exception
@@ -189,48 +208,70 @@ cdef class PyzmqWorker:
 
             t0 = time.time()
         
-            success = True
         
-            try:
-                (sent_sample, log_prob) = sampler.sample(pi, sent, sent_index)
-            except Exception as e:
-                logging.warning("Warning: Sentence %d had a parsing error %s." % (sent_index, e))
-                sent_sample = None
-                log_prob = 0
-                success = False
-        
-        
-            if sent_index % self.out_freq == 0:
-                logging.info("Processed sentence {0} (Worker {1})".format(sent_index, self.tid))
+            if True: # len(sent_batch) >= self.batch_size or epoch_done:
+                #if self.batch_size > 1:
+                    #logging.info("Batch now has %d sentences and size is %d so starting to process" % (len(sent_batch), self.batch_size) )
 
-            t1 = time.time()
-        
-            if success:
-                logging.log(logging.DEBUG-1, "Worker %d has parsed sentence %d with result %s" % (self.tid, sent_index, list(map(lambda x: x.str(), sent_sample))))                
-            else:
-                logging.info("Worker %d was unsuccessful in attempt to parse sentence %d" % (self.tid, sent_index) )
+                success = True
+                t0 = time.time()
+                try:
+                    if len(sent_batch) in [1,2,4,8,16,32,64,128,256]:
+                        #logging.info("Batch has acceptable length of %d" % (len(sent_batch)))
+                        (sent_samples, log_probs) = sampler.sample(pi, sent_batch, sent_index)
+                    else:
+                        #logging.info("Batch size doesn't match power of 2 -- breaking into sub-batches")
+                        ## have some number of batches < 32 but not a power of 2
+                        sent_samples = []
+                        log_probs = []
+                        
+                        for mini_batch_size in (256,128,64,32,16,8,4,2,1):
+                            if len(sent_batch) >= mini_batch_size:
+                                sub_batch = sent_batch[0:mini_batch_size]
+                                sent_batch = sent_batch[mini_batch_size:]
+                               
+                                try:
+                                    (sub_samples, sub_probs) = sampler.sample(pi, sub_batch, sent_index)
+                                except e as Exception:
+                                    print("Exception in sampler: %s" % (str(e)))
+                                    raise Exception
+                                    
+                                sent_samples.extend(sub_samples)
+                                log_probs.extend(sub_probs)
+                                
+                        #logging.info("After chopping up final batch, we have %d samples processed." % (len(sent_samples)))
+                except Exception as e:
+                    logging.warning("Warning: Sentence %d had a parsing error %s." % (sent_index, e))
+                    sent_sample = None
+                    log_prob = 0
+                    success = False
 
-            if (t1-t0) > longest_time:
-                longest_time = t1-t0
-                logging.warning("Sentence %d was my slowest sentence to parse so far at %d s" % (sent_index, longest_time) )
+                if (self.batch_size == 1 and sent_index % self.out_freq == 0) or (self.batch_size > 1 and (sent_index // self.out_freq != (sent_index+len(sent_batch)) // self.out_freq)):
+                    logging.info("Processed sentence {0} (Worker {1})".format(sent_index, self.tid))
 
-            for state in sent_sample:
-                if not state.depth_check():
-                    print("Sentence %d has an error with the depth!" % (sent_index) )
-                    
-            parse = PyzmqParse(sent_index, sent_sample, log_prob, success)
-            sents_processed +=1
+                t1 = time.time()
+         
+                if not success:
+                    logging.info("Worker %d was unsuccessful in attempt to parse sentence %d" % (self.tid, sent_index) )
         
-            results_socket.send_pyobj(CompletedJob(PyzmqJob.SENTENCE, parse, parse.success))
+                if self.batch_size == 1 and (t1-t0) > longest_time:
+                    longest_time = t1-t0
+                    logging.warning("Sentence %d was my slowest sentence to parse so far at %d s" % (sent_index, longest_time) )
+
+                for ind,sent_sample in enumerate(sent_samples):
+                    parse = PyzmqParse(sent_index+ind, sent_sample, log_probs[ind], success)
+                    sents_processed +=1        
+                    results_socket.send_pyobj(CompletedJob(PyzmqJob.SENTENCE, parse, parse.success))
+
+                sent_batch = []
+
             if self.quit:
                 break
 
             if log_prob > 0:
                 logging.error('Sentence %d had positive log probability %f' % (sent_index, log_prob))    
 
-        # logging.info("Cumulative forward time %f and backward time %f" % (sampler.ff_time, sampler.bs_time))
         logging.debug("Worker %d processed %d sentences this iteration" % (self.tid, sents_processed))
-
 
     def handle_sigint(self, signum, frame):
         logging.info("Worker received quit signal... will terminate after cleaning up.")

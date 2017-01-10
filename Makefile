@@ -179,10 +179,10 @@ debug: config/debug.ini $(THISDIR)/debug.sh
 scripts/CHmmSampler.so: gpusrc/ChmmSampler.o gpusrc/libhmm.a
 	${CXX} -pthread -shared -Wl,-O1 -Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,relro -g -fstack-protector-strong -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2 -std=c++11 $^ -Lgpusrc/ -lhmm -L${CUDA_PATH}/lib64 -lcudart -o $@
 
-gpusrc/ChmmSampler.o: gpusrc/CHmmSampler.cpp
+gpusrc/ChmmSampler.o: gpusrc/CHmmSampler.cpp gpusrc/HmmSampler.h
 	${CXX} -pthread -DNDEBUG -g -fwrapv -O2 -Wall -g -fstack-protector-strong -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2 -fPIC -I$(NUMPY_INC) -I/usr/include/${PYTHON_VERSION} -I/usr/local/include/ -c $< -w -std=c++11  -L${CUDA_PATH}/lib64 -lcudart -L/usr/lib/x86_64-linux-gnu -l${PYTHON_VERSION} -Lgpusrc/ -lhmm -o $@
 
-gpusrc/CHmmSampler.cpp: gpusrc/CHmmSampler.pyx
+gpusrc/CHmmSampler.cpp: gpusrc/CHmmSampler.pyx gpusrc/HmmSampler.h
 	cython --cplus gpusrc/CHmmSampler.pyx
 
 gpusrc/libhmm.a: gpusrc/hmmsampler.o gpusrc/temp.o
@@ -192,7 +192,7 @@ gpusrc/libhmm.a: gpusrc/hmmsampler.o gpusrc/temp.o
 gpusrc/hmmsampler.o: gpusrc/temp.o
 	${CUDA_PATH}/bin/nvcc -dlink -o $@ $^ -lcudart --shared -Xcompiler -fPIC -m64 -L${CUDA_PATH}/lib64 -Xlinker -rpath -Xlinker ${CUDA_PATH}/lib64
 
-gpusrc/temp.o: gpusrc/HmmSampler.cu gpusrc/State.cu
+gpusrc/temp.o: gpusrc/HmmSampler.cu gpusrc/State.cu gpusrc/HmmSampler.h
 	${CUDA_PATH}/bin/nvcc -rdc=true -c -o $@ $< -std=c++11 --shared -Xcompiler -fPIC -m64
 
 config/myconfig.ini: config/d1train.ini
@@ -269,6 +269,9 @@ data/darpa_y1eval_set0,1,2.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt dat
 
 data/darpa_y1eval_set0,1,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_set1.tagwords.txt data/darpa_y1eval_setE.tagwords.txt
 	cat $^ > $@
+
+gendata/ktb.linetrees.txt: gendata/ktb.trees.txt
+	cat $^ | perl -pe 's/\n/<NEWLINE>/g' | perl -pe 's/;;.*?<NEWLINE>/\n/g;s/<NEWLINE>/ /g;s/  */ /g'  | perl -pe 's/^ *//g' | grep -v "^$$" > $@
 
 %.words.txt: %.tagwords.txt
 	cat $^ | $(SCRIPTS)/tagwords2words.sh > $@

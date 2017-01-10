@@ -3,7 +3,7 @@ import sys
 
 segmenter = '----------'
 initial = '0 0;BOG.0/BOG.0;-.0/-.0;-.0/-.0;-.0/-.0;-.0;0/0/0,0/0/0,0/0/0,0/0/0'
-#sents =["['-/- 0/0:9', '+/- 7/2:1', '+/+ 7/5:14', '+/+ 7/3:10', '+/+ 7/3:8', '+/+ 7/7:15', '+/+ 7/3:13', '+/+ 7/4:4']",] 
+#sents =["['-/- 0/0:9', '+/- 7/2:1', '+/+ 7/5:14', '+/+ 7/3:10', '+/+ 7/3:8', '+/+ 7/7:15', '+/+ 7/3:13', '+/+ 7/4:4']",]
 emptyCat = "-.0/-.0"
 relations = '0/0/0,0/0/0,0/0/0,0/0/0'
 
@@ -110,7 +110,7 @@ for sentnum, line in enumerate(sys.stdin):
 #		string.append(segmenter)
 	for subs in string[::-1]:
 		if subs != segmenter and subs != initial:
-			print subs[0], (';').join(subs[1:-1]), subs[-1]
+			print("%s %s %s" % (subs[0], (';').join(subs[1:-1]), subs[-1]))
 		else:
-			print subs
+			print(subs)
 #out.close()
