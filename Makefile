@@ -9,7 +9,9 @@ THISDIR := $(dir $(abspath $(word $(words $(MAKEFILE_LIST)),$(MAKEFILE_LIST))))
 SCRIPTS  := $(THISDIR)/scripts
 CUDA_PATH:=/usr/local/cuda
 PYTHON_VERSION:=$(shell python3 --version | sed 's,Python \([0-9]\.[0-9]\)\.[0-9],python\1,')
-NUMPY_INC=$(shell python3 -c 'import numpy; print(numpy.get_include())')
+NUMPY_INC=$(shell find /usr -name numpy | grep "${PYTHON_VERSION}" | grep "numpy/core/include" | sed 's,include/.*,include,')
+#NUMPY_INC=env/lib/${PYTHON_VERSION}/site-packages/numpy/core/include 
+#/usr/local/lib/python3.4/dist-packages/numpy/core/include
 PY3_LOC=env/bin/${PYTHON_VERSION}
 VPATH := genmodel data
 
@@ -235,9 +237,6 @@ data/simplewiki_all.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02t
 %.ints.txt: %.txt
 	cat $< | $(SCRIPTS)/lowercase.sh | perl $(SCRIPTS)/wordFile2IntFile.pl $*.dict > $@
 
-%.fromconll.linetoks: %.conll
-	cat $< | awk '{print $$5 "/" $$2}' | tr '\n' ' ' | sed 's/ \/ /\n/g' > $@
-
 %.small.txt: %.txt
 	head -100 $< > $@
 
@@ -356,86 +355,33 @@ genmodel/%.morf.model: %.txt genmodel
 %.linetoks.txt: %.linetoks
 	cat $< > $@
 
-%.linetoks.txt: genmodel/$$*.linetoks
-	cat $< > $@
-
 # Generates a CoNLL-style table with test tags in column 4 and gold tags in column 5
 %.posgold.conll: %.conll $$(basename $$(basename %)).conll
 	paste <(cut -f -3 $<) <(cut -f 4 $(word 2, $^)) <(cut -f 5- $<) | sed 's/\t\t\+//g' > $@
   
 # Generates a space-delimited table of recall measures by iteration
 # for each sample file in the user-supplied project directory
-/%.itermeasures: $(SCRIPTS)/extract_recall_curve.py $$(foreach file, $$(wildcard $$(dir /%)last_sample*txt), /$$(basename $$(basename $$(basename $$*))).$$(notdir $$(basename $$(basename $$(basename $$*))))-$$(subst last_sample,,$$(basename $$(notdir $$(file))))-$$(subst .,,$$(suffix $$(basename $$(basename $$*))))$$(suffix $$(basename $$*)).diffname.syneval) 
-	python $^ -m $(subst .,,$(suffix $*)) > $@
+/%.uhhmm-iter.constitevallist: $(SCRIPTS)/iters2constitevallist.py $$(foreach file, $$(wildcard $$(dir /%)last_sample*txt), /$$(basename $$(basename $$*)).$$(notdir $$(basename $$(basename $$*)))-$$(subst last_sample,,$$(basename $$(notdir $$(file))))-$$(subst .,,$$(suffix $$(basename $$*)))$$(suffix $$*).constiteval.txt) 
+	python $^ > $@
 
 # Because of oddities in how Make handles wildcard expansion in prereqs,
 # this rule is necessary to allow relative-path targets
-%.itermeasures: $$(abspath $$@)
-	$(info )
-
-# Calculates and plots frequency of uses of a given depth level by iteration
-# using the following template:
-# 
-#     <path>/<arbitrary-basename>.<depth-int>.dfreq.txt
-# 
-# The basename does not affect the creation of this target. Just pick something
-# memorable.
-# 
-.PRECIOUS: /%.dfreq.itermeasures
-/%.dfreq.itermeasures: $$(SCRIPTS)/extract_depth_counts.py $$(dir /%)last_sample*txt
-	python $^ -d$(subst .,,$(suffix $*)) > $@
-
-# Calculates and plots frequency of uses of depths >= a given level by iteration
-# using the following template:
-#
-#     <path>/<arbitrary-basename>.<depth-int>.g.dfreq.txt
-#
-# The basename does not affect the creation of this target. Just pick something
-# memorable.
-#
-.PRECIOUS: /%.g.dfreq.itermeasures
-/%.g.dfreq.itermeasures: $$(SCRIPTS)/extract_depth_counts.py $$(dir /%)last_sample*txt
-	python $^ -d$(subst .,,$(suffix $*)) -g > $@
-
-# Because of oddities in how Make handles wildcard expansion in prereqs,
-# this rule is necessary to allow relative-path targets
-.PRECIOUS: %.dfreq.itermeasures
-%.dfreq.itermeasures: $$(abspath $$@)
-	$(info )  
-
-.PRECIOUS: %.recall_curve.jpg
-%.recall_curve.jpg: $(SCRIPTS)/plot_curve.r %.recall.itermeasures
-	$^ -x Iteration -y 'Recall (%)' -h -o $@
-
-.PRECIOUS: %.precision_curve.jpg
-%.precision_curve.jpg: $(SCRIPTS)/plot_curve.r %.precision.itermeasures
-	$^ -x Iteration -y 'Precision (%)' -h -o $@
-
-.PRECIOUS: %.fscore_curve.jpg
-%.fscore_curve.jpg: $(SCRIPTS)/plot_curve.r %.fscore.itermeasures
-	$^ -x Iteration -y 'F-Score' -h -o $@
+%.uhhmm-iter.constitevallist: $$(abspath $$@);
 
 # Generates a plot from %logprobs.txt
 .PRECIOUS: %.logprobs.jpg
 %.logprobs.jpg: $(SCRIPTS)/plot_curve.r $$(dir %)logprobs.txt
 	$^ -x Iteration -y 'Log Probability' -o $@
 
-# Generates a plot from %.dfreq.txt  
-.PRECIOUS: %.dfreq.jpg
-%.dfreq.jpg: $(SCRIPTS)/plot_curve.r %.dfreq.itermeasures
-	$^ -x Iteration -y 'D = $(subst .,,$(suffix $*)) Frequency' -h -o $@
-
-# Generates a plot from %.g.dfreq.txt
-.PRECIOUS: %.g.dfreq.jpg
-%.g.dfreq.jpg: $(SCRIPTS)/plot_curve.r %.g.dfreq.itermeasures
-	$^ -x Iteration -y 'D >= $(subst .,,$(suffix $*)) Frequency' -h -o $@
-
-# Generates recall, logprob, and d2freq plots for a directory
-# Target is never made, so this always runs.
-%.plots: %.recall_curve.jpg %.precision_curve.jpg %.fscore_curve.jpg %.logprobs.jpg %.2.dfreq.jpg
-	$(info )
-
-# Generates recall, logprob, and d2freq plots for a directory
-# Target is never made, so this always runs.
-%.plots: %.precision_curve.jpg %.recall_curve.jpg %.fscore_curve.jpg %.logprobs.jpg %.2.dfreq.jpg
-	$(info )
+# Generates several learning curve plots for UHHMM output
+# by iteration as compared to a constituency gold standard.
+# 
+# Stem template:
+#     <corpus>.uhhmm.<post-processing>.uhhmm-iter.uhhmm_learning_curves
+#
+# Example:
+#     eve.uhhmm.nt-lower-nounary-nopunc.uhhmm-iter.uhhmm_learning_curves
+#
+# Output will be saved in *.jpg files contained in the target directory.
+#
+%.uhhmm_learning_curves: %.learning_curves %.logprobs.jpg;
