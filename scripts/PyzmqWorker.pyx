@@ -27,7 +27,7 @@ from uhhmm_io import printException, ParsingError
 
        
 cdef class PyzmqWorker:
-    def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, gpu=False, batch_size=8, seed=0, max_runtime_in_seconds=None, level=logging.INFO):
+    def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, gpu=False, batch_size=8, seed=0, level=logging.INFO):
         #Process.__init__(self)
         self.host = host
         self.jobs_port = jobs_port
@@ -43,20 +43,6 @@ cdef class PyzmqWorker:
         self.indexer = None
         self.gpu = gpu
         self.batch_size = batch_size
-
-        # Sometimes we may want a worker to run for no longer than a specified amount of time
-        #
-        # The following variables relate to that scenario
-        if max_runtime_in_seconds == None:
-            self.scheduled_time_of_death = float("inf")
-        else:
-            self.scheduled_time_of_death = time.time() + max_runtime_in_seconds
-        logging.info("Scheduled time of death is {}".format(self.scheduled_time_of_death))
-        self.longest_wait_for_new_model = 0
-        self.longest_wait_processing_sentences = 0
-        self.longest_wait_processing_rows = 0
-
-        #print('GPU %s with batch size %d' % (self.gpu, self.batch_size) )
 
     def __reduce__(self):
         return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.gpu, self.batch_size, self.seed, self.debug_level), None)
@@ -81,9 +67,6 @@ cdef class PyzmqWorker:
         while True:
             if self.quit:   
                 break
-            time_before_new_model = time.time()
-            if time_before_new_model + self.longest_wait_for_new_model >= self.scheduled_time_of_death:
-                break
             # logging.info("GPU for worker is %s" % self.gpu)
             sampler = None
             #  Socket to talk to server
@@ -100,60 +83,34 @@ cdef class PyzmqWorker:
                 raise e
             in_file.close()
             self.model_file_sig = get_file_signature(msg)
-            self.longest_wait_for_new_model = max(time.time() - time_before_new_model, self.longest_wait_for_new_model)
             
             if model_wrapper.model_type == ModelWrapper.HMM and not self.gpu:
-                time_before = time.time()
-                if time_before + self.longest_wait_processing_sentences < self.scheduled_time_of_death:
-                    sampler = HmmSampler.HmmSampler(self.seed)
-                    sampler.set_models(model_wrapper.model)
-                    self.processSentences(sampler, model_wrapper.model[1], jobs_socket, results_socket)
-                    self.longest_wait_processing_sentences = max(time.time()-time_before, self.longest_wait_processing_sentences)
-                else:
-                    logging.info("Worker {} will not process sentences due to lack of time before scheduled worker completion:\t{} + {} >= {}".format(self.tid, time_before, self.longest_wait_processing_sentences, self.scheduled_time_of_death))
-                    break
+                sampler = HmmSampler.HmmSampler(self.seed)
+                sampler.set_models(model_wrapper.model)
+                self.processSentences(sampler, model_wrapper.model[1], jobs_socket, results_socket)
 
             elif model_wrapper.model_type == ModelWrapper.INFINITE:
-                time_before = time.time()
-                if time_before + self.longest_wait_processing_sentences < self.scheduled_time_of_death:
-                    sampler = DepthOneInfiniteSampler.InfiniteSampler(self.seed)
-                    sampler.set_models(model_wrapper.model)
-                    self.processSentences(sampler)
-                    self.longest_wait_processing_sentences = max(time.time()-time_before, self.longest_wait_processing_sentences)
-                else:
-                    logging.info("Worker {} will not process sentences due to lack of time before scheduled worker completion:\t{} + {} >= {}".format(self.tid, time_before, self.longest_wait_processing_sentences, self.scheduled_time_of_death))
-                    break
+                sampler = DepthOneInfiniteSampler.InfiniteSampler(self.seed)
+                sampler.set_models(model_wrapper.model)
+                self.processSentences(sampler)
 
             elif model_wrapper.model_type == ModelWrapper.COMPILE:
-                time_before = time.time()
-                if time_before + self.longest_wait_processing_rows < self.scheduled_time_of_death:
-                    self.indexer = Indexer.Indexer(model_wrapper.model)
-                    self.processRows(model_wrapper.model, jobs_socket, results_socket)
-                    self.longest_wait_processing_rows = max(time.time()-time_before, self.longest_wait_processing_rows)
-                else:
-                    logging.info("Worker {} will not process rows due to lack of time before scheduled worker completion:\t{} + {} >= {}".format(self.tid, time_before, self.longest_wait_processing_rows, self.scheduled_time_of_death))
-                    break
+                self.indexer = Indexer.Indexer(model_wrapper.model)
+                self.processRows(model_wrapper.model, jobs_socket, results_socket)
 
             elif model_wrapper.model_type == ModelWrapper.HMM and self.gpu:
-                time_before = time.time()
-                if time_before + self.longest_wait_processing_sentences < self.scheduled_time_of_death:
-                    import CHmmSampler
-                    msg = msg + '.gpu'
-                    in_file = open(msg, 'rb') # loading a specific gpu model and trick the system to believe it is the normal model
-                    model_wrapper = pickle.load(in_file)
-                    sampler = CHmmSampler.GPUHmmSampler(self.seed)
-                    # print(model_wrapper.model)
-                    gpu_model = CHmmSampler.GPUModel(model_wrapper.model)
-                    sampler.set_models(gpu_model)
-                    in_file.close()
-                    # self.model_file_sig = get_file_signature(msg)
-                    pi = 0 # placeholder
-                    self.processSentences(sampler, pi, jobs_socket, results_socket)
-                    self.longest_wait_processing_sentences = max(time.time()-time_before, self.longest_wait_processing_sentences)
-                else:
-                    logging.info("Worker {} will not process sentences due to lack of time before scheduled worker completion:\t{} + {} >= {}".format(self.tid, time_before, self.longest_wait_processing_sentences, self.scheduled_time_of_death))
-                    break
-
+                import CHmmSampler
+                msg = msg + '.gpu'
+                in_file = open(msg, 'rb') # loading a specific gpu model and trick the system to believe it is the normal model
+                model_wrapper = pickle.load(in_file)
+                sampler = CHmmSampler.GPUHmmSampler(self.seed)
+                # print(model_wrapper.model)
+                gpu_model = CHmmSampler.GPUModel(model_wrapper.model)
+                sampler.set_models(gpu_model)
+                in_file.close()
+                # self.model_file_sig = get_file_signature(msg)
+                pi = 0 # placeholder
+                self.processSentences(sampler, pi, jobs_socket, results_socket)
 
             else:
                 logging.error("Received a model type that I don't know how to process!")
@@ -171,11 +128,6 @@ cdef class PyzmqWorker:
 
     def processRows(self, models, jobs_socket, results_socket):
         while True:
-            if time.time() >= self.scheduled_time_of_death:
-                logging.info("Worker {} will stop processing rows due to lack of time before scheduled worker completion:\t{} >= {}".format(self.tid, time.time(), self.scheduled_time_of_death))
-                self.quit = True
-                break
-
             try:
                 ret_val = jobs_socket.send_pyobj(RowRequest(self.model_file_sig))
                 job = jobs_socket.recv_pyobj()
@@ -216,11 +168,6 @@ cdef class PyzmqWorker:
         epoch_done = False
         
         while True: 
-            if time.time() >= self.scheduled_time_of_death:
-                logging.info("Worker {} will stop processing sentences due to lack of time before scheduled worker completion:\t{} >= {}".format(self.tid, time.time(), self.scheduled_time_of_death))
-                self.quit = True
-                break
-
             logging.log(logging.DEBUG-1, "Worker %d waiting for job" % self.tid)
             try:
                 

@@ -8,4 +8,3 @@ cdef class PyzmqWorker:
     cdef Indexer.Indexer indexer
     cdef str host
     cdef tuple model_file_sig
-    cdef float scheduled_time_of_death, longest_wait_for_new_model, longest_wait_processing_sentences, longest_wait_processing_rows
