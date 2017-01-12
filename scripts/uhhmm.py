@@ -459,6 +459,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     workDistributer.stop()
 
     for cur_proc in range(0,num_procs):
+        logging.info("Sending terminate signal to worker {} ...".format(cur_proc))
+        inf_procs[cur_proc].terminate()
+
+    for cur_proc in range(0,num_procs):
+        logging.info("Waiting to join worker {} ...".format(cur_proc))
         inf_procs[cur_proc].join()
         inf_procs[cur_proc] = None
         
