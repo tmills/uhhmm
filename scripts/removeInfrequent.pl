@@ -9,6 +9,7 @@ my $pos;
 my $word;
 
 while(<STDIN>){
+    s/^\s+|\s+$//g;
     push @lines, $_;
     my @words = split / /;
     my $num_words = $#words + 1;
