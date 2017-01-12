@@ -7,23 +7,27 @@ use strict;
 
 while(<STDIN>){
     my $tree = $_;
-    my @matches = m/\((\S+) ([^\)\(]+)\)/g;
+    my @matches = m/ ([^\)\(]+)\)/g;
     
-    for(my $i = 0; $i < $#matches; $i = $i + 2){
-      my $cat = $matches[$i];
-      my $lex = $matches[$i+1];
-      
+    for(my $i = 0; $i < $#matches; $i = $i + 1){
+      my $lex = $matches[$i];
+      #print "lex is $lex\n";
       my @morphs = split /[\+ ]/, $lex;
-      if($#morphs > 0){
         my $expanded_lex = "";
         for my $morph (@morphs){
-          my ($token, $pos) = $morph =~ m/(.+)\/(.+)/;
-          $expanded_lex .= " ($pos $token)";
+          if($morph =~ m/(.+)\/(.+)/){
+            my $token = $1;
+            my $pos = $2;
+            $expanded_lex .= " ($pos $token)";
+          }else{
+            $expanded_lex = $lex;
+          }
         }
-        $expanded_lex = substr $expanded_lex, 1;
+        if($#morphs > 1){
+          $expanded_lex = substr $expanded_lex, 1;
+        }
+
         $tree =~ s/\Q$lex\E/$expanded_lex/e;
-      }
-      
     }
     print $tree;
 }
