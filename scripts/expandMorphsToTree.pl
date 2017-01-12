@@ -7,11 +7,11 @@ use strict;
 
 while(<STDIN>){
     my $tree = $_;
-    my @matches = m/ ([^\)\(]+)\)/g;
+    my @matches = m/ ([^\(][^\)\(]*)[\) ]/g;
     
-    for(my $i = 0; $i < $#matches; $i = $i + 1){
+    for(my $i = 0; $i <= $#matches; $i = $i + 1){
       my $lex = $matches[$i];
-      #print "lex is $lex\n";
+      print "lex is $lex\n";
       my @morphs = split /[\+ ]/, $lex;
         my $expanded_lex = "";
         for my $morph (@morphs){
