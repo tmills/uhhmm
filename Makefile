@@ -372,9 +372,11 @@ genmodel/%.morf.model: %.txt genmodel
 %.uhhmm-iter.constitevallist: $$(abspath $$@);
 
 # Generates a plot from %logprobs.txt
-.PRECIOUS: %.logprobs.jpg
-%.logprobs.jpg: $(SCRIPTS)/plot_curve.r $$(dir %)logprobs.txt
+.PRECIOUS: %.logprob_curve.jpg
+%.logprob_curve.jpg: $(SCRIPTS)/plot_curve.r $$(dir %)logprobs.txt
 	$^ -x Iteration -y 'Log Probability' -o $@
+
+%.plots: %.learning_curves %.logprob_curve.jpg;
 
 # Generates several learning curve plots for UHHMM output
 # by iteration as compared to a constituency gold standard.

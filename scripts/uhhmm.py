@@ -167,11 +167,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         models = sample.models
         hid_seqs = sample.hid_seqs
         max_state_check(hid_seqs, models, "reading sample from pickle file") 
-        models.resetAll()
 
         pos_counts = models.pos.pairCounts[:].sum()
         lex_counts = models.lex.pairCounts[:].sum()
-        assert pos_counts == 0 and lex_counts == 0
 
         a_max = models.act[0].dist.shape[-1]
         b_max = models.cont[0].dist.shape[-1]

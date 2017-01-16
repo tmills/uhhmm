@@ -214,39 +214,45 @@ cdef class PyzmqWorker:
                 #if self.batch_size > 1:
                     #logging.info("Batch now has %d sentences and size is %d so starting to process" % (len(sent_batch), self.batch_size) )
 
-                success = True
+                success = False
                 t0 = time.time()
-                try:
-                    if len(sent_batch) in [1,2,4,8,16,32,64,128,256]:
-                        #logging.info("Batch has acceptable length of %d" % (len(sent_batch)))
-                        (sent_samples, log_probs) = sampler.sample(pi, sent_batch, sent_index)
-                    else:
-                        logging.info("Batch size %d doesn't match power of 2 -- breaking into sub-batches" % (len(sent_batch) ) )
-                        ## have some number of batches < 32 but not a power of 2
-                        sent_samples = []
-                        log_probs = []
-                        
-                        for mini_batch_size in (256,128,64,32,16,8,4,2,1):
-                            if len(sent_batch) >= mini_batch_size:
-                                logging.info("Processing mini-batch of size %d" % (mini_batch_size) )
-                                sub_batch = sent_batch[0:mini_batch_size]
-                                sent_batch = sent_batch[mini_batch_size:]
-                               
-                                try:
-                                    (sub_samples, sub_probs) = sampler.sample(pi, sub_batch, sent_index)
-                                except e as Exception:
-                                    print("Exception in sampler: %s" % (str(e)))
-                                    raise Exception
+                tries = 0
+
+                while not success and tries < 10:
+                    try:
+                        if tries > 0:
+                            logging.info("Error in previous sampling attempt. Retrying batch")
+                        if len(sent_batch) in [1,2,4,8,16,32,64,128,256]:
+                            #logging.info("Batch has acceptable length of %d" % (len(sent_batch)))
+                            (sent_samples, log_probs) = sampler.sample(pi, sent_batch, sent_index)
+                        else:
+                            logging.info("Batch size %d doesn't match power of 2 -- breaking into sub-batches" % (len(sent_batch) ) )
+                            ## have some number of batches < 32 but not a power of 2
+                            sent_samples = []
+                            log_probs = []
+                            
+                            for mini_batch_size in (256,128,64,32,16,8,4,2,1):
+                                if len(sent_batch) >= mini_batch_size:
+                                    logging.info("Processing mini-batch of size %d" % (mini_batch_size) )
+                                    sub_batch = sent_batch[0:mini_batch_size]
+                                    sent_batch = sent_batch[mini_batch_size:]
+                                   
+                                    try:
+                                        (sub_samples, sub_probs) = sampler.sample(pi, sub_batch, sent_index)
+                                    except Exception as e:
+                                        print("Exception in sampler: %s" % (str(e)))
+                                        raise Exception
+                                    sent_samples.extend(sub_samples)
+                                    log_probs.extend(sub_probs)
                                     
-                                sent_samples.extend(sub_samples)
-                                log_probs.extend(sub_probs)
-                                
-                        logging.info("After chopping up final batch, we have %d samples processed." % (len(sent_samples)))
-                except Exception as e:
-                    logging.warning("Warning: Sentence %d had a parsing error %s." % (sent_index, e))
-                    sent_sample = None
-                    log_prob = 0
-                    success = False
+                            logging.info("After chopping up final batch, we have %d samples processed." % (len(sent_samples)))
+                        success = True
+
+                    except Exception as e:
+                        logging.warning("Warning: Sentence %d had a parsing error %s." % (sent_index, e))
+                        tries += 1
+                        sent_sample = None
+                        log_prob = 0
 
                 if (self.batch_size == 1 and sent_index % self.out_freq == 0) or (self.batch_size > 1 and (sent_index // self.out_freq != (sent_index+len(sent_batch)) // self.out_freq)):
                     logging.info("Processed sentence {0} (Worker {1})".format(sent_index, self.tid))
