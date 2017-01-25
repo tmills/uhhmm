@@ -17,7 +17,7 @@ def norm_const(counts, alpha):
     return sum(gammaln(counts+alpha)) - gammaln(sum(counts+alpha))
 
 # helper function for unit tests
-def print_hid_seqs(hid_seqs): 
+def print_hid_seqs(hid_seqs):
     sent=0
     for b in hid_seqs:
         logging.debug("hid_seqs for sentence %d:" % sent)
@@ -26,7 +26,7 @@ def print_hid_seqs(hid_seqs):
         sent = sent+1
 
 # Sequentially Allocated Merge Split algorithm (Dahl 2005, section 4.1)
-# http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.131.3712&rep=rep1&type=pdf 
+# http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.131.3712&rep=rep1&type=pdf
 def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=False, ind = None):
     num_tokens = sum(map(len, ev_seqs))
     cum_length = np.cumsum(list(map(len, ev_seqs)))
@@ -43,7 +43,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=F
       pos0 = sample.hid_seqs[sent0_ind][word0_ind].g
       if equal: # propose merges and splits equally often (false by default)
           split = (np.random.binomial(1, .5) > .5)
-          subset = np.array([]) 
+          subset = np.array([])
           for ind in range(num_tokens):
               sent_ind, word_ind = indices(cum_length, ind)
               state = sample.hid_seqs[sent_ind][word_ind]
@@ -69,19 +69,19 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=F
         alpha_pos = np.array([alpha_pos_vec[pos0-1], alpha_pos_vec[pos1-1]])
     logging.debug("POS Dirichlet pseudocounts:")
     logging.debug(alpha_pos)
-        
+
     subset = np.array([], dtype=int) # indices with state pos0 or pos1
     for ind in range(num_tokens):
         sent_ind, word_ind = indices(cum_length, ind)
         state = sample.hid_seqs[sent_ind][word_ind]
         if ((state.g == pos0) or (state.g == pos1)):
-            subset = np.append(subset, ind)     
+            subset = np.append(subset, ind)
     np.random.shuffle(subset)
 
     # indices with state pos0 or pos1, excluding anchors
     subset1 = np.delete(subset, np.where(subset == ind0)[0])
     subset1 = np.delete(subset1, np.where(subset1 == ind1)[0])
-    
+
     sets = [[ind0], [ind1]] # sets of indices that go into the two POS tags
     if not split:
         st = {pos0: 0, pos1: 1} # binary indicator for the two POS tags that are being merged
@@ -119,7 +119,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=F
         norm_const_lex[newstate] += logterms1[newstate]
         lex_counts[newstate] = newcounts_lex[newstate]
         pos_counts[awa] = newcounts_pos1 if (newstate == 1) else newcounts_pos0
-    
+
     logging.debug("During split-merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
     if split:
         logging.info("Performing split operation of pos tag %d at iteration %d" % (pos0,iter))
@@ -139,8 +139,11 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=F
             new_models.lex.count(pos0, token, -1)
             new_models.lex.count(state.g, token, 1)
         logging.debug("During split the new shape of root is %s and exp is %s" % (str(new_models.root[0].dist.shape), str(new_models.exp[0].dist.shape) ) )
-        assert new_models.pos.dist.shape[1] == new_models.root[0].dist.shape[1], "new pos dist size inconsistent with root: %d" % new_models.pos.dist.shape[1]  
+        assert new_models.pos.dist.shape[1] == new_models.root[0].dist.shape[1], "new pos dist size inconsistent with root: %d" % new_models.pos.dist.shape[1]
     else:
+        ## The merge condition is simpler -- just pick the lower index of the
+        ## two merging categories and put all the tokens in the higher index into
+        ## the lower index tag, and remove the higher index tag from the model
         (pos0, pos1) = (min(pos0, pos1), max(pos0, pos1))
         if models.pos.dist.shape[1] <= 4:
             logging.warn("Tried to perform a merge with only %d state(s) left!" % (models.pos.dist.shape[1] - 2) )
@@ -166,9 +169,9 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=F
         if new_models.pos.dist.shape[1] == 3:
             logging.warn("POS now down to only 3 (1) states")
         logging.debug("During merge the new shape of root is %s and exp is %s" % (str(new_models.root[0].dist.shape), str(new_models.exp[0].dist.shape) ) )
-        assert new_models.pos.dist.shape[1] == new_models.root[0].dist.shape[1], "new pos dist size inconsistent with root: %d" % new_models.pos.dist.shape[1]  
+        assert new_models.pos.dist.shape[1] == new_models.root[0].dist.shape[1], "new pos dist size inconsistent with root: %d" % new_models.pos.dist.shape[1]
 
-    # acceptance probability calculation (see sections 4.3 and 2.1 in the Dahl paper)
+    # acceptance probability calculation (see sections 4.1 and 2.1 in the Dahl paper)
     logging.debug("norm_const_lex0 = " + str(norm_const_lex[0]))
     logging.debug("norm_const_lex1 = " + str(norm_const_lex[1]))
     norm_const_pos_prior = norm_const(np.zeros((2)), alpha_pos)
@@ -184,12 +187,12 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=F
     logging.debug("Log acceptance ratio = %s" % str(log_acc_ratio))
     if np.log(np.random.uniform()) < log_acc_ratio:
         logging.info("%s proposal was accepted." % ("Split" if split else "Merge") )
-        new_sample.models = new_models  
+        new_sample.models = new_models
         # for unit tests:
         # logging.debug("hid_seqs before split-merge:")
         # print_hid_seqs(sample.hid_seqs)
         # logging.debug("hid_seqs after split-merge:")
-        # print_hid_seqs(new_sample.hid_seqs) 
+        # print_hid_seqs(new_sample.hid_seqs)
         return new_models, new_sample #, [ind0, ind1]
     else:
         logging.info("%s proposal was rejected." % ("Split" if split else "Merge") )
