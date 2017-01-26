@@ -102,9 +102,10 @@ user-modelblocks-location.txt:
 ifdef MB
 ifneq ($(MB),.)
 include $(MB)/resource-general/Makefile
-include $(MB)/resource-linetrees/Makefile
-include $(MB)/resource-lcparse/Makefile
-include $(MB)/resource-gcg/Makefile
+include $(RESOURCE-LTREES)/Makefile
+include $(RESOURCE-LCPARSE)/Makefile
+include $(RESOURCE-GCG)/Makefile
+include $(RESOURCE-INCRSEM)/Makefile
 endif
 endif
 
@@ -345,7 +346,16 @@ genmodel/%.morf.model: %.txt genmodel
 # appropriately for use with syneval
 %.uhhmm.linetrees: last_sample$$(subst .,,$$(suffix %)).brackets$$(subst $$(word 1, $$(subst ., , $$*)),,$$(basename $$*)).linetrees
 	cat $< > $@
-  
+
+%.uhhmm.fjabpmodel: $(SCRIPTS)/uhhmmModel2condModel.py p_act_act_$$(subst .,,$$(suffix %)).txt p_act_root_$$(subst .,,$$(suffix %)).txt p_awa_cont_$$(subst .,,$$(suffix %)).txt \
+p_awa_exp_$$(subst .,,$$(suffix %)).txt p_awa_next_$$(subst .,,$$(suffix %)).txt p_awa_start_$$(subst .,,$$(suffix %)).txt \
+p_fork_$$(subst .,,$$(suffix %)).txt p_j_reduce_$$(subst .,,$$(suffix %)).txt p_j_trans_$$(subst .,,$$(suffix %)).txt \
+p_lex_given_pos$$(subst .,,$$(suffix %)).txt p_pos_$$(subst .,,$$(suffix %)).txt
+	python $< -i $(subst .,,$(suffix $*)) -d $(dir $*) > $@
+
+%.uhhmm.vitparse.linetrees: $$(subst .,-,$$(basename %)).$$(subst .,-,$$(basename $$*))-$$(subst .,,$$(suffix $$*))-uhhmm-fjabp-_c_+b2000_parsed.linetrees
+	mv $^ $@
+
 # *.brackets.linetrees (ModelBlocks) = %.brackets (UHHMM)
 # Used to generate linetrees from UHHMM output as input
 # to syneval
