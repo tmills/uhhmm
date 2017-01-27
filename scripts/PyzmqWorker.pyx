@@ -25,7 +25,7 @@ import Indexer
 import FullDepthCompiler
 from uhhmm_io import printException, ParsingError
 
-       
+
 cdef class PyzmqWorker:
     def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, gpu=False, batch_size=8, seed=0, level=logging.INFO):
         #Process.__init__(self)
@@ -46,7 +46,7 @@ cdef class PyzmqWorker:
 
     def __reduce__(self):
         return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.gpu, self.batch_size, self.seed, self.debug_level), None)
-        
+
     def run(self):
         logging.basicConfig(level=self.debug_level)
         context = zmq.Context()
@@ -56,16 +56,16 @@ cdef class PyzmqWorker:
         models_socket.connect(url)
 
         logging.debug("Worker %d connecting to work distribution server..." % self.tid)
-        jobs_socket = context.socket(zmq.REQ)        
+        jobs_socket = context.socket(zmq.REQ)
         jobs_socket.connect("tcp://%s:%d" % (self.host, self.jobs_port))
-        
+
         results_socket = context.socket(zmq.PUSH)
         results_socket.connect("tcp://%s:%d" % (self.host, self.results_port))
 
         logging.debug("Worker %d connected to all three endpoints" % self.tid)
-                
+
         while True:
-            if self.quit:   
+            if self.quit:
                 break
             # logging.info("GPU for worker is %s" % self.gpu)
             sampler = None
@@ -83,7 +83,7 @@ cdef class PyzmqWorker:
                 raise e
             in_file.close()
             self.model_file_sig = get_file_signature(msg)
-            
+
             if model_wrapper.model_type == ModelWrapper.HMM and not self.gpu:
                 sampler = HmmSampler.HmmSampler(self.seed)
                 sampler.set_models(model_wrapper.model)
@@ -92,11 +92,11 @@ cdef class PyzmqWorker:
             elif model_wrapper.model_type == ModelWrapper.INFINITE:
                 sampler = DepthOneInfiniteSampler.InfiniteSampler(self.seed)
                 sampler.set_models(model_wrapper.model)
-                self.processSentences(sampler)
+                self.processSentences(sampler, model_wrapper.model, jobs_socket, results_socket)
 
             elif model_wrapper.model_type == ModelWrapper.COMPILE:
                 self.indexer = Indexer.Indexer(model_wrapper.model)
-                self.processRows(model_wrapper.model, jobs_socket, results_socket)
+                self.processRows(model_wrapper.model, jobs_socket, results_socket, depth_limit=model_wrapper.depth)
 
             elif model_wrapper.model_type == ModelWrapper.HMM and self.gpu:
                 import CHmmSampler
@@ -126,7 +126,12 @@ cdef class PyzmqWorker:
         results_socket.close()
         models_socket.close()
 
-    def processRows(self, models, jobs_socket, results_socket):
+    def processRows(self, models, jobs_socket, results_socket, depth_limit=-1):
+        if depth_limit == -1:
+            depth = len(models.fork)
+        else:
+            depth = depth_limit
+
         while True:
             try:
                 ret_val = jobs_socket.send_pyobj(RowRequest(self.model_file_sig))
@@ -145,32 +150,32 @@ cdef class PyzmqWorker:
             else:
                 logging.debug("Received unexpected job type while expecting compile job! %s" % job.type)
                 raise Exception
-            
-            (indices, data) = FullDepthCompiler.compile_one_line(len(models.fork), row, models, self.indexer)
+
+            (indices, data) = FullDepthCompiler.compile_one_line(depth, row, models, self.indexer)
             row_output = CompiledRow(row, indices, data)
             results_socket.send_pyobj(CompletedJob(PyzmqJob.COMPILE, row_output, True) )
             if row % 10000 == 0:
                 logging.info("Compiling row %d" % row)
-            
+
             if self.quit:
                 break
-                
+
     def processSentences(self, sampler, pi, jobs_socket, results_socket):
         sampler.initialize_dynprog(self.batch_size, self.maxLen)
-    
+
         sents_processed = 0
-    
+
         if self.quit:
             return
 
         longest_time = 10
         sent_batch = []
         epoch_done = False
-        
-        while True: 
+
+        while True:
             logging.log(logging.DEBUG-1, "Worker %d waiting for job" % self.tid)
             try:
-                
+
                 ret_val = jobs_socket.send_pyobj(SentenceRequest(self.model_file_sig, self.batch_size))
                 jobs = jobs_socket.recv_pyobj()
                 if self.batch_size == 1:
@@ -203,13 +208,13 @@ cdef class PyzmqWorker:
             elif job.type == PyzmqJob.COMPILE:
                 logging.error("Worker %d received compile job from job server when expecting sentence job!")
                 raise Exception
-            
 
-            logging.log(logging.DEBUG-1, "Worker %d has received sentence %d" % (self.tid, sent_index))                
+
+            logging.log(logging.DEBUG-1, "Worker %d has received sentence %d" % (self.tid, sent_index))
 
             t0 = time.time()
-        
-        
+
+
             if True: # len(sent_batch) >= self.batch_size or epoch_done:
                 #if self.batch_size > 1:
                     #logging.info("Batch now has %d sentences and size is %d so starting to process" % (len(sent_batch), self.batch_size) )
@@ -230,13 +235,13 @@ cdef class PyzmqWorker:
                             ## have some number of batches < 32 but not a power of 2
                             sent_samples = []
                             log_probs = []
-                            
+
                             for mini_batch_size in (256,128,64,32,16,8,4,2,1):
                                 if len(sent_batch) >= mini_batch_size:
                                     logging.info("Processing mini-batch of size %d" % (mini_batch_size) )
                                     sub_batch = sent_batch[0:mini_batch_size]
                                     sent_batch = sent_batch[mini_batch_size:]
-                                   
+
                                     try:
                                         (sub_samples, sub_probs) = sampler.sample(pi, sub_batch, sent_index)
                                     except Exception as e:
@@ -244,7 +249,7 @@ cdef class PyzmqWorker:
                                         raise Exception
                                     sent_samples.extend(sub_samples)
                                     log_probs.extend(sub_probs)
-                                    
+
                             logging.info("After chopping up final batch, we have %d samples processed." % (len(sent_samples)))
                         success = True
 
@@ -258,17 +263,17 @@ cdef class PyzmqWorker:
                     logging.info("Processed sentence {0} (Worker {1})".format(sent_index, self.tid))
 
                 t1 = time.time()
-         
+
                 if not success:
                     logging.info("Worker %d was unsuccessful in attempt to parse sentence %d" % (self.tid, sent_index) )
-        
+
                 if self.batch_size == 1 and (t1-t0) > longest_time:
                     longest_time = t1-t0
                     logging.warning("Sentence %d was my slowest sentence to parse so far at %d s" % (sent_index, longest_time) )
 
                 for ind,sent_sample in enumerate(sent_samples):
                     parse = PyzmqParse(sent_index+ind, sent_sample, log_probs[ind], success)
-                    sents_processed +=1        
+                    sents_processed +=1
                     results_socket.send_pyobj(CompletedJob(PyzmqJob.SENTENCE, parse, parse.success))
 
                 sent_batch = []
@@ -277,7 +282,7 @@ cdef class PyzmqWorker:
                 break
 
             if log_prob > 0:
-                logging.error('Sentence %d had positive log probability %f' % (sent_index, log_prob))    
+                logging.error('Sentence %d had positive log probability %f' % (sent_index, log_prob))
 
         logging.debug("Worker %d processed %d sentences this iteration" % (self.tid, sents_processed))
 
@@ -288,19 +293,19 @@ cdef class PyzmqWorker:
     def handle_sigterm(self, signum, frame):
         logging.info("Worker received quit signal... will terminate after cleaning up.")
         self.quit = True
-    
+
     def handle_sigalarm(self, signum, frame):
         logging.warning("Worker received alarm while trying to process sentence... will raise exception")
         raise ParsingError("Worker hung while parsing sentence")
 
-                
+
 # def main(args):
 #     logging.basicConfig(level=logging.INFO)
-    
+
 #     if len(args) != 1 and len(args) != 5:
 #         print("ERROR: Wrong number of arguments! Two run modes -- One argument of a file with properties or 5 arguments with properties.")
 #         sys.exit(-1)
-        
+
 #     if len(args) == 1:
 #         config_file = args[0] + "/masterConfig.txt"
 #         while True:
@@ -312,17 +317,17 @@ cdef class PyzmqWorker:
 #                     break
 #             else:
 #                 time.sleep(10)
-    
+
 #     if len(args) == 6:
 #         fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), gpu=bool(args[5]))
 #     elif len(args) == 5:
 #         fs = PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]))
 #     signal.signal(signal.SIGINT, fs.handle_sigint)
 #     signal.signal(signal.SIGALRM, fs.handle_sigalarm)
-    
-#     ## Call run directly instead of start otherwise we'll have 2n workers    
+
+#     ## Call run directly instead of start otherwise we'll have 2n workers
 #     fs.run()
-    
+
 # if __name__ == '__main__':
 #     args = sys.argv[1:]
 #     main(args)
