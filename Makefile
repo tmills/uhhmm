@@ -15,19 +15,6 @@ NUMPY_INC=$(shell python3 -c 'import numpy; print(numpy.get_include())')
 PY3_LOC=env/bin/${PYTHON_VERSION}
 VPATH := genmodel data
 
-
-
-#################################
-#
-# Default item
-# 
-#################################
-
-# This recipe no longer seems to work (?)
-all:  config/myconfig.ini data/simplewiki_d1_tagwords.ints.txt $(THISDIR)/train.sh
-	$(word 3, $^) $<
-
-  
   
 #################################
 #
@@ -107,6 +94,7 @@ include $(RESOURCE-LVPCFG)/Makefile
 include $(RESOURCE-LCPARSE)/Makefile
 include $(RESOURCE-GCG)/Makefile
 include $(RESOURCE-INCRSEM)/Makefile
+include $(RESOURCE-CHILDES)/Makefile
 endif
 endif
 
