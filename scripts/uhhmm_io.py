@@ -8,6 +8,35 @@ import pickle
 import shutil
 import sys, linecache
 
+## This method reads a "last_sample*.txt" file which is space-delimited, and
+## each token is formatted as f/j::ACT/AWA;^d:POS;token where ^d indicates that
+## the ACT/AWA section is a semi-colon delimited list of length d. Each token
+## only indicates its own depth, not the max depth.
+def read_input_states(filename, depth):
+    states = list()
+
+    f = open(filename, 'r', encoding='utf-8')
+    for line in f:
+        hid_seqs = []
+        for str_state in line.split():
+            state = State.State(depth)
+            fj, syn = str_state.split('::')
+            f,j = fj.split('\/')
+            ab, tok = syn.split(':')
+            ab_lists = ab.split(';')
+            pos = tok.split(';')[0]
+            state.f = int(f)
+            state.j = int(j)
+            for d in range(len(ab_lists)):
+                ab_vals = ab_lists[d].split('\/')
+                state.a[d] = int(ab_vals[0])
+                state.b[d] = int(ab_vals[1])
+            state.g = int(pos)
+
+    return states
+
+## This method reads a "tagwords" file which is space-delimited, and each
+## token is formatted as POS/token.
 def read_input_file(filename):
     pos_seqs = list()
     token_seqs = list()
@@ -19,14 +48,14 @@ def read_input_file(filename):
             if "/" in token:
                 (pos, token) = token.split("/")
             else:
-                pos = 0 
-        
+                pos = 0
+
             pos_seq.append(int(pos))
             token_seq.append(int(token))
 
         pos_seqs.append(pos_seq)
         token_seqs.append(token_seq)
-    
+
     return (pos_seqs, token_seqs)
 
 def read_sample_file(filename):
@@ -38,11 +67,11 @@ def read_sample_file(filename):
         for token in line.split(', '):
             (junk, pos) = token.split(':')
             pos_seq.append(int(pos))
-        
+
         pos_seqs.append(pos_seq)
-    
+
     f.close()
-    return pos_seqs        
+    return pos_seqs
 
 def read_serialized_sample(pickle_filename):
     pickle_file = open(pickle_filename, 'rb')
@@ -50,18 +79,18 @@ def read_serialized_sample(pickle_filename):
 
 def write_serialized_models(model_list, pickle_file):
     pickle.dump(model_list, pickle_file)
-    
+
 def read_serialized_models(pickle_filename):
     pickle_file = open(pickle_filename, 'rb')
     return pickle.load(pickle_file)
-    
+
 def write_output(sample, stats, config, gold_pos=None):
 #    last_sample = samples[-1]
     models = sample.models
     depth = len(models.fork)
-    
+
     #print("Default encoding is %s" % sys.getdefaultencoding() )
-    
+
     output_dir = config.get('io', 'output_dir')
     dict_file = config.get('io', 'dict_file')
     word_dict = dict()
@@ -71,27 +100,27 @@ def write_output(sample, stats, config, gold_pos=None):
             #pdb.set_trace()
             (word, index) = line.rstrip().split(" ")
             word_dict[int(index)] = word
-    
+
     if gold_pos != None:
         sys_pos = extract_pos(sample)
         v = calcV.get_v(gold_pos, sys_pos)
         f = open(output_dir + "/v_measure.txt", 'a', encoding='utf-8')
         f.write('%d\t%f\n' % (sample.iter,v))
         f.close()
-        
+
         vi = calcV.get_vi(gold_pos, sys_pos)
         f = open(output_dir + "/vi.txt", 'a', encoding='utf-8')
         f.write('%d\t%f\n' % (sample.iter,vi))
         f.close()
-    
+
     f = open(output_dir + "/beta.txt", 'a', encoding='utf-8')
     f.write('%d\t%s\n' % (sample.iter, np.array_str(models.pos.beta)))
     f.close()
-    
+
     #write_lex_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
     write_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
     write_model(models.pos.dist, output_dir + "/p_pos_%d.txt" % sample.iter, condPrefix="B", outcomePrefix="POS")
-    
+
     for d in range(0, depth):
         write_model(models.cont[d].dist, output_dir + "/p_awa_cont_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="AWA", depth=d)
         write_model(models.start[d].dist, output_dir + "/p_awa_start_%d.txt" % sample.iter, condPrefix="AA", outcomePrefix="AWA", depth=d)
@@ -102,35 +131,35 @@ def write_output(sample, stats, config, gold_pos=None):
         write_model(models.fork[d].dist, output_dir + "/p_fork_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="F", depth=d)
         write_model(models.reduce[d].dist, output_dir + "/p_j_reduce_%d.txt" % sample.iter, condPrefix="AB", outcomePrefix="J", depth=d)
         write_model(models.trans[d].dist, output_dir + "/p_j_trans_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="J", depth=d)
-    
+
     write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter, word_dict)
 
 def checkpoint(sample, config):
     output_dir = config.get('io', 'output_dir')
-    
+
     if os.path.isfile(output_dir + "/sample.obj"):
         logging.info("Saving previous checkpoint")
         shutil.copy2(output_dir +"/sample.obj", output_dir + "/sample.obj.last")
-    
+
     logging.info("Creating new checkpoint")
     out_file = open(output_dir + "/sample.obj", 'wb')
     pickle.dump(sample, out_file)
     out_file.close()
-    
+
     f = open(output_dir + "/logprobs.txt", 'a', encoding='utf-8')
     f.write('%d\t%f\n' % (sample.iter,sample.log_prob) )
     f.close()
-    
+
 
 def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix="", depth=-1):
     f = open(out_file, 'a' if depth > 0 else 'w', encoding='utf-8')
     out_dim = dist.shape[-1]
-    
+
     for ind,val in np.ndenumerate(dist):
         lhs = ind[0:-1]
         rhs = ind[-1]
         unlog_val = 10**val
-        
+
         if (out_dim > 2 and rhs == 0) or unlog_val < 0.000001:
             continue
 
@@ -138,7 +167,7 @@ def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix="",
             f.write("P( %s%d | %s%s, %d ) = %f \n" % (outcomePrefix, rhs, condPrefix, str(lhs), depth, 10**val))
         else:
             f.write("P( %s | %s, %d ) = %f \n" % (word_dict[rhs], str(lhs), depth, 10**val))
-                
+
     f.close()
 
 def write_lex_model(dist, out_file, word_dict=None):
@@ -148,7 +177,7 @@ def write_lex_model(dist, out_file, word_dict=None):
         lhs = ind[0:-1]
         rhs = ind[-1]
         unlog_val = 10**val
-        
+
         if (out_dim > 2 and rhs == 0) or unlog_val < 0.000001:
             continue
 
@@ -176,7 +205,7 @@ def extract_pos(sample):
     pos_seqs = list()
     for sent_state in sample.hid_seqs:
         pos_seqs.append(list(map(lambda x: x.g, sent_state)))
-    
+
     return pos_seqs
 
 def printException():
@@ -191,6 +220,6 @@ def printException():
 class ParsingError(Exception):
     def __init__(self, cause):
         self.cause = cause
-        
+
     def __str__(self):
         return self.cause

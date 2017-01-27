@@ -26,10 +26,10 @@ def main(argv):
     if not os.path.exists(path):
         sys.stderr.write("Input file/dir does not exist!")
         sys.exit(-1)
-    
+
     config = configparser.ConfigParser()
     pickle_file = None
-    
+
     if os.path.isdir(path):
         ## Resume mode
         config.read(path + "/config.ini")
@@ -44,18 +44,19 @@ def main(argv):
 
         with open(out_dir + "/config.ini", 'w') as configfile:
             config.write(configfile)
-    
+
     input_file = config.get('io', 'input_file')
     working_dir = config.get('io', 'working_dir', fallback=out_dir)
-
+    input_seqs_file = config.get('io', 'init_seqs', fallback=None)
+        
     ## Read in input file to get sequence for X
     (pos_seq, word_seq) = io.read_input_file(input_file)
     num_types = max(map(max,word_seq)) + 1
 
     params = read_params(config)
-    
+
     params['h'] = init_emission_base(num_types)
-    
+
     ## Store tag sequences of gold tagged sentences
     gold_seq = dict()
     if 'num_gold_sents' in params and params['num_gold_sents'] == 'all':
@@ -66,9 +67,9 @@ def main(argv):
         rand = randint(0,len(word_seq)-1)
         if rand not in gold_seq.keys():
           gold_seq[rand]=pos_seq[rand]
-    
+
     (samples, stats) = uhhmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), working_dir, pickle_file, gold_seq)
-    
+
     if len(samples) > 0:
         io.write_output(samples[-1], stats, config, pos_seq)
 
@@ -76,7 +77,7 @@ def read_params(config):
     params = {}
     for (key, val) in config.items('params'):
         params[key] = val
-    
+
     return params
 
 def init_emission_base(size):
@@ -85,7 +86,6 @@ def init_emission_base(size):
     return H
 
 
-    
+
 if __name__ == "__main__":
     main(sys.argv[1:])
-
