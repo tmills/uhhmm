@@ -14,7 +14,7 @@ DEBUG 0
 ##    The process will stop when this number##
 ##    of errors are accumulated.            ##
 ##------------------------------------------##
-MAX_ERROR 100
+MAX_ERROR 10
 
 ##------------------------------------------##
 ## Cut-off length for statistics            ##
@@ -24,7 +24,7 @@ MAX_ERROR 100
 ##    be shown, on top of the statistics    ##
 ##    for all the sentences                 ##
 ##------------------------------------------##
-CUTOFF_LEN 40
+CUTOFF_LEN 100
 
 ##------------------------------------------##
 ## unlabeled or labeled bracketing          ##
@@ -52,6 +52,7 @@ DELETE_LABEL ''
 DELETE_LABEL .
 DELETE_LABEL ?
 DELETE_LABEL !
+#DELETE_LABEL PUNCT
 
 ##------------------------------------------##
 ## Delete labels for length calculation     ##

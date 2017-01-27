@@ -12,12 +12,13 @@ from Indexer import Indexer
 
 class DistributedModelCompiler(FullDepthCompiler):
     
-    def __init__(self, depth, work_server, gpu=False):
+    def __init__(self, depth, work_server, gpu=False, limit_depth=-1):
         FullDepthCompiler.__init__(self, depth)
         self.work_server = work_server
         ## Parent has a depth variable but it is a cython typed variable
         self.depth = depth
         self.gpu = gpu
+        self.limit_depth = self.depth if limit_depth == -1 else limit_depth
 
     def compile_and_store_models(self, models, working_dir):
         indexer = Indexer(models)

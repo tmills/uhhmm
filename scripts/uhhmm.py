@@ -69,6 +69,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
     num_samples = 0
     depth = int(params.get('depth', 1))
+    init_depth = int(params.get('init_depth', depth))
     burnin = int(params.get('burnin'))
     iters = int(params.get('sample_iters'))
     max_samples = int(params.get('num_samples'))
@@ -214,6 +215,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     while num_samples < max_samples:
         sample.iter = iter
 
+        ## If user specified an init depth (i.e. less than the final depth), increment it after 1000 iterations.
+        if init_depth < depth:
+            if iter > 0 and iter % 1000 == 0:
+              init_depth += 1
+
         split_merge = False
         if split_merge_iters > 0 and iter >= burnin and (iter-burnin) % split_merge_iters == 0:
             split_merge = True
@@ -298,7 +304,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         t0 = time.time()
         if finite:
-            DistributedModelCompiler.DistributedModelCompiler(depth, workDistributer, gpu).compile_and_store_models(models, working_dir)
+            DistributedModelCompiler.DistributedModelCompiler(depth, workDistributer, gpu, limit_depth=init_depth).compile_and_store_models(models, working_dir)
 #            FullDepthCompiler.FullDepthCompiler(depth).compile_and_store_models(models, working_dir)
         else:
             NoopCompiler.NoopCompiler().compile_and_store_models(models, working_dir)
@@ -821,9 +827,9 @@ def initialize_and_load_state(ev_seqs, models, max_depth, init_seqs):
     for sent_index,sent in enumerate(ev_seqs):
         hid_seq = list()
         if len(sent) != len(init_seqs[sent_index]):
-            logging.error("Sentence %d has length %d in init but length %d in input." % (sent_index, len(init_seqs[sent_index], len(sent)))
+            logging.error("Sentence %d has length %d in init but length %d in input." % (sent_index, len(init_seqs[sent_index], len(sent))))
             raise Exception
-            
+
         for index,word in enumerate(sent):
             state = State.State(max_depth)
             state.f = init_seqs[sent_index][index].f
@@ -842,7 +848,11 @@ def initialize_and_load_state(ev_seqs, models, max_depth, init_seqs):
 # Randomly initialize all the values for the hidden variables in the
 # sequence. Obeys constraints (e.g., when f=1,j=1 a=a_{t-1}) but otherwise
 # samples randomly.
-def initialize_state(ev_seqs, models, max_depth, gold_seqs=None, start_ind=0):
+RANDOM_INIT=0
+RB_INIT=1
+LB_INIT=2
+
+def initialize_state(ev_seqs, models, max_depth, gold_seqs=None, strategy=RANDOM_INIT):
     global a_max, b_max, g_max
 
     max_gold_tags = max([max(el) for el in gold_seqs.values()]) if (not gold_seqs == None and not len(gold_seqs)==0) else 0
@@ -869,7 +879,7 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None, start_ind=0):
                 if index == 1:
                     state.f = 1
                     state.j = 0
-                else:
+                elif strategy == RANDOM_INIT:
                     if np.random.random() >= 0.5:
                         state.f = 1
                     else:
@@ -882,7 +892,17 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None, start_ind=0):
                         ## If we are at 0 and we did not fork, we must not reduce
                         state.j = 0
                     else:
-                        state.j = np.random.randint(0, 2)
+                        state.j = state.f
+
+                elif strategy == RB_INIT:
+                    state.f = 1
+                    state.j = 1
+                elif strategy == LB_INIT:
+                    state.f = 0
+                    state.j = 0
+                else:
+                    logging.error("Unknown initialization strategy %d" % (strategy))
+                    raise Exception
 
                 if prev_depth == -1:
                     cur_depth = 0
