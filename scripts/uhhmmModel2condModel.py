@@ -24,20 +24,33 @@ path_awa_next = '%s/p_awa_next_%d.txt' %(dir, I)
 path_awa_start = '%s/p_awa_start_%d.txt' %(dir, I)
 path_lex = '%s/p_lex_given_pos%d.txt' %(dir, I)
 
+act = []
+awa = []
+pos = []
+depth = 0
+
+def label(lab, num):
+  if num == '0':
+    return 'T'
+  return lab + num
 
 with open(path_P, 'rb') as f:
   for line in f:
     if line.strip() != '':
       v, c1, c2, d, prob = parse_row.match(line.strip()).groups()
-      B = 'AWA' + c1
+      if not v in pos:
+        pos.append(v)
+      B = label('AWA', c1)
       print('P %s : %s = %s' %(B, v, prob))
 
 with open(path_F, 'rb') as f:
   for line in f:
     if line.strip() != '':
       v, c1, c2, d, prob = parse_row.match(line.strip()).groups()
-      B = 'AWA' + c1
-      P = 'POS' + c2
+      d = int(d) + 1
+      depth = max(d, depth)
+      B = label('AWA', c1)
+      P = label('POS', c2)
       v = v[1:]
       print('F %s %s %s : %s = %s' %(d, B, P, v, prob))
 
@@ -45,8 +58,10 @@ with open(path_J_trans, 'rb') as f:
   for line in f:
     if line.strip() != '':
       v, c1, c2, d, prob = parse_row.match(line.strip()).groups()
-      B = 'AWA' + c1
-      P = 'POS' + c2
+      d = int(d) + 1
+      depth = max(d, depth)
+      B = label('AWA', c1)
+      P = label('POS', c2)
       v = v[1:]
       print('J %s %s %s : %s = %s' %(d, B, P, v, prob))
 
@@ -54,8 +69,10 @@ with open(path_J_reduce, 'rb') as f:
   for line in f:
     if line.strip() != '':
       v, c1, c2, d, prob = parse_row.match(line.strip()).groups()
-      A = 'ACT' + c1
-      B = 'AWA' + c2
+      d = int(d) + 1
+      depth = max(d, depth)
+      A = label('ACT', c1)
+      B = label('AWA', c2)
       v = v[1:]
       print('J %s %s %s : %s = %s' %(d, B, A, v, prob))
 
@@ -63,55 +80,73 @@ with open(path_act_act, 'rb') as f:
   for line in f:
     if line.strip() != '':
       v, c1, c2, d, prob = parse_row.match(line.strip()).groups()
-      A = 'ACT' + c1
-      B = 'AWA' + c2
+      d = int(d) + 1
+      depth = max(d, depth)
+      if not v in act:
+        act.append(v)
+      A = label('ACT', c1)
+      B = label('AWA', c2)
       print('A %s 0 %s %s : %s = %s' %(d, B, A, v, prob))
 
 with open(path_act_root, 'rb') as f:
   for line in f:
     if line.strip() != '':
       v, c1, c2, d, prob = parse_row.match(line.strip()).groups()
-      B = 'AWA' + c1
-      P = 'POS' + c2
+      d = int(d) + 1
+      depth = max(d, depth)
+      B = label('AWA', c1)
+      P = label('POS', c2)
       print('A %s 0 %s %s : %s = %s' %(d, B, P, v, prob))
 
 with open(path_awa_cont, 'rb') as f:
   for line in f:
     if line.strip() != '':
       v, c1, c2, d, prob = parse_row.match(line.strip()).groups()
-      B = 'AWA' + c1
-      P = 'POS' + c2
+      d = int(d) + 1
+      depth = max(d, depth)
+      if not v in awa:
+        awa.append(v)
+      B = label('AWA', c1)
+      P = label('POS', c2)
       print('B %s 1 %s %s : %s = %s' %(d, B, P, v, prob))
 
 with open(path_awa_exp, 'rb') as f:
   for line in f:
     if line.strip() != '':
       v, c1, c2, d, prob = parse_row.match(line.strip()).groups()
-      P = 'POS' + c1
-      A = 'ACT' + c2
-      print('B %s 0 %s %s : %s = %s' %(d, P, A, v, prob))
+      d = int(d) + 1
+      P = label('POS', c1)
+      A = label('ACT', c2)
+      print('B %s 0 %s %s : %s = %s' %(d, A, P, v, prob))
 
 with open(path_awa_next, 'rb') as f:
   for line in f:
     if line.strip() != '':
       v, c1, c2, d, prob = parse_row.match(line.strip()).groups()
-      B = 'AWA' + c1
-      A = 'ACT' + c2
+      d = int(d) + 1
+      B = label('AWA', c1)
+      A = label('ACT', c2)
       print('B %s 1 %s %s : %s = %s' %(d, B, A, v, prob))
 
 with open(path_awa_start, 'rb') as f:
   for line in f:
     if line.strip() != '':
       v, c1, c2, d, prob = parse_row.match(line.strip()).groups()
-      A1 = 'ACT' + c1
-      A2 = 'ACT' + c2
+      d = int(d) + 1
+      depth = max(d, depth)
+      A1 = label('ACT', c1)
+      A2 = label('ACT', c2)
       print('B %s 0 %s %s : %s = %s' %(d, A1, A2, v, prob))
 
 with open(path_lex, 'rb') as f:
   for line in f:
     if line.strip() != '':
       v, c1, c2, d, prob = parse_row.match(line.strip()).groups()
-      P = 'POS' + c1
+      d = int(d) + 1
+      depth = max(d, depth)
+      P = label('POS', c1)
       print('W %s : %s = %s' %(P, v, prob))
 
-
+#print('A 0 1 T - : T = 1')
+#for p in pos:
+#  print('P %s : %s = 1' %(p, p))

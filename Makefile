@@ -103,6 +103,7 @@ ifdef MB
 ifneq ($(MB),.)
 include $(MB)/resource-general/Makefile
 include $(RESOURCE-LTREES)/Makefile
+include $(RESOURCE-LVPCFG)/Makefile
 include $(RESOURCE-LCPARSE)/Makefile
 include $(RESOURCE-GCG)/Makefile
 include $(RESOURCE-INCRSEM)/Makefile
@@ -353,7 +354,7 @@ p_fork_$$(subst .,,$$(suffix %)).txt p_j_reduce_$$(subst .,,$$(suffix %)).txt p_
 p_lex_given_pos$$(subst .,,$$(suffix %)).txt p_pos_$$(subst .,,$$(suffix %)).txt
 	python $< -i $(subst .,,$(suffix $*)) -d $(dir $*) > $@
 
-%.uhhmm.vitparse.linetrees: $$(subst .,-,$$(basename %)).$$(subst .,-,$$(basename $$*))-$$(subst .,,$$(suffix $$*))-uhhmm-fjabp-_c_+b2000_parsed.linetrees
+%.uhhmm.vitparse.linetrees: $$(subst .,-,$$(basename %)).$$(subst .,-,$$(basename $$*))-$$(subst .,,$$(suffix $$*))-uhhmm-fjabp-_c_+b2000_+V_parsed.linetrees
 	mv $^ $@
 
 # *.brackets.linetrees (ModelBlocks) = %.brackets (UHHMM)
