@@ -53,7 +53,7 @@ class Stats:
 # Arg 1: ev_seqs : a list of lists of integers, representing
 # the EVidence SEQuenceS seen by the user (e.g., words in a sentence
 # mapped to ints).
-def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_dir, pickle_file=None, gold_seqs=None, init_seqs=None):
+def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_dir, pickle_file=None, gold_seqs=None, input_seqs_file=None):
 
     global start_a, start_b, start_g
     global a_max, b_max, g_max
@@ -115,10 +115,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         g_max = start_g+2
 
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, a_max, b_max, g_max)
-        if init_seqs is None:
+        if input_seqs_file is None:
             hid_seqs = initialize_state(ev_seqs, models, depth, gold_seqs)
         else:
-            hid_seqs = initialize_and_load_state(ev_seqs, models, depth, init_seqs)
+            logging.info("Trainer was initialized with input sequences from a previous run.")
+            hid_seqs = initialize_and_load_state(ev_seqs, models, depth, uhhmm_io.read_input_states(input_seqs_file, depth))
 
         max_state_check(hid_seqs, models, "initialization")
 
@@ -815,7 +816,7 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
 # are actually compatible; depth of input can be <= but not > then specified
 # max depth. Number of sentences and length of each sentence must be the same.
 def initialize_and_load_state(ev_seqs, models, max_depth, init_seqs):
-    input_depth = len(init_seqs[0].f)
+    input_depth = len(init_seqs[0][0].a)
     if input_depth > max_depth:
         logging.error("Sequence used for initialization has greater depth than max depth!")
         raise Exception
@@ -824,6 +825,7 @@ def initialize_and_load_state(ev_seqs, models, max_depth, init_seqs):
         logging.error("Initialization sequence length %d is different than input sequence length %d." % (len(init_seqs), len(ev_seqs)))
         raise Exception
 
+    state_seqs = list()
     for sent_index,sent in enumerate(ev_seqs):
         hid_seq = list()
         if len(sent) != len(init_seqs[sent_index]):

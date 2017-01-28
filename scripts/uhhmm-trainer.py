@@ -29,6 +29,7 @@ def main(argv):
 
     config = configparser.ConfigParser()
     pickle_file = None
+    input_seqs_file = None
 
     if os.path.isdir(path):
         ## Resume mode
@@ -37,6 +38,9 @@ def main(argv):
         out_dir = config.get('io', 'output_dir')
     else:
         config.read(argv[0])
+        input_seqs_file = config.get('io', 'init_seqs', fallback=None)
+        if not input_seqs_file is None:
+            del config['io']['init_seqs']
         out_dir = config.get('io', 'output_dir')
         if not os.path.exists(out_dir):
             sys.stderr.write("Creating non-existent output directory.\n")
@@ -47,8 +51,7 @@ def main(argv):
 
     input_file = config.get('io', 'input_file')
     working_dir = config.get('io', 'working_dir', fallback=out_dir)
-    input_seqs_file = config.get('io', 'init_seqs', fallback=None)
-        
+
     ## Read in input file to get sequence for X
     (pos_seq, word_seq) = io.read_input_file(input_file)
     num_types = max(map(max,word_seq)) + 1
@@ -68,7 +71,7 @@ def main(argv):
         if rand not in gold_seq.keys():
           gold_seq[rand]=pos_seq[rand]
 
-    (samples, stats) = uhhmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), working_dir, pickle_file, gold_seq)
+    (samples, stats) = uhhmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), working_dir, pickle_file, gold_seq, input_seqs_file=input_seqs_file)
 
     if len(samples) > 0:
         io.write_output(samples[-1], stats, config, pos_seq)
