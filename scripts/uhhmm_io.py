@@ -7,6 +7,7 @@ import os.path
 import pickle
 import shutil
 import sys, linecache
+import State
 
 ## This method reads a "last_sample*.txt" file which is space-delimited, and
 ## each token is formatted as f/j::ACT/AWA;^d:POS;token where ^d indicates that
@@ -19,20 +20,24 @@ def read_input_states(filename, depth):
     for line in f:
         hid_seqs = []
         for str_state in line.split():
+            #print(str_state)
             state = State.State(depth)
             fj, syn = str_state.split('::')
-            f,j = fj.split('\/')
-            ab, tok = syn.split(':')
-            ab_lists = ab.split(';')
+            f,j = fj.split('/')
+            syn_out = syn.split(':')
+            ab = syn_out[0]
+            tok = ':'.join(syn_out[1:])
+            ab_lists = ab.replace('ACT','').replace('AWA','').split(';')
             pos = tok.split(';')[0]
-            state.f = int(f)
-            state.j = int(j)
+            state.f = 0 if f == '-' else 1
+            state.j = 0 if j == '-' else 1
             for d in range(len(ab_lists)):
-                ab_vals = ab_lists[d].split('\/')
+                ab_vals = ab_lists[d].split('/')
                 state.a[d] = int(ab_vals[0])
                 state.b[d] = int(ab_vals[1])
-            state.g = int(pos)
-
+            state.g = int(pos.replace('POS',''))
+            hid_seqs.append(state)
+        states.append(hid_seqs)
     return states
 
 ## This method reads a "tagwords" file which is space-delimited, and each
