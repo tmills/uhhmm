@@ -184,7 +184,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         iter = sample.iter+1
 
     indexer = Indexer(models)
-    collect_trans_probs(hid_seqs, models, 0, num_sents)
+    if not finite:
+        collect_trans_probs(hid_seqs, models, 0, num_sents)
 
     stats = Stats()
     inf_procs = list()
@@ -440,7 +441,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             models.trans[d].sampleBernoulli(j_base if d == 0 else j_base + models.trans[d-1].pairCounts * sample.alpha_j)
             models.fork[d].sampleBernoulli(f_base if d == 0 else f_base + models.fork[d-1].pairCounts * sample.alpha_f)
 
-        collect_trans_probs(hid_seqs, models, start_ind, end_ind)
+        if not finite:
+            collect_trans_probs(hid_seqs, models, start_ind, end_ind)
 
         t1 = time.time()
 
