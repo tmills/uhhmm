@@ -1,9 +1,8 @@
 
 import numpy as np
-import scipy.sparse.lil_matrix as lil_matrix
 cimport numpy as np
 
-cdef class Model:
+cpdef class Model:
     cdef public np.ndarray pairCounts, dist, u, beta
     cdef public float alpha
     cdef public str name
