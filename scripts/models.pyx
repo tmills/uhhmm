@@ -17,7 +17,7 @@ cdef class Model:
         self.dist = np.random.random(shape)
         self.dist /= self.dist.sum(1, keepdims=True)
         self.dist = np.log10(self.dist)
-        self.u = np.zeros(corpus_shape) + -np.inf
+        self.u = np.array([])
         self.trans_prob = np.zeros(corpus_shape)
         self.alpha = alpha
         self.beta = beta
