@@ -2,10 +2,11 @@
 import numpy as np
 cimport numpy as np
 
-cpdef class Model:
+cdef class Model:
     cdef public np.ndarray pairCounts, dist, u, beta
     cdef public float alpha
     cdef public str name
+    cdef public trans_prob
     
 cdef class Models:
     cdef list models

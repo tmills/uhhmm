@@ -9,9 +9,9 @@ from scipy.sparse import lil_matrix
 # if given a base distribution.
 # TODO: Sub-class for BooleanModel vs. InfiniteModel  with single sample()/resample() method
 # and automatically adjusting sizes for infinite version.
-cpdef class Model
+cdef class Model
 
-cpdef class Model:
+cdef class Model:
 
     def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, corpus_shape=(0,0), name="Unspecified"):
         self.pairCounts = np.zeros(shape, dtype=np.int)
