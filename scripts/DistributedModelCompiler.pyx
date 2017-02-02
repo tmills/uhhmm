@@ -47,11 +47,11 @@ class DistributedModelCompiler(FullDepthCompiler):
             (local_indices, local_data) = self.work_server.get_model_row(prevIndex)
             
             indptr[prevIndex+1] += len(local_indices)
-            indices.append(local_indices)
-            data.append(local_data)
+            indices.extend(local_indices)
+            data.extend(local_data)
         logging.info("Flattening sublists into main list")
-        flat_indices = [item for sublist in indices for item in sublist]
-        flat_data = [item for sublist in data for item in sublist]
+        flat_indices = indices
+        flat_data = data
             
         logging.info("Creating csr transition matrix from sparse indices")
         if self.gpu == False:
