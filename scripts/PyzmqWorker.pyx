@@ -103,14 +103,14 @@ cdef class PyzmqWorker:
                 msg = msg + '.gpu'
                 in_file = open(msg, 'rb') # loading a specific gpu model and trick the system to believe it is the normal model
                 model_wrapper = pickle.load(in_file)
-                print('1 worker loading file.')
+                # print('1 worker loading file.')
                 sampler = CHmmSampler.GPUHmmSampler(self.seed)
-                print('2 init sampler on GPU')
+                # print('2 init sampler on GPU')
                 # print(model_wrapper.model)
                 gpu_model = CHmmSampler.GPUModel(model_wrapper.model)
-                print('3 loading in models')
+                # print('3 loading in models')
                 sampler.set_models(gpu_model)
-                print('4 setting in models')
+                # print('4 setting in models')
                 in_file.close()
                 # self.model_file_sig = get_file_signature(msg)
                 pi = 0 # placeholder
@@ -166,7 +166,7 @@ cdef class PyzmqWorker:
 
     def processSentences(self, sampler, pi, jobs_socket, results_socket):
         sampler.initialize_dynprog(self.batch_size, self.maxLen)
-        print('5 init dynprog with batch_size %d and maxlen %d' % (self.batch_size, self.maxLen))
+        # print('5 init dynprog with batch_size %d and maxlen %d' % (self.batch_size, self.maxLen))
 
         sents_processed = 0
 
@@ -234,7 +234,7 @@ cdef class PyzmqWorker:
                             logging.info("Error in previous sampling attempt. Retrying batch")
                         if len(sent_batch) in [1,2,4,8,16,32,64,128,256]:
                             #logging.info("Batch has acceptable length of %d" % (len(sent_batch)))
-                            print('6 sampling now')
+                            # print('6 sampling now')
                             (sent_samples, log_probs) = sampler.sample(pi, sent_batch, sent_index)
                         else:
                             logging.info("Batch size %d doesn't match power of 2 -- breaking into sub-batches" % (len(sent_batch) ) )
