@@ -20,16 +20,24 @@ class DistributedModelCompiler(FullDepthCompiler):
         self.gpu = gpu
         self.limit_depth = self.depth if limit_depth == -1 else limit_depth
 
-    def compile_and_store_models(self, models, working_dir):
+    def compile_and_store_models(self, models, working_dir, per_state_connection_guess = 600):
         indexer = Indexer(models)
         logging.info("Compiling component models into mega-HMM transition and observation matrices")
 
         maxes = indexer.getVariableMaxes()
         (a_max, b_max, g_max) = maxes
         totalK = indexer.get_state_size()
+        total_connection = per_state_connection_guess * totalK
         indptr = np.zeros(totalK+1)
-        indices =  []
-        data = []
+        if self.gpu == False:
+            data_type = np.float64
+            data_type_bytes = 8
+        else:
+            data_type = np.float32
+            data_type_bytes = 4
+        indptr = np.zeros(totalK+1, dtype=data_type)
+        indices =  np.array((total_connection,),dtype=data_type)
+        data = np.array((total_connection,), dtype=data_type)
         
         ## Write out raw models for workers to use to build from:
         ## First unlog them so they are in form workers expect:
@@ -42,13 +50,22 @@ class DistributedModelCompiler(FullDepthCompiler):
          ## does not seem necessary
         t0 = time.time()
         self.work_server.submitBuildModelJobs(totalK)
+        index_data_indices = -1
         for prevIndex in range(0,totalK):
             indptr[prevIndex+1] = indptr[prevIndex]
             (local_indices, local_data) = self.work_server.get_model_row(prevIndex)
             
             indptr[prevIndex+1] += len(local_indices)
-            indices.extend(local_indices)
-            data.extend(local_data)
+            for local_indices_index, local_indices_item in local_indices:
+                index_data_indices += 1
+                indices[index_data_indices] = local_indices_item
+                data[index_data_indices] = local_data[local_indices_index]
+        else:
+            indices = indices[:index_data_indices+1]
+            data = data[:index_data_indices+1]
+            assert(data[-1] != 0. and indices[-1] != 0., '0 prob at the end of sparse Pi.')
+        logging.info("Per state connection is %d" % index_data_indices/totalK)
+        logging.info("Size of PI will roughly be %.2f M" % (index_data_indices * 2 + (totalK+1))*data_type_bytes / 1e6)
         logging.info("Flattening sublists into main list")
         flat_indices = indices
         flat_data = data
