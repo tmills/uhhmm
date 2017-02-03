@@ -36,8 +36,8 @@ class DistributedModelCompiler(FullDepthCompiler):
             data_type = np.float32
             data_type_bytes = 4
         indptr = np.zeros(totalK+1, dtype=data_type)
-        indices =  np.array((total_connection,),dtype=data_type)
-        data = np.array((total_connection,), dtype=data_type)
+        indices =  np.zeros((total_connection,),dtype=data_type)
+        data = np.zeros((total_connection,), dtype=data_type)
         
         ## Write out raw models for workers to use to build from:
         ## First unlog them so they are in form workers expect:
