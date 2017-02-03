@@ -52,11 +52,13 @@ class DistributedModelCompiler(FullDepthCompiler):
         self.work_server.submitBuildModelJobs(totalK)
         index_data_indices = -1
         for prevIndex in range(0,totalK):
+            if prevIndex % 10000 == 0:
+                logging.info("Model Compiler compiling row %d" % prevIndex)
             indptr[prevIndex+1] = indptr[prevIndex]
             (local_indices, local_data) = self.work_server.get_model_row(prevIndex)
             
             indptr[prevIndex+1] += len(local_indices)
-            for local_indices_index, local_indices_item in local_indices:
+            for local_indices_index, local_indices_item in enumerate(local_indices):
                 index_data_indices += 1
                 indices[index_data_indices] = local_indices_item
                 data[index_data_indices] = local_data[local_indices_index]
