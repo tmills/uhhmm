@@ -67,7 +67,7 @@ class DistributedModelCompiler(FullDepthCompiler):
             data = data[:index_data_indices+1]
             assert(data[-1] != 0. and indices[-1] != 0., '0 prob at the end of sparse Pi.')
         logging.info("Per state connection is %d" % (index_data_indices/totalK))
-        logging.info("Size of PI will roughly be %.2f M" % (index_data_indices * 2 + (totalK+1))*data_type_bytes / 1e6)
+        logging.info("Size of PI will roughly be %.2f M" % ((index_data_indices * 2 + (totalK+1))*data_type_bytes / 1e6))
         logging.info("Flattening sublists into main list")
         flat_indices = indices
         flat_data = data
