@@ -28,14 +28,14 @@ class DistributedModelCompiler(FullDepthCompiler):
         (a_max, b_max, g_max) = maxes
         totalK = indexer.get_state_size()
         total_connection = per_state_connection_guess * totalK
-        indptr = np.zeros(totalK+1)
+       # indptr = np.zeros(totalK+1)
         if self.gpu == False:
             data_type = np.float64
             data_type_bytes = 8
         else:
             data_type = np.float32
             data_type_bytes = 4
-        indptr = np.zeros(totalK+1, dtype=data_type)
+        indptr = np.zeros(totalK+1)
         indices =  np.zeros((total_connection,),dtype=data_type)
         data = np.zeros((total_connection,), dtype=data_type)
         
@@ -56,12 +56,21 @@ class DistributedModelCompiler(FullDepthCompiler):
                 logging.info("Model Compiler compiling row %d" % prevIndex)
             indptr[prevIndex+1] = indptr[prevIndex]
             (local_indices, local_data) = self.work_server.get_model_row(prevIndex)
-            
+            assert len(local_indices) == len(local_data), 'Bad length match at %d' % prevIndex
             indptr[prevIndex+1] += len(local_indices)
+            prev_index_data_indices = index_data_indices
             for local_indices_index, local_indices_item in enumerate(local_indices):
                 index_data_indices += 1
                 indices[index_data_indices] = local_indices_item
                 data[index_data_indices] = local_data[local_indices_index]
+            try:
+                assert indptr[prevIndex+1] == index_data_indices + 1, "indptr: %d; data indices: %d" % (indptr[prevIndex+1], index_data_indices+1)
+            except:
+                print 'lengths', len(local_indices), len(local_data)
+                print 'data indices', prev_index_data_indices, index_data_indices
+                print 'indptr', indptr[prevIndex], indptr[prevIndex+1]
+                print 'shapes', data.shape[0], indices.shape[0]
+                raise ValueError
         else:
             indices = indices[:index_data_indices+1]
             data = data[:index_data_indices+1]
@@ -71,11 +80,12 @@ class DistributedModelCompiler(FullDepthCompiler):
         logging.info("Flattening sublists into main list")
         flat_indices = indices
         flat_data = data
-            
+        logging.info('Last ptr %d; length of data: %d' % (indptr[-1], flat_data.shape[0]))
         logging.info("Creating csr transition matrix from sparse indices")
         if self.gpu == False:
             pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK), dtype=np.float64)
         else:
+            logging.info("Dumping out the GPU version of PI.")
             pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK), dtype=np.float32)
         fn = working_dir+'/models.bin'
         out_file = open(fn, 'wb')
