@@ -55,6 +55,6 @@ print('num_procs=' + str(args.num_procs))
 print('finite=' + str(int(args.finite)))
 print('depth=' + str(args.depth))
 print('gpu=' + str(int(args.gpu)))
-print('gpu_batch_size=1')
+print('gpu_batch_size=16')
 if args.num_gold_sents:
     print('num_gold_sents=' + str(args.num_gold_sents))
