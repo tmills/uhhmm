@@ -20,6 +20,7 @@ argparser.add_argument('-w', '--w_size', dest='w_size', default='2000', action='
 argparser.add_argument('-d', '--depth', dest='depth', default=None, action='store', help='Embedding depth bound. Depth can be specified as a single integer, a range of integers "start:end" (in which case a step size of 1 will be used), or a range of integers with an integer step specification "start:step:end". If left unspecified, defaults to 1.')
 argparser.add_argument('-B', '--branching', dest='branching', default=None, action='store', help='Branching direction (i.e. left-branching probability). 0 <= branching <= 1, where 0 is totally right-branching and 1 is totally left-branching. Branching can be specified as a single scalar, a range of scalars "start:end" (in which case a step size of 0.1 will be used), or a range with a step specification "start:step:end". If left unspecified, defaults to <None>, and branching probability will be determined empirically (relative number of left and right branching rules).')
 argparser.add_argument('-R', '--recursion', dest='recursion', default=None, action='store', help='Recursion probability. 0 <= recursion < 1. Recursion can be specified as a single scalar, a range of scalars "start:end" (in which case a step size of 0.1 will be used), or a range with a step specification "start:step:end". If left unspecified, defaults to <None>, and recursion probability will be determined empirically (relative number of non-recursive rules).')
+argparser.add_argument('-r', '--recursion_bound', dest='recursion_bound', default=None, action='store', help='Recursion bound (maximum recursion allowed during tree sampling). Recursion bound can be specified as a single integer, a range of integers "start:end" (in which case a step size of 1 will be used), or a range of integers with an integer step specification "start:step:end". If left unspecified, defaults to <None>, and no recursion bound will be imposed.')
 argparser.add_argument('-T', '--termination', dest='termination', default=None, action='store', help='Branch termination (bottom-out) probability. 0 < recursion <= 1. Termination can be specified as a single scalar, a range of scalars "start:end" (in which case a step size of 0.1 will be used), or a range with a step specification "start:step:end". If left unspecified, defaults to <None>, and termination probability will be determined empirically (relative number of non-terminating rules).')
 argparser.add_argument('-O', '--oneword', dest='oneword', default=None, action='store', help='Probability of generating a one-word sentence. 0 < oneword <= 1. One-word probability can be specified as a single scalar, a range of scalars "start:end" (in which case a step size of 0.1 will be used), or a range with a step specification "start:step:end". If left unspecified, defaults to <None>, and one-word probability will be determined empirically (relative number of non-terminating rules).')
 args, unknown = argparser.parse_known_args()
@@ -49,6 +50,7 @@ args.a_size = process_range(args.a_size)
 args.b_size = process_range(args.b_size)
 args.p_size = process_range(args.p_size)
 args.w_size = process_range(args.w_size)
+args.recursion_bound = process_range(args.recursion_bound)
 if args.depth != None:
   args.depth = process_range(args.depth)
 else:
@@ -63,7 +65,7 @@ def main():
   if args.dry_run:
     print('Dry run. Would generate the following files:')
     print('')
-  for params in [(t,a,b,p,w,d,B,R,T,O) for t in args.num_trees \
+  for params in [(t,a,b,p,w,d,B,R,r,T,O) for t in args.num_trees \
                                    for a in args.a_size \
                                    for b in args.b_size \
                                    for p in args.p_size \
@@ -71,9 +73,10 @@ def main():
                                    for d in args.depth \
                                    for B in args.branching \
                                    for R in args.recursion \
+                                   for r in args.recursion_bound \
                                    for T in args.termination \
                                    for O in args.oneword]:
-     t, a, b, p, w, d, B, R, T, O = params
+     t, a, b, p, w, d, B, R, r, T, O = params
 
      sys.stderr.write('Generating model and sampling trees using the following configuration:\n')
      sys.stderr.write('  t=%s\n'%t)
@@ -84,6 +87,7 @@ def main():
      sys.stderr.write('  d=%s\n'%d)
      sys.stderr.write('  B=%s\n'%B)
      sys.stderr.write('  R=%s\n'%R)
+     sys.stderr.write('  r=%s\n'%R)
      sys.stderr.write('  T=%s\n'%T)
      sys.stderr.write('  O=%s\n'%O)
 
@@ -99,6 +103,10 @@ def main():
        R_str = 'None'
      else:
        R_str = ('%.3f'%R)[2:]
+     if r is None:
+       r_str = 'None'
+     else:
+       r_str = '%d'%r
      if T is None:
        T_str = 'None'
      else:
@@ -107,7 +115,7 @@ def main():
        O_str = 'None'
      else:
        O_str = ('%.3f'%O)[2:]
-     basename = args.output_dir + '/PCFG_t%s_a%s_b%s_p%s_w%s_d%s_B%s_R%s_T%s_O%s' %(t, a, b, p, w, d_str, B_str, R_str, T_str, O_str)
+     basename = args.output_dir + '/PCFG_t%s_a%s_b%s_p%s_w%s_d%s_B%s_R%s_r%s_T%s_O%s' %(t, a, b, p, w, d_str, B_str, R_str, r_str, T_str, O_str)
      
      if args.dry_run:
        print('  ' + basename + '.linetrees')
@@ -116,7 +124,7 @@ def main():
        print('')
      else:
        sys.stderr.write('Generating probability model...\n')
-       gen = PCFG_Generator(a,b,p,w,1,15,B,R,T,O)
+       gen = PCFG_Generator(a,b,p,w,1,15,B,R,r,T,O)
        sys.stderr.write('Sampling trees...\n')
        if args.depth != None:
          trees = gen.generate_trees(t, args.depth)
@@ -161,6 +169,10 @@ def main():
            f.write('  Maximum allowed embedding depth for tree samples: %d\n' %d)
          else:
            f.write('  No limit on embedding depth.\n')
+         if d != None:
+           f.write('  Maximum allowed recursion depth for tree samples: %d\n' %d)
+         else:
+           f.write('  No limit on recursion depth.\n')
     
        sys.stderr.write('PCFG generation and tree sampling complete.\n\n')
 

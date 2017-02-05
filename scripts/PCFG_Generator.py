@@ -23,12 +23,13 @@ in order to model the long-tailed distribution of words in natural languages.
 @param w_len_max: Maximum word length
 @param branching: Branching preference (i.e. left-branching probability; 0 <= branching <= 1)
 @param recursion: Recursion probability (0 <= recursion < 1)
+@param recursion_bound: Maximum depth of recursion allowed during tree sampling.
 @param termination: Branch termination (bottom-out) probability (0 < termination <= 1)
 @param one_wrd: Probability of generating a one-word sentence (0 <= one_wrd <= 1)
 
 """
 class PCFG_Generator():
-  def __init__(this, a_max=5, b_max=5, p_max=5, w_max=2000, w_len_min=1, w_len_max=15, branching=None, recursion=None, termination=None, one_wrd=None):
+  def __init__(this, a_max=5, b_max=5, p_max=5, w_max=2000, w_len_min=1, w_len_max=15, branching=None, recursion=None, recursion_bound=None, termination=None, one_wrd=None):
     this.a_max = a_max
     this.b_max = b_max
     this.p_max = p_max
@@ -41,6 +42,7 @@ class PCFG_Generator():
       # Probability 1 disallowed, padding recursion param
       this.recursion = 0.9999999999
     else: this.recursion = recursion
+    this.recursion_bound = recursion_bound
     if termination == 0.0:
       # Zero termination probability disallowed, padding termination param
       this.termination = 0.00000000001
@@ -179,6 +181,7 @@ class PCFG_Generator():
     termination_rules = [(P,P) for P in p_list for P in p_list]
 
     this.model['depth_exceeded'] = {}
+    this.model['terminate'] = {}
 
     for a in a_list:
       assert a not in this.model, 'Error: %s already in this.model.' %b
@@ -190,7 +193,9 @@ class PCFG_Generator():
       # Append recursive rules, partitioning probability per recursion param
       this.add_condition(a, recursive_rules, mixing=this.recursion)
       # Append termination rules, partitioning probability per termination param.
-      this.add_condition(a, termination_rules, mixing=this.termination)
+      terminate = this.generate_rv_dist(a, termination_rules)
+      this.model['terminate'][a] = copy.deepcopy(terminate)
+      this.model[a].append(terminate, mixing=this.termination)
       # Copy entire A model to the "depth_exceeded" distribution, since all A-headed rules do not increase depth
       this.model['depth_exceeded'][a] = copy.deepcopy(this.model[a])
 
@@ -208,6 +213,7 @@ class PCFG_Generator():
       this.add_condition(b, recursive_rules, mixing=this.recursion)
       # Append termination rules, partitioning probability per termination param.
       terminate = this.generate_rv_dist(a, termination_rules)
+      this.model['terminate'][b] = copy.deepcopy(terminate)
       this.model[b].append(terminate, mixing=this.termination)
       # Copy non-center-embedding rules to the "depth_exceeded" distribution
       this.model['depth_exceeded'][b].append(terminate, mixing=this.termination)
@@ -240,20 +246,23 @@ class PCFG_Generator():
   Recursively sample a tree from the PCFG.
 
   @param t: Root tree object.
-  @param d: Current depth.
+  @param d: Current embedding depth.
+  @param r: Current recursion depth.
   @param rchild: Whether or not t is a right child
 
   @return: Tree object
   """
-  def generate_tree(this, t, d=0, D=inf, rchild=False):
-
+  def generate_tree(this, t, d=0, r=0, D=inf, rchild=False):
+    r += 1
     if not t.c:
       t.c = this.model['T'].rvs()[0]
-      this.generate_tree(t, d+1, D, rchild)
+      this.generate_tree(t, d+1, r, D, rchild)
     else:
       if t.c[:4] in this.model:
         if not t.c.startswith('POS'):
-          if d >= D:
+          if r >= this.recursion_bound:
+            ch = this.model['terminate'][t.c].rvs()
+          elif d >= D:
             ch = this.model['depth_exceeded'][t.c].rvs()
           else:
             ch = this.model[t.c].rvs()
@@ -263,12 +272,12 @@ class PCFG_Generator():
             dl = d+1
           else: dl = d
           
-          this.generate_tree(lc, dl, D, False)
-          this.generate_tree(rc, d, D, True)
+          this.generate_tree(lc, dl, r, D, False)
+          this.generate_tree(rc, d, r, D, True)
           t.ch = [lc, rc]
         else:
           ch = this.model[t.c].rvs()
           lc = tree.Tree(ch[0])
-          this.generate_tree(lc, d, D, False)
+          this.generate_tree(lc, d, r, D, False)
           t.ch = [lc]
 
