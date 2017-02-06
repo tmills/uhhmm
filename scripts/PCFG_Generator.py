@@ -26,10 +26,11 @@ in order to model the long-tailed distribution of words in natural languages.
 @param recursion_bound: Maximum depth of recursion allowed during tree sampling.
 @param termination: Branch termination (bottom-out) probability (0 < termination <= 1)
 @param one_wrd: Probability of generating a one-word sentence (0 <= one_wrd <= 1)
-
+@param alpha_coef: Generate probs with stick-breaking construction parameterized by |outcomes| * alpha_coef. Lower values create more concentrated distributions. If <None>, probabilities will be created from randomly-sampled weights rather than Dirichlet processes. Also accepts the string value 'rand', which generates random concentration coefficients for each distribution in the model.
 """
+
 class PCFG_Generator():
-  def __init__(this, a_max=5, b_max=5, p_max=5, w_max=2000, w_len_min=1, w_len_max=15, branching=None, recursion=None, recursion_bound=None, termination=None, one_wrd=None):
+  def __init__(this, a_max=5, b_max=5, p_max=5, w_max=2000, w_len_min=1, w_len_max=15, branching=None, recursion=None, recursion_bound=None, termination=None, one_wrd=None, alpha_coef=None):
     this.a_max = a_max
     this.b_max = b_max
     this.p_max = p_max
@@ -48,6 +49,7 @@ class PCFG_Generator():
       this.termination = 0.00000000001
     else: this.termination = termination
     this.one_wrd = one_wrd
+    this.alpha_coef = alpha_coef
     this.lex = set([''])
     this.model = {}
 
@@ -91,7 +93,7 @@ class PCFG_Generator():
 
   @return: void
   """
-  def add_condition(this, c, outcome_list, model=None, mixing=None, alpha=None):
+  def add_condition(this, c, outcome_list, model=None, mixing=None):
     if not model:
       model = this.model
     if mixing != None:
@@ -100,13 +102,7 @@ class PCFG_Generator():
     # Save space by skipping zero-probability new outcomes
     if mixing == 0.0:
       return
-    if c in model:
-      stick = model[c].stick
-    else:
-      if alpha:
-        stick = 1.0
-      else: stick = None
-    dist = this.generate_rv_dist(c, outcome_list, alpha, stick)
+    dist = this.generate_rv_dist(c, outcome_list, this.alpha_coef)
     # Gives all prob mass to new outcomes
     # Save space by skipping zero-probability old outcomes
     if mixing == 1.0 or c not in model:
@@ -124,23 +120,23 @@ class PCFG_Generator():
 
   @return: rv_discrete_label instance representing new distribution
   """
-  def generate_rv_dist(this, c, outcome_list, alpha=None, stick_init=None):
+  def generate_rv_dist(this, c, outcome_list, alpha_coef=None):
     outcomes = outcome_list[:]
     outcome_count = len(outcomes)
     np.random.shuffle(outcomes)
     outcome_weights = np.zeros(outcome_count)
     
-    stick = stick_init
-    if alpha != None:
-      if stick is None:
-        stick = 1.0
+    if alpha_coef != None:
+      if alpha_coef == 'rand':
+        alpha_coef = np.random.rand()
+      stick = 1.0
       for i in range(0, outcome_count):
-        outcome_weights[i] = beta = np.random.beta(1,alpha)*stick
+        outcome_weights[i] = beta = np.random.beta(1,outcome_count*alpha_coef)*stick
         stick -= beta
     else:
       outcome_weights = np.random.rand(outcome_count)
 
-    return rv_discrete_label(values=(outcomes, outcome_weights), name=c, stick=stick)
+    return rv_discrete_label(values=(outcomes, outcome_weights), name=c)
 
   """
   Generates PCFG probability model.
@@ -193,7 +189,7 @@ class PCFG_Generator():
       # Append recursive rules, partitioning probability per recursion param
       this.add_condition(a, recursive_rules, mixing=this.recursion)
       # Append termination rules, partitioning probability per termination param.
-      terminate = this.generate_rv_dist(a, termination_rules)
+      terminate = this.generate_rv_dist(a, termination_rules, this.alpha_coef)
       this.model['terminate'][a] = copy.deepcopy(terminate)
       this.model[a].append(terminate, mixing=this.termination)
       # Copy entire A model to the "depth_exceeded" distribution, since all A-headed rules do not increase depth
@@ -204,7 +200,7 @@ class PCFG_Generator():
       assert b not in this.model['depth_exceeded'], 'Error: %s already in this.model["depth_exceeded"].' %b
       # Add right-branching rules
       # Copy right-branching probs to the "depths_exceeded" distribution for use when center-embedding disallowed
-      rb = this.generate_rv_dist(b, right_branching_rules)
+      rb = this.generate_rv_dist(b, right_branching_rules, this.alpha_coef)
       this.model['depth_exceeded'][b] = rb
       this.model[b] = copy.deepcopy(rb)
       # Append left-branching rules, partitioning probability per branching param.
@@ -212,7 +208,7 @@ class PCFG_Generator():
       # Append recursive rules, partitioning probability per recursion param
       this.add_condition(b, recursive_rules, mixing=this.recursion)
       # Append termination rules, partitioning probability per termination param.
-      terminate = this.generate_rv_dist(a, termination_rules)
+      terminate = this.generate_rv_dist(a, termination_rules, this.alpha_coef)
       this.model['terminate'][b] = copy.deepcopy(terminate)
       this.model[b].append(terminate, mixing=this.termination)
       # Copy non-center-embedding rules to the "depth_exceeded" distribution
@@ -220,7 +216,7 @@ class PCFG_Generator():
 
     for p in p_list:
       # Use stick-breaking to model long-tailed distribution of words in natural languages
-      this.add_condition(p, lex_list, alpha=float(len(lex_list))/10)
+      this.add_condition(p, lex_list)
 
     #print('Model generated.')
   
