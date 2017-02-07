@@ -234,8 +234,8 @@ class PCFG_Generator():
       t = tree.Tree()
       this.generate_tree(t, D=D)
       trees.append(t)
-      if i > 0 and i%1000 == 0:
-        sys.stderr.write('%d trees sampled.\n'%i)
+      if (i+1)%1000 == 0:
+        sys.stderr.write('%d trees sampled.\n'%(i+1))
     return trees
 
   """
@@ -256,7 +256,7 @@ class PCFG_Generator():
     else:
       if t.c[:4] in this.model:
         if not t.c.startswith('POS'):
-          if r >= this.recursion_bound:
+          if this.recursion_bound != None and r >= this.recursion_bound:
             ch = this.model['terminate'][t.c].rvs()
           elif d >= D:
             ch = this.model['depth_exceeded'][t.c].rvs()

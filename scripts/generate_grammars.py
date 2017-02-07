@@ -27,6 +27,8 @@ argparser.add_argument('-A', '--alpha_coef', dest='alpha_coef', default=None, ac
 args, unknown = argparser.parse_known_args()
 
 def process_int(s):
+  if s is None:
+    return [s]
   s = s.split(':')
   assert len(s) > 0 and len(s) <=3, 'Improperly formatted CLI argument: %s' %s
   if len(s) == 1:
@@ -76,10 +78,7 @@ def main():
   args.p_size = process_int(args.p_size)
   args.w_size = process_int(args.w_size)
   args.recursion_bound = process_int(args.recursion_bound)
-  if args.depth != None:
-    args.depth = process_int(args.depth)
-  else:
-    args.depth = [None]
+  args.depth = process_int(args.depth)
   args.branching = process_real(args.branching)
   args.recursion = process_real(args.recursion)
   args.termination = process_real(args.termination)

@@ -13,7 +13,7 @@ from numpy import inf
 from scipy.stats import rv_discrete
 
 class rv_discrete_label(object):
-  def __init__(this, a=0, b=inf, name=None, badvalue=None, moment_tol=1e-08, values=None, inc=1, longname=None, shapes=None, extradoc=None, seed=None, stick=1.0):
+  def __init__(this, a=0, b=inf, name=None, badvalue=None, moment_tol=1e-08, values=None, inc=1, longname=None, shapes=None, extradoc=None, seed=None):
     this.a = a
     this.b = b
     this.name = name
@@ -26,7 +26,6 @@ class rv_discrete_label(object):
     this.shapes = shapes
     this.extradoc = extradoc
     this.seed = seed
-    this.stick = 1.0
     this.dist = None
     this.get_labels = np.vectorize(lambda this, x: this.labels[x])
     this.refresh_dist()
