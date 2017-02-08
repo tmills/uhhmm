@@ -687,6 +687,7 @@ def break_g_stick(models, sample, params):
 
     b_max = models.cont[0].dist.shape[-1]
     g_max = models.pos.dist.shape[-1]
+    depth = len(models.fork)
 
     ## Resample beta when the stick is broken:
     break_beta_stick(models.pos, sample.gamma)
@@ -700,27 +701,28 @@ def break_g_stick(models, sample, params):
     ## Add a row to the lexical distribution for this new POS tag:
     add_model_row_simple(models.lex, params['h'][0,1:])
 
-    models.fork[0].pairCounts = np.append(models.fork[0].pairCounts, np.zeros((b_max,1,2)), 1)
-    models.fork[0].dist = np.append(models.fork[0].dist, np.zeros((b_max,1,2)), 1)
-    models.fork[0].dist[:,g_max,:] = sampler.sampleBernoulli(models.fork[0].pairCounts[:,g_max,:], sample.alpha_f * sample.beta_f)
+    for d in range(0, depth):
+        models.fork[d].pairCounts = np.append(models.fork[d].pairCounts, np.zeros((b_max,1,2)), 1)
+        models.fork[d].dist = np.append(models.fork[d].dist, np.zeros((b_max,1,2)), 1)
+        models.fork[d].dist[:,g_max,:] = sampler.sampleBernoulli(models.fork[d].pairCounts[:,g_max,:], sample.alpha_f * sample.beta_f)
 
-    models.trans[0].pairCounts = np.append(models.trans[0].pairCounts, np.zeros((b_max,1,2)), 1)
-    models.trans[0].dist = np.append(models.trans[0].dist, np.zeros((b_max,1,2)), 1)
-    models.trans[0].dist[:,g_max,:] = sampler.sampleBernoulli(models.trans[0].pairCounts[:,g_max,:], sample.alpha_f * sample.beta_f)
+        models.trans[d].pairCounts = np.append(models.trans[d].pairCounts, np.zeros((b_max,1,2)), 1)
+        models.trans[d].dist = np.append(models.trans[d].dist, np.zeros((b_max,1,2)), 1)
+        models.trans[d].dist[:,g_max,:] = sampler.sampleBernoulli(models.trans[d].pairCounts[:,g_max,:], sample.alpha_f * sample.beta_f)
 
-    ## One active model uses g as a condition:
-    models.root[0].pairCounts = np.append(models.root[0].pairCounts, np.zeros((b_max,1,a_max)), 1)
-    models.root[0].dist = np.append(models.root[0].dist, np.zeros((b_max,1,a_max)), 1)
-    models.root[0].dist[:,g_max,:] = sampler.sampleDirichlet(models.root[0].pairCounts[:,g_max,:], models.root[0].alpha * models.root[0].beta)
+        ## One active model uses g as a condition:
+        models.root[d].pairCounts = np.append(models.root[d].pairCounts, np.zeros((b_max,1,a_max)), 1)
+        models.root[d].dist = np.append(models.root[d].dist, np.zeros((b_max,1,a_max)), 1)
+        models.root[d].dist[:,g_max,:] = sampler.sampleDirichlet(models.root[d].pairCounts[:,g_max,:], models.root[d].alpha * models.root[d].beta)
 
-    ## Two awaited models use g as a condition:
-    models.cont[0].pairCounts = np.append(models.cont[0].pairCounts, np.zeros((b_max,1,b_max)), 1)
-    models.cont[0].dist = np.append(models.cont[0].dist, np.zeros((b_max,1,b_max)), 1)
-    models.cont[0].dist[:,g_max,:] = sampler.sampleDirichlet(models.cont[0].pairCounts[:,g_max,:], models.cont[0].alpha * models.cont[0].beta)
+        ## Two awaited models use g as a condition:
+        models.cont[d].pairCounts = np.append(models.cont[d].pairCounts, np.zeros((b_max,1,b_max)), 1)
+        models.cont[d].dist = np.append(models.cont[d].dist, np.zeros((b_max,1,b_max)), 1)
+        models.cont[d].dist[:,g_max,:] = sampler.sampleDirichlet(models.cont[d].pairCounts[:,g_max,:], models.cont[d].alpha * models.cont[d].beta)
 
-    models.exp[0].pairCounts = np.append(models.exp[0].pairCounts, np.zeros((1, a_max, b_max)), 0)
-    models.exp[0].dist = np.append(models.exp[0].dist, np.zeros((1, a_max, b_max)), 0)
-    models.exp[0].dist[g_max,...] = sampler.sampleDirichlet(models.exp[0].pairCounts[g_max,...], models.exp[0].alpha * models.exp[0].beta)
+        models.exp[d].pairCounts = np.append(models.exp[d].pairCounts, np.zeros((1, a_max, b_max)), 0)
+        models.exp[d].dist = np.append(models.exp[d].dist, np.zeros((1, a_max, b_max)), 0)
+        models.exp[d].dist[g_max,...] = sampler.sampleDirichlet(models.exp[d].pairCounts[g_max,...], models.exp[d].alpha * models.exp[d].beta)
 
 def resample_beta_g(models, gamma):
     logging.info("Resampling beta g")
