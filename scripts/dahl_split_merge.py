@@ -92,8 +92,10 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=F
     lex_counts[1, ev_seqs[sent1_ind][word1_ind]-1] = 1
     num_awa = models.pos.dist.shape[0] # number of awaited categories
     pos_counts = np.zeros((num_awa, 2), dtype=int) # POS counts for all awaited variable values
-    awa0 = sample.hid_seqs[sent0_ind][word0_ind].b[0] # awaited value for anchor 0
-    awa1 = sample.hid_seqs[sent1_ind][word1_ind].b[0] # awaited value for anchor 1
+    depth0 = sample.hid_seqs[sent0_ind][word0_ind].max_awa_depth()
+    depth1 = sample.hid_seqs[sent1_ind][word1_ind].max_awa_depth()
+    awa0 = sample.hid_seqs[sent0_ind][word0_ind].b[depth0] # awaited value for anchor 0
+    awa1 = sample.hid_seqs[sent1_ind][word1_ind].b[depth1] # awaited value for anchor 1
     pos_counts[awa0, 0] += 1
     pos_counts[awa1, 1] += 1
     norm_const_lex = np.array([norm_const(lex_counts[0], alpha_lex), norm_const(lex_counts[1], alpha_lex)])
@@ -101,7 +103,8 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=F
     logprob_split = 0 # log probability of the new state assignments during the split
     for ind in subset1: # assign the non-anchor indices to the two POS tags one by one
         sent_ind, word_ind = indices(cum_length, ind)
-        awa = sample.hid_seqs[sent_ind][word_ind].b[0]
+        depth = sample.hid_seqs[sent_ind][word_ind].max_awa_depth()
+        awa = sample.hid_seqs[sent_ind][word_ind].b[depth]
         # new lexical and POS counts for the two possible state assignments:
         newcounts_lex = np.copy(lex_counts)
         newcounts_lex[:, ev_seqs[sent_ind][word_ind]-1] += 1
@@ -132,10 +135,11 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=F
         for ind in sets[1]: # reassign indices in set1 from pos0 to pos1
             sent_ind, word_ind = indices(cum_length, ind)
             state = new_sample.hid_seqs[sent_ind][word_ind]
+            depth = state.max_awa_depth()
             token = ev_seqs[sent_ind][word_ind]
             state.g = pos1
-            new_models.pos.count(state.b[0], pos0, -1)
-            new_models.pos.count(state.b[0], state.g, 1)
+            new_models.pos.count(state.b[depth], pos0, -1)
+            new_models.pos.count(state.b[depth], state.g, 1)
             new_models.lex.count(pos0, token, -1)
             new_models.lex.count(state.g, token, 1)
         logging.debug("During split the new shape of root is %s and exp is %s" % (str(new_models.root[0].dist.shape), str(new_models.exp[0].dist.shape) ) )
@@ -153,12 +157,13 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=F
         for ind in range(num_tokens):
             sent_ind, word_ind = indices(cum_length, ind)
             state = new_sample.hid_seqs[sent_ind][word_ind]
+            depth = state.max_awa_depth()
             pos = state.g
             token = ev_seqs[sent_ind][word_ind]
             if pos == pos1: # reassign all indices with pos1 to pos0
                 state.g = pos0
-                new_models.pos.count(state.b[0], pos0, 1)
-                new_models.pos.count(state.b[0], pos1, -1)
+                new_models.pos.count(state.b[depth], pos0, 1)
+                new_models.pos.count(state.b[depth], pos1, -1)
                 new_models.lex.count(pos0, token, 1)
                 new_models.lex.count(pos1, token, -1)
         from uhhmm import remove_pos_from_models, remove_pos_from_hid_seqs
