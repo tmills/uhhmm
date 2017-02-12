@@ -44,7 +44,7 @@ def start_local_workers(host, jobs_port, results_port, models_port, maxLen, num_
 def main(args):
     logging.basicConfig(level=logging.INFO)
     
-    if len(args) != 1 and len(args) != 6 and len(args) != 7:
+    if len(args) != 1 and len(args) != 6 and len(args) != 7 and len(args) != 8:
         print("ERROR: Wrong number of arguments! Two run modes -- One argument of a file with properties or 6-8 arguments with properties.")
         sys.exit(-1)
         
@@ -61,10 +61,10 @@ def main(args):
                 time.sleep(10)
 
     num_workers = 1
-    if len(args) >= 7:
-        num_workers = int(args[6])
+    if len(args) >= 8:
+        num_workers = int(args[7])
     
-        processes = start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), num_workers, bool(int(args[5])))
+        processes = start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), num_workers, bool(int(args[5])), int(args[6]))
     
 #         for i in range(0, num_workers):
 #             fs = PyzmqWorker.PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), tid=i)
@@ -79,7 +79,7 @@ def main(args):
             processes[i].join()
 
     else:
-        start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), 1, bool(int(args[5])))
+        start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), 1, bool(int(args[5])), int(args[6]))
 
 if __name__ == "__main__":
     main(sys.argv[1:])

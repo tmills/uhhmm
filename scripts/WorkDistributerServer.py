@@ -312,6 +312,8 @@ class WorkDistributerServer():
         time.sleep(3)
 
         self.startProcessing(model_sig)
+        while self.sink.getProcessing():
+            time.sleep(2)
         
     def submitBuildModelJobs(self, num_rows):
         self.model_server.reset_models()
@@ -331,8 +333,6 @@ class WorkDistributerServer():
         self.sync_socket.recv()
         self.sync_socket.send_pyobj(model_sig)
         
-        while self.sink.getProcessing():
-            time.sleep(2)
         
     def get_model_row(self, index):
         return self.sink.getModelRow(index)
