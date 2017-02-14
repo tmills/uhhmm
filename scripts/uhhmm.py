@@ -1066,7 +1066,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
     
     # Update counts for eos
     if cur_depth == -1: #F=1,J=1
-        models.fork[0].count((0,0), 1, inc)
+        models.fork[0].count((0,prevState.g), 1, inc)
         models.trans[0].count((0,prevState.g), 1, inc)
         models.cont[0].count((0,prevState.g), 0, inc)
     else: #F=0,J=1

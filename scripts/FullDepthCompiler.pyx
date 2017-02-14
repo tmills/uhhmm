@@ -115,12 +115,12 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
             ## Add probs for transition to EOS
             if f==0 and j==1 and start_depth == 0:
                 EOS = indexer.get_state_size()/4
-                EOS_prob = cumProbs[0] * cumProbs[1] * models.next[start_depth].dist[ prevA[start_depth], above_awa, 0 ]
+                EOS_prob = cumProbs[1] * models.next[start_depth].dist[ prevA[start_depth], above_awa, 0 ]
                 indices.append(EOS)
                 data.append(EOS_prob)
             elif f==1 and j==1 and start_depth == -1:
                 EOS = indexer.get_state_size()/4
-                EOS_prob = cumProbs[0] * cumProbs[1] * models.cont[0].dist[ 0, 0, 0 ]
+                EOS_prob = cumProbs[1] * models.cont[0].dist[ 0, 0, 0 ]
                 indices.append(EOS)
                 data.append(EOS_prob)
 
