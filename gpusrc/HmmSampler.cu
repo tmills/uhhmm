@@ -345,36 +345,11 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         //  cout << sent[token_ind] << " ";
        // }
         //cout << endl;
-        
-        last_index = sent.size() - 1;
-        // doubly normalized??
-        // self.dyn_prog[last_index,:] /= self.dyn_prog[last_index,:].sum()
-        sample_t = -1;
-        sample_depth = -1;
-        //cout << "x1" << endl;
-        while (sample_t < 0 || (sample_depth > 0)) {
-            //cout << "Sampling last index: " << last_index << " for sentence" << endl;
-            array2d<float, device_memory>::column_view dyn_prog_temp_col_view = dyn_prog[last_index]->column(sent_ind);
-            //if(sample_t == -1) cusp::print(dyn_prog_temp_col_view);
-            //cout << dyn_prog_temp_col_view << endl;
-            sample_t = get_sample(dyn_prog_temp_col_view);
-            // sample_t = 0;
-            //cout << "sample_t=" << sample_t << endl;
-            sample_state = p_indexer -> extractState(sample_t);
-            //cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
-            if(!sample_state.depth_check()){
-              cout << "Depth error in state assigned to last index" << endl;
-            }
-            sample_depth = sample_state.max_awa_depth();
-            //cout << "Sample depth is "<< sample_depth << endl;
-        }
-        // auto t3 = Clock::now();
-        //cout << "x3" << endl;
-        sample_seq.push_back(sample_state);
-        sample_t_seq.push_back(sample_t);
-        // skip some error handling
-    
-        for (int t = sent.size() - 2; t > -1; t --){
+       
+        // Start with EOS, which is 1/4 way through state list 
+        sample_t = p_indexer->get_state_size() / 4;
+
+        for (int t = sent.size() - 1; t > -1; t --){
             //cout << 't' << t << endl;
             // auto t11 = Clock::now();
             std::tie(sample_state, sample_t) = _reverse_sample_inner(sample_t, t, sent_ind);

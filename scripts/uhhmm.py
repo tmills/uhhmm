@@ -770,7 +770,7 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
         models.fork[d] = Model((b_max, g_max, 2), name="Fork"+str(d))
 
         ## Two join models:
-        models.trans[d] = Model((b_max, g_max, 2), name="J|F1_"+str(d))
+        models.trans[d] = Model((b_max, g_max, 2), name="J|F1_"+str(d+1))
         models.reduce[d] = Model((a_max, b_max, 2), name="J|F0_"+str(d))
 
         ## TODO -- set d > 0 beta to the value of the model at d (can probably do this later)
@@ -877,7 +877,10 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None, strategy=RANDOM
             ## special case for first word
             if index == 0:
                 state.f = 1
-                state.j = 0
+                if len(sent) > 1:
+                    state.j = 0
+                else:
+                    state.j = 1
                 state.a[0] = 0
                 state.b[0] = 0
             else:
@@ -910,26 +913,22 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None, strategy=RANDOM
                     logging.error("Unknown initialization strategy %d" % (strategy))
                     raise Exception
 
+                cur_depth = prev_depth + state.f - state.j
                 if prev_depth == -1:
-                    cur_depth = 0
                     state.a[cur_depth] = np.random.randint(1, a_max-1)
                 elif state.f == 1 and state.j == 1:
-                    cur_depth = prev_depth
                     state.a[0:cur_depth] = prev_state.a[0:cur_depth]
                     state.b[0:cur_depth] = prev_state.b[0:cur_depth]
                     state.a[cur_depth] = prev_state.a[cur_depth]
                 elif state.f == 0 and state.j == 0:
-                    cur_depth = prev_depth
                     state.a[0:cur_depth] = prev_state.a[0:cur_depth]
                     state.b[0:cur_depth] = prev_state.b[0:cur_depth]
                     state.a[cur_depth] = np.random.randint(1,a_max-1)
                 elif state.f == 1 and state.j == 0:
-                    cur_depth = prev_depth + 1
                     state.a[0:cur_depth] = prev_state.a[0:cur_depth]
                     state.b[0:cur_depth] = prev_state.b[0:cur_depth]
                     state.a[cur_depth] = np.random.randint(1,a_max-1)
                 elif state.f == 0 and state.j == 1:
-                    cur_depth = prev_depth - 1
                     state.a[0:cur_depth] = prev_state.a[0:cur_depth]
                     state.b[0:cur_depth] = prev_state.b[0:cur_depth]
                     state.a[cur_depth] = prev_state.a[cur_depth]
@@ -1001,8 +1000,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
         else:
             prev_depth = prevState.max_awa_depth()
 
-        fork_depth = prev_depth
-        cur_depth = state.max_awa_depth()
+        cur_depth = prev_depth
         ## print(state.str())
         if cur_depth <= 0:
             above_awa = 0
@@ -1017,28 +1015,31 @@ def increment_counts(hid_seq, sent, models, inc=1):
         if index != 0:
             ## Count F & J
             if index == 1:
-                ## No counts for f & j -- deterministically +/- at depth 0
-                models.root[0].count((0, prevState.g), state.a[0], inc)
-                models.exp[0].count((prevState.g, state.a[0]), state.b[0], inc)
+                ## No counts for f -- deterministically + at depth 0
+                cur_depth += state.f
+                models.trans[cur_depth].count((0, prevState.g), state.j, inc) 
+                ## J always 0 at this point, no need to update cur_depth
+                models.root[cur_depth].count((0, prevState.g), state.a[0], inc)
+                models.exp[cur_depth].count((prevState.g, state.a[0]), state.b[0], inc)
             else:
-                models.fork[fork_depth].count((prevState.b[prev_depth], prevState.g), state.f, inc)
+                models.fork[cur_depth].count((prevState.b[prev_depth], prevState.g), state.f, inc)
 
                 if state.f == 0:
-                    models.reduce[fork_depth].count((prevState.a[prev_depth], prev_above_awa), state.j, inc)
+                    models.reduce[cur_depth].count((prevState.a[prev_depth], prev_above_awa), state.j, inc)
                 elif state.f == 1:
-                    models.trans[fork_depth].count((prevState.b[prev_depth], prevState.g), state.j, inc)
+                    models.trans[cur_depth].count((prevState.b[prev_depth], prevState.g), state.j, inc)
                 else:
                     raise Exception("Unallowed value of the fork variable!")
 
                 ## Count A & B
                 if state.f == 0 and state.j == 0:
                     assert prev_depth == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
-                    models.act[cur_depth].count((prevState.a[cur_depth], prev_above_awa), state.a[cur_depth], inc)
-                    models.start[cur_depth].count((prevState.a[cur_depth], state.a[cur_depth]), state.b[cur_depth], inc)
+                    models.act[cur_depth].count((prevState.a[prev_depth], prev_above_awa), state.a[cur_depth], inc)
+                    models.start[cur_depth].count((prevState.a[prev_depth], state.a[cur_depth]), state.b[cur_depth], inc)
                 elif state.f == 1 and state.j == 1:
                     assert prev_depth == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
                     ## no change to act, awa increments cont model
-                    models.cont[cur_depth].count((prevState.b[cur_depth], prevState.g), state.b[cur_depth], inc)
+                    models.cont[cur_depth].count((prevState.b[prev_depth], prevState.g), state.b[cur_depth], inc)
                 elif state.f == 1 and state.j == 0:
                     assert prev_depth+1 == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
                     ## run root and exp models at depth d+1
@@ -1062,6 +1063,18 @@ def increment_counts(hid_seq, sent, models, inc=1):
         models.lex.count(state.g, word, inc)
 
         prevState = state
+    
+    # Update counts for eos
+    if cur_depth == -1: #F=1,J=1
+        models.fork[0].count((0,0), 1, inc)
+        models.trans[0].count((0,prevState.g), 1, inc)
+        models.cont[0].count((0,prevState.g), 0, inc)
+    else: #F=0,J=1
+        models.fork[0].count((prevState.b[0],prevState.g), 0, inc)
+        models.reduce[0].count((prevState.a[0],0), 1, inc)
+        models.next[0].count((prevState.a[0],0), 0, inc)
+    models.pos.count(0, 0, inc)
+    models.lex.count(0, 0, inc)
 
 #    prevBG = bg_state(hid_seq[-1].b, hid_seq[-1].g)
 ## WS: REMOVED THESE: WAS DISTORTING OUTPUTS BC F MODEL NOT REALLY CONSULTED AT END (MODEL ACTUALLY KNOWS ITS AT END)

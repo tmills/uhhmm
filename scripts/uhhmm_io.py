@@ -169,9 +169,9 @@ def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix="",
             continue
 
         if word_dict == None:
-            f.write("P( %s%d | %s%s, %d ) = %f \n" % (outcomePrefix, rhs, condPrefix, str(lhs), depth, 10**val))
+            f.write("P( %s%d | %s%s, %d ) = %f \n" % (outcomePrefix, rhs, condPrefix, str(lhs), depth, unlog_val))
         else:
-            f.write("P( %s | %s, %d ) = %f \n" % (word_dict[rhs], str(lhs), depth, 10**val))
+            f.write("P( %s | %s, %d ) = %f \n" % (word_dict[rhs], str(lhs), depth, unlog_val))
 
     f.close()
 

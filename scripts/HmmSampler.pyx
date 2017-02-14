@@ -66,7 +66,6 @@ cdef class HmmSampler(Sampler.Sampler):
         
         if len(sents) > 1:
             raise Exception("Error: Python version only accepts batch size 1")
-        
         sent = sents[0]
         t0 = time.time()
         try:           
@@ -140,25 +139,10 @@ cdef class HmmSampler(Sampler.Sampler):
             ## normalize after multiplying in the transition out probabilities
             self.dyn_prog[last_index,:] /= self.dyn_prog[last_index,:].sum()
             
-            sample_t = -1
-            sample_depth = -1
-            ## We require that the sample comes from the set of states that are at depth
-            ## 0 (i.e. the sentence must fully reduce to be a valid parse)
-            #print(dyn_prog[:,last_index])
-            while sample_t < 0 or sample_depth > 0:
-                sample_t = get_sample(self.dyn_prog[last_index,:])
-                sample_state = self.indexer.extractState(sample_t)
-                sample_depth = sample_state.max_awa_depth()
-                #logging.debug("Sampled final state %s with depth %d" % (sample_state.str(), sample_depth))
-    
-            sample_seq.append(sample_state)
-            #logging.debug("Sampled state %s at time %d" % (sample_seq[-1].str(), last_index))
-            
-            if last_index > 0 and (sample_seq[-1].a[0] == 0 or sample_seq[-1].b[0] == 0 or sample_seq[-1].g == 0):
-                logging.error("Error: First sample for sentence %d has index %d and has a|b|g = 0" % (sent_index, sample_t))
-                raise Exception
+            ## EOS state is f=0,j=1,a=[0]*d,b=[0]*d,g=0. Located 1/4 way through state list.
+            sample_t = self.indexer.get_state_size()/4
   
-            for t in range(len(sent)-2,-1,-1):                
+            for t in range(len(sent)-1,-1,-1):              
                 sample_state, sample_t = self._reverse_sample_inner(pi, sample_t, t)
                 sample_seq.append(sample_state)
            

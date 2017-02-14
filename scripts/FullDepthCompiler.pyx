@@ -24,7 +24,7 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
     cdef int f,j,a,b,g, prevF, prefJ
     cdef np.ndarray range_probs, prevA, prevB
     #cdef np.ndarray indices, data
-    
+
     prev_state = indexer.extractState(prevIndex)
     (prevF, prevJ, prevA, prevB, prevG) = prev_state.f, prev_state.j, prev_state.a, prev_state.b, prev_state.g
     
@@ -35,6 +35,10 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
     indices =  []
     data = []
 
+    if prevIndex == indexer.get_state_size()/4:
+        ## previous was EOS, no outgoing transitions allowed
+        return indices, data
+    
     ## Skip invalid start states
     if depth > 1:
         ## One that should not be allowed by our indexing scheme:
@@ -85,7 +89,7 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
             indices.append(state_index + g)
             data.append(range_probs[g])
         return indices, data
-        
+       
     for f in (0,1):
         nextState.f = f
 
@@ -103,18 +107,23 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
         for j in (0,1):
             nextState.j = j
             ## See note above where we set nextState.f
-            if start_depth >= 0:
-                if f == 0:
-                    cumProbs[1] = cumProbs[0] * models.reduce[start_depth].dist[ prevA[start_depth], above_awa, j ]
-                else:
-                    cumProbs[1] = cumProbs[0] * models.trans[start_depth].dist[ prevB[start_depth], prevG, j ]
+            if f == 0:
+                cumProbs[1] = cumProbs[0] * models.reduce[start_depth].dist[ prevA[start_depth], above_awa, j ]
             else:
-                if j == 0:
-                    cumProbs[1] = 1
-                else:
-                    ## if start_depth <0 then j must be 0
-                    continue
+                cumProbs[1] = cumProbs[0] * models.trans[start_depth].dist[ prevB[start_depth], prevG, j ]
             
+            ## Add probs for transition to EOS
+            if f==0 and j==1 and start_depth == 0:
+                EOS = indexer.get_state_size()/4
+                EOS_prob = cumProbs[0] * cumProbs[1] * models.next[start_depth].dist[ prevA[start_depth], above_awa, 0 ]
+                indices.append(EOS)
+                data.append(EOS_prob)
+            elif f==1 and j==1 and start_depth == -1:
+                EOS = indexer.get_state_size()/4
+                EOS_prob = cumProbs[0] * cumProbs[1] * models.cont[0].dist[ 0, 0, 0 ]
+                indices.append(EOS)
+                data.append(EOS_prob)
+
             for a in range(1, a_max-1):
                 nextState.a[:] = 0
                 for b in range(1, b_max-1):
@@ -167,7 +176,7 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
                         nextState.b[start_depth+1] = b
                                             
                     ## Now multiply in the pos tag probability:
-                    state_index = indexer.getStateIndex(nextState.f, nextState.j, nextState.a, nextState.b, 0)         
+                    state_index = indexer.getStateIndex(nextState.f, nextState.j, nextState.a, nextState.b, 0)
                     range_probs = cumProbs[2] * (models.pos.dist[b,:-1])
                     #logging.info("Building model with %s => %s" % (prev_state.str(), nextState.str() ) )
                     for g in range(1,len(range_probs)):
