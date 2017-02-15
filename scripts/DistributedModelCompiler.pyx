@@ -70,23 +70,23 @@ class DistributedModelCompiler(FullDepthCompiler):
                 print 'data indices', prev_index_data_indices, index_data_indices
                 print 'indptr', indptr[prevIndex], indptr[prevIndex+1]
                 print 'shapes', data.shape[0], indices.shape[0]
-                raise ValueError
+                raise
         else:
             indices = indices[:index_data_indices+1]
             data = data[:index_data_indices+1]
-            assert(data[-1] != 0. and indices[-1] != 0., '0 prob at the end of sparse Pi.')
+            # assert data[-1] != 0. and indices[-1] != 0., '0 prob at the end of sparse Pi.'
         logging.info("Per state connection is %d" % (index_data_indices/totalK))
-        logging.info("Size of PI will roughly be %.2f M" % ((index_data_indices * 2 + (totalK+1))*data_type_bytes / 1e6))
+        logging.info("Size of PI/g will roughly be %.2f M" % ((index_data_indices * 2 + (totalK+1))*data_type_bytes / 1e6))
         logging.info("Flattening sublists into main list")
         flat_indices = indices
         flat_data = data
         logging.info('Last ptr %d; length of data: %d' % (indptr[-1], flat_data.shape[0]))
         logging.info("Creating csr transition matrix from sparse indices")
         if self.gpu == False:
-            pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK), dtype=np.float64)
+            pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK / g_max), dtype=np.float64)
         else:
             logging.info("Dumping out the GPU version of PI.")
-            pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK), dtype=np.float32)
+            pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK / g_max), dtype=np.float32)
         fn = working_dir+'/models.bin'
         out_file = open(fn, 'wb')
         logging.info("Transforming and writing csc model")
@@ -94,7 +94,10 @@ class DistributedModelCompiler(FullDepthCompiler):
         pi = pi.tocsc()
         if self.gpu == True:
             lex_dist = 10**(models.lex.dist.astype(np.float32))
-            model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth), self.depth)
+            pos_dist = models.pos.dist.astype(np.float32)
+            pos_dist[:, -1].fill(0)
+            pos_dist = np.ravel(pos_dist)
+            model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, pos_dist), self.depth)
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
             logging.info("Saving GPU models for use")
             pickle.dump(model_gpu, gpu_out_file)

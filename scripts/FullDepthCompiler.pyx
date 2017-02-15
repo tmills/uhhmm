@@ -22,7 +22,8 @@ import scipy.sparse
 def compile_one_line(int depth, int prevIndex, models, indexer):
     cdef int totalK, a_max, b_max, g_max, start_depth, above_act, above_awa, state_index
     cdef int f,j,a,b,g, prevF, prefJ
-    cdef np.ndarray range_probs, prevA, prevB
+    cdef float range_probs
+    cdef np.ndarray prevA, prevB
     #cdef np.ndarray indices, data
     
     prev_state = indexer.extractState(prevIndex)
@@ -31,7 +32,7 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
     #(prevF, prevJ, prevA, prevB, prevG) = indexer.extractStacks(prevIndex)
     start_depth = get_cur_awa_depth(prevB)
     (a_max, b_max, g_max) = indexer.getVariableMaxes()
-    totalK = indexer.get_state_size()        
+    totalK = indexer.get_state_size()
     indices =  []
     data = []
 
@@ -80,10 +81,10 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
     ## special case for start state:
     if prevIndex == 0:
         state_index = 0
-        range_probs = models.pos.dist[0,:-1]
-        for g in range(1,len(range_probs)):
-            indices.append(state_index + g)
-            data.append(range_probs[g])
+        # range_probs = models.pos.dist[0,:-1]
+        # for g in range(1,len(range_probs)):
+        indices.append(state_index)
+        data.append(1)
         return indices, data
         
     for f in (0,1):
@@ -167,12 +168,13 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
                         nextState.b[start_depth+1] = b
                                             
                     ## Now multiply in the pos tag probability:
-                    state_index = indexer.getStateIndex(nextState.f, nextState.j, nextState.a, nextState.b, 0)         
-                    range_probs = cumProbs[2] * (models.pos.dist[b,:-1])
+                    state_index = indexer.getStateIndex(nextState.f, nextState.j, nextState.a, nextState.b, 0) / g_max
+                    # the g is factored out
+                    range_probs = cumProbs[2] #* (models.pos.dist[b,:-1])
                     #logging.info("Building model with %s => %s" % (prev_state.str(), nextState.str() ) )
-                    for g in range(1,len(range_probs)):
-                        indices.append(state_index + g)
-                        data.append(range_probs[g])
+                    # for g in range(1,len(range_probs)):
+                    indices.append(state_index)
+                    data.append(range_probs)
 
     return indices, data
 
