@@ -75,10 +75,14 @@ cdef class PyzmqWorker:
             msg = models_socket.recv_pyobj()
             # if self.gpu:
             #     msg = msg + '.gpu' # use gpu model for model
+            print(msg)
+            if not msg.endswith('bin'):
+                msg = '../output/wsj20first1000/models.bin'
             in_file = open(msg, 'rb')
             try:
                 model_wrapper = pickle.load(in_file)
             except Exception as e:
+
                 printException()
                 raise e
             in_file.close()
@@ -149,14 +153,15 @@ cdef class PyzmqWorker:
             if job.type == PyzmqJob.COMPILE:
                 compile_job = job.resource
                 row = compile_job.index
+                full_pi = compile_job.full_pi
             elif job.type == PyzmqJob.QUIT:
                 break
             else:
                 logging.debug("Received unexpected job type while expecting compile job! %s" % job.type)
                 raise Exception
 
-            (indices, data) = FullDepthCompiler.compile_one_line(depth, row, models, self.indexer)
-            row_output = CompiledRow(row, indices, data)
+            (indices, data, indices_full, data_full) = FullDepthCompiler.compile_one_line(depth, row, models, self.indexer, full_pi)
+            row_output = CompiledRow(row, indices, data, indices_full, data_full)
             results_socket.send_pyobj(CompletedJob(PyzmqJob.COMPILE, row_output, True) )
             if row % 10000 == 0:
                 logging.info("Compiling row %d" % row)

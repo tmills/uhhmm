@@ -95,6 +95,7 @@ int HmmSampler::get_sample(AView &v){
 //            printf("%A\n", plus_one);
            if (v[dart_target] != 0.0f && dart_target != v.size()){
                 condition = 0;
+//                cout << "out of loop" << endl;
            }
         }
      }
@@ -155,6 +156,7 @@ Sparse * tile(int g_len, int state_size){
     //     }
     // }
     // cout << "5.5" << endl;
+
     return temp_mat;
 }
 
@@ -261,7 +263,9 @@ void HmmSampler::set_models(Model * models){
     expanded_lex = trans_slice;
     sum_dict = trans_slice;
     int b_len = p_model -> b_max;
+//    cout << "pos full array" << endl;
     pos_full_array = make_pos_full_array(pos_matrix, g_len, b_len, state_size);
+//    print(*pos_full_array);
     // cout.precision(float_limit::max_digits10);
 }
 
@@ -300,6 +304,8 @@ void HmmSampler::g_factored_multiply(Dense* prev_dyn_prog_slice, Dense* this_dyn
 //    cout << "factor multiply 1" << endl;
     csr_matrix_view<IndexArrayView,IndexArrayView,ValueArrayView>* curtailed_transition = pi -> get_view();
     multiply(*curtailed_transition, *prev_dyn_prog_slice, *dyn_prog_part);
+//    cout << "dyn prog part" << endl;
+//    print(*dyn_prog_part);
 //    cout << "factor multiply 2" << endl;
     int a_max, b_max, g_max;
     std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();
@@ -307,6 +313,8 @@ void HmmSampler::g_factored_multiply(Dense* prev_dyn_prog_slice, Dense* this_dyn
     int state_size = p_indexer->get_state_size();
     multiply(*expand_mat, *dyn_prog_part, *this_dyn_prog_slice);
 //    cout << "factor multiply 3" << endl;
+//    cout << "this dyn prog slice" << endl;
+//    print(*this_dyn_prog_slice);
     for(int i = 0; i < sampler_batch_size; i++ ){ // this is not efficient. maybe there is a better way
 //        cout << "insde g_multipy i " << i << endl;
         array2d<float, device_memory>::column_view this_dyn_prog_slice_column = this_dyn_prog_slice->column(i);
@@ -314,6 +322,9 @@ void HmmSampler::g_factored_multiply(Dense* prev_dyn_prog_slice, Dense* this_dyn
 //        print(this_dyn_prog_slice_column);
 //        print(*pos_full_array);
         blas::xmy(this_dyn_prog_slice_column, *pos_full_array ,this_dyn_prog_slice_column);
+//        cout << "this dyn prog slice column" << endl;
+//        print(this_dyn_prog_slice_column);
+
     }
 //    cout << "factor multiply 4" << endl;
 }
@@ -381,6 +392,8 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
 //             cout << '6' << endl;
             // lexMultiplier is state_size x |g|, expanded_lex is state_size x 1
 //             cout << "Multiplying lex multiplier by lex column" << endl;
+//            cout << "lex column" << endl;
+//            print(lex_column);
             multiply(* lexMultiplier, lex_column, * expanded_lex);
             // print(expanded_lex);
 //             cout << '7' << endl;
@@ -388,19 +401,26 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             // dyn_prog_column is state_size x 1
             array2d<float, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
 //             cout << "Multiplying expanded_lex by dyn prog row" << endl;
+//            cout << "column view" << endl;
+//            print(dyn_prog_col);
             blas::xmy(*expanded_lex, dyn_prog_col, dyn_prog_col);
 //             cout << "Computing normalizer" << endl;
             normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
             // cout << "Normalizing over col with result: " << normalizer << endl;
 //            cout << "Scaling by normalizer" << endl;
             blas::scal(dyn_prog_col, 1.0f/normalizer);
+//            cout << "normed column" << endl;
+//            print(dyn_prog_col);
 //                cout << "Adding logged normalizer to sentence logprobs" << endl;
             log_probs[sent_ind] += log10f(normalizer);
         }
         
         auto norm_done = Clock::now();
     }
-    
+//    for (int i =0; i < sents[0].size(); i++){
+//    print(*dyn_prog[i]);
+//    }
+//    cout << "end of dyn prog" << endl;
     //cout << "Finished forward pass (cuda) and returning vector with " << log_probs.size() << " elements." << endl;
     return log_probs;
 }
@@ -420,7 +440,8 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
 //    array1d<float, device_memory> trans_slice;
     State sample_state;
     //sample_log_prob = 0.0f;
-    
+//    std::vector<int> fake_ts = {25,218,21,213,25,230,42,22,38,229,233,41,25,154,2};
+//    reverse(fake_ts.begin(), fake_ts.end());
 //    for(std::vector<int> sent : sents){
     for(int sent_ind = 0; sent_ind < batch_size; sent_ind++){
         sample_seq = std::vector<State>();
@@ -443,10 +464,13 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
             //if(sample_t == -1) cusp::print(dyn_prog_temp_col_view);
 //            cout << "before get sample" << endl;
             sample_t = get_sample(dyn_prog_temp_col_view);
+//            sample_t = fake_ts.back();
+//            fake_ts.pop_back();
             // sample_t = 0;
 //            cout << "sample_t=" << sample_t << endl;
             sample_state = p_indexer -> extractState(sample_t);
-            //cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
+//            cout << p_model -> get_depth() << endl;
+//            cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
             if(!sample_state.depth_check()){
               cout << "Depth error in state assigned to last index" << endl;
             }
@@ -454,7 +478,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
 //            cout << "Sample depth is "<< sample_depth << endl;
         }
         // auto t3 = Clock::now();
-        //cout << "x3" << endl;
+//        cout << "x3" << endl;
         sample_seq.push_back(sample_state);
         sample_t_seq.push_back(sample_t);
         // skip some error handling
@@ -487,8 +511,13 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         //}
         sample_seqs.push_back(sample_seq);
     }
-    
-    //cout << "Done with reverse()" << endl;
+//    for(auto i : sample_t_seq){
+//        cout << i << endl;
+//    }
+//    for (int i =0; i < sents[0].size(); i++){
+//    print(*dyn_prog[i]);
+//    }
+//    cout << "end of dyn prog" << endl;    //cout << "Done with reverse()" << endl;
     return sample_seqs;
 }
 
@@ -501,7 +530,6 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
 //    int prev_sample_t = sample_t;
     int g_max =  p_model -> g_max;
     int b_max = p_model -> b_max;
-    int pi_row_size = p_indexer -> get_state_size() / p_model -> g_max;
     get_row(pi->get_view(), sample_t, *trans_slice, pos_matrix, g_max, b_max);
 //     cout << "trans_slice" << endl;
     // print(*trans_slice); 
@@ -521,6 +549,9 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
     // thrust::transform(dyn_prog_row.begin(), dyn_prog_row.end(), dyn_prog_row.begin(), multiplies_value<float>(1 / normalizer));
     // auto t14 = Clock::now();
     sample_t = get_sample(dyn_prog_col);
+//    sample_t = fake_ts.back();
+//    cout << "sample t" << sample_t << endl;
+//    fake_ts.pop_back();
     //if (sample_t == 0){
     //    print(dyn_prog_row);
     //}

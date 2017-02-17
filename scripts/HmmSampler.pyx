@@ -109,7 +109,8 @@ cdef class HmmSampler(Sampler.Sampler):
         except Exception as e:
             printException()
             raise e
-            
+        # np.set_printoptions(threshold=np.nan)
+        # print(self.dyn_prog)
         t1 = time.time()
         # print('forward time', t1-t0)
         self.ff_time += (t1-t0)
@@ -157,8 +158,7 @@ cdef class HmmSampler(Sampler.Sampler):
             if last_index > 0 and (sample_seq[-1].a[0] == 0 or sample_seq[-1].b[0] == 0 or sample_seq[-1].g == 0):
                 logging.error("Error: First sample for sentence %d has index %d and has a|b|g = 0" % (sent_index, sample_t))
                 raise Exception
-  
-            for t in range(len(sent)-2,-1,-1):                
+            for t in range(len(sent)-2,-1,-1):
                 sample_state, sample_t = self._reverse_sample_inner(pi, sample_t, t)
                 sample_seq.append(sample_state)
            
@@ -170,6 +170,8 @@ cdef class HmmSampler(Sampler.Sampler):
         t1 = time.time()
         # print('backward time', t1-t0)
         self.bs_time += (t1-t0)
+        # np.set_printoptions(threshold=np.nan)
+        # print(self.dyn_prog)
         return [sample_seq]
 
     @cython.cdivision(True)
