@@ -70,12 +70,13 @@ cdef class PyzmqWorker:
             # logging.info("GPU for worker is %s" % self.gpu)
             sampler = None
             #  Socket to talk to server
-            logging.debug("Worker %d waiting for new models..." % self.tid)
+            logging.debug("Worker %d sending request for new model" % self.tid)
             models_socket.send(b'0')
+            logging.debug("Worker %d waiting for new models..." % self.tid)
             msg = models_socket.recv_pyobj()
+
             # if self.gpu:
             #     msg = msg + '.gpu' # use gpu model for model
-            print(msg)
             if not msg.endswith('bin'):
                 msg = '../output/wsj20first1000/models.bin'
             in_file = open(msg, 'rb')
@@ -87,6 +88,8 @@ cdef class PyzmqWorker:
                 raise e
             in_file.close()
             self.model_file_sig = get_file_signature(msg)
+
+            logging.debug("Worker %d preparing to process new model" % self.tid)
 
             if model_wrapper.model_type == ModelWrapper.HMM and not self.gpu:
                 sampler = HmmSampler.HmmSampler(self.seed)
@@ -163,8 +166,6 @@ cdef class PyzmqWorker:
             (indices, data, indices_full, data_full) = FullDepthCompiler.compile_one_line(depth, row, models, self.indexer, full_pi)
             row_output = CompiledRow(row, indices, data, indices_full, data_full)
             results_socket.send_pyobj(CompletedJob(PyzmqJob.COMPILE, row_output, True) )
-            if row % 10000 == 0:
-                logging.info("Compiling row %d" % row)
 
             if self.quit:
                 break
