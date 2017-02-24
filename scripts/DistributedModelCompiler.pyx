@@ -123,6 +123,8 @@ class DistributedModelCompiler(FullDepthCompiler):
                         corrected_pos_dist[row_number, :] = pos_dist[replicate_row_number]
                     else:
                         corrected_pos_dist[row_number, :] = pos_dist[int(row_number / original_num_rows)]
+            else:
+                corrected_pos_dist = pos_dist
             pos_dist = np.ravel(corrected_pos_dist.astype(np.float32))
             model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, pos_dist), self.depth)
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
