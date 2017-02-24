@@ -53,6 +53,7 @@ coling2016-GPU: projects/eve/a4-b4-g8-d2-P-fin/eve.nt.lower.nounary.nolabel.uhhm
 # if MB location == . in order to allow core UHHMM
 # recipes to execute without MB.
 #
+
 MSG1 := The current config file, 
 MSG2 := , points to an incorrect location (
 MSG3 := ). Fix it before re-running make.
@@ -69,11 +70,11 @@ not work correctly.
 
 endef
 
-ifndef MAKECONFIG
+ifndef MAKECONF
 CONFIG := user-modelblocks-location.txt
 ifeq (,$(firstword $(wildcard $(CONFIG))))
 $(info $(CONFIGWARN))
-DUMMY := $(shell $(MAKE) $(CONFIG) MAKECONFIG=1)
+DUMMY := $(shell $(MAKE) $(CONFIG) MAKECONF=1)
 endif
 MB := $(shell cat $(CONFIG))
 ifeq (, $(firstword $(wildcard $(MB))))
