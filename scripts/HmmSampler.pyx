@@ -108,7 +108,8 @@ cdef class HmmSampler(Sampler.Sampler):
         except Exception as e:
             printException()
             raise e
-            
+        # np.set_printoptions(threshold=np.nan)
+        # print(self.dyn_prog)
         t1 = time.time()
         # print('forward time', t1-t0)
         self.ff_time += (t1-t0)
@@ -154,6 +155,8 @@ cdef class HmmSampler(Sampler.Sampler):
         t1 = time.time()
         # print('backward time', t1-t0)
         self.bs_time += (t1-t0)
+        # np.set_printoptions(threshold=np.nan)
+        # print(self.dyn_prog)
         return [sample_seq]
 
     @cython.cdivision(True)

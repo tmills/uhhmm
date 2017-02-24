@@ -32,8 +32,9 @@ class RowRequest(JobRequest):
         self.request_size = 1
         
 class CompileJob:
-    def __init__(self, index):
+    def __init__(self, index, full_pi = False):
         self.index = index
+        self.full_pi = full_pi
 
 class CompletedJob:
     def __init__(self, job_type, result, success):
@@ -49,10 +50,12 @@ class PyzmqParse:
         self.success = success
 
 class CompiledRow:
-    def __init__(self, index, indices, data):
+    def __init__(self, index, indices, data, indices_full, data_full):
         self.index = index
         self.indices = indices
         self.data = data
+        self.indices_full = indices_full
+        self.data_full = data_full
 
 class ModelWrapper:
     

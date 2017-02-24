@@ -19,10 +19,11 @@ import Indexer
 import scipy.sparse
 
 #@profile
-def compile_one_line(int depth, int prevIndex, models, indexer):
+def compile_one_line(int depth, int prevIndex, models, indexer, full_pi = False):
     cdef int totalK, a_max, b_max, g_max, start_depth, above_act, above_awa, state_index
     cdef int f,j,a,b,g, prevF, prefJ
-    cdef np.ndarray range_probs, prevA, prevB
+    cdef float range_probs
+    cdef np.ndarray prevA, prevB, range_probs_full
     #cdef np.ndarray indices, data
 
     prev_state = indexer.extractState(prevIndex)
@@ -31,9 +32,11 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
     #(prevF, prevJ, prevA, prevB, prevG) = indexer.extractStacks(prevIndex)
     start_depth = get_cur_awa_depth(prevB)
     (a_max, b_max, g_max) = indexer.getVariableMaxes()
-    totalK = indexer.get_state_size()        
+    totalK = indexer.get_state_size()
     indices =  []
     data = []
+    indices_full = []
+    data_full = []
 
     if prevIndex == indexer.get_state_size()/4:
         ## previous was EOS, no outgoing transitions allowed
@@ -55,7 +58,7 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
         for d in range(depth-1, -1, -1):
             if(prevA[d] * prevB[d] == 0 and prevA[d] + prevB[d] != 0):
                 ## Exactly one of the values at this depth is zero -- not allowed
-                return indices, data
+                return indices, data, indices_full, data_full
             if lowest_depth == -1:
                 if prevA[d] > 0:
                     ## Until we find a non-zero value move the depth up
@@ -63,7 +66,7 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
             else:
                 ## we have seen a non-zero value deeper than us, so we can't see any zeros now
                 if prevA[d] == 0 or prevB[d] == 0:
-                    return indices, data
+                    return indices, data, indices_full, data_full
 
     cumProbs = np.zeros(3)
     nextState = State.State(depth)
@@ -84,12 +87,15 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
     ## special case for start state:
     if prevIndex == 0:
         state_index = 0
-        range_probs = models.pos.dist[0,:-1]
-        for g in range(1,len(range_probs)):
-            indices.append(state_index + g)
-            data.append(range_probs[g])
-        return indices, data
-       
+        if full_pi:
+            range_probs_full = models.pos.dist[0, :-1]
+            for g in range(1,len(range_probs_full)):
+                indices_full.append(state_index + g)
+                data_full.append(range_probs_full[g])
+        indices.append(state_index)
+        data.append(1)
+        return indices, data, indices_full, data_full
+        
     for f in (0,1):
         nextState.f = f
 
@@ -176,14 +182,20 @@ def compile_one_line(int depth, int prevIndex, models, indexer):
                         nextState.b[start_depth+1] = b
                                             
                     ## Now multiply in the pos tag probability:
-                    state_index = indexer.getStateIndex(nextState.f, nextState.j, nextState.a, nextState.b, 0)
-                    range_probs = cumProbs[2] * (models.pos.dist[b,:-1])
-                    #logging.info("Building model with %s => %s" % (prev_state.str(), nextState.str() ) )
-                    for g in range(1,len(range_probs)):
-                        indices.append(state_index + g)
-                        data.append(range_probs[g])
+                    state_index = indexer.getStateIndex(nextState.f, nextState.j, nextState.a, nextState.b, 0) / g_max
+                    state_index_full = indexer.getStateIndex(nextState.f, nextState.j, nextState.a, nextState.b, 0)
+                    # the g is factored out
+                    range_probs = cumProbs[2] #* (models.pos.dist[b,:-1])
+                    if full_pi:
+                        range_probs_full = cumProbs[2] * (models.pos.dist[b,:-1])
+                        #logging.info("Building model with %s => %s" % (prev_state.str(), nextState.str() ) )
+                        for g in range(1,len(range_probs_full)):
+                            indices_full.append(state_index_full + g)
+                            data_full.append(range_probs_full[g])
+                    indices.append(state_index)
+                    data.append(range_probs)
 
-    return indices, data
+    return indices, data, indices_full, data_full
 
 cdef class FullDepthCompiler:
     cdef int depth

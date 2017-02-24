@@ -183,6 +183,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         iter = sample.iter+1
 
+    # import pickle
+    # fixed_model = working_dir+'/fixed.models.bin'
+    # if os.path.exists(fixed_model):
+    #     models = pickle.load(open(fixed_model, 'rb'))
+    # else:
+    #     pickle.dump(models, open(fixed_model, 'wb'))
+
     indexer = Indexer(models)
     if not finite:
         collect_trans_probs(hid_seqs, models, 0, num_sents)
@@ -330,8 +337,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         for parse in parses:
             num_processed += 1
+            # logging.info(''.join([x.str() for x in parse.state_list]))
+            # logging.info(parse.success)
             if parse.success:
                 try:
+
                     increment_counts(parse.state_list, ev_seqs[ parse.index ], models)
                     # logging.info('Good parse:')
                     # logging.info(' '.join([x.str() for x in parse.state_list]))

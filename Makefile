@@ -201,28 +201,28 @@ clean:
 #
 #################################
 
-data/wsj_all_multiline.txt: user-ptb-location.txt
+gendata/wsj_all_multiline.txt: user-ptb-location.txt
 	cat $(shell cat user-ptb-location.txt)/treebank_3/parsed/mrg/wsj/*/* > $@
 
-data/wsj_all.txt: data/wsj_all_multiline.txt
+gendata/wsj_all.txt: gendata/wsj_all_multiline.txt
 	cat $< | perl -pe 's/^\(/<s>(/' | perl -pe 's/\n//' | perl -pe 's/<s>/\n/g' | perl -pe 's/  +/ /g' | grep -v "^$$" > $@
 
-data/wsj_all.tagwords.txt: data/wsj_all.txt
+gendata/wsj_all.tagwords.txt: gendata/wsj_all.txt
 	cat $< | perl -pe 's/\(([^()]+) ([^()]+)\)/\1\/\2/g;s/\(\S*//g;s/\)//g;s/-NONE-\/\S*//g;s/  +/ /g;s/^ *//g' > $@
 
-data/simplewiki_d1.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
+gendata/simplewiki_d1.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
 	cat $< | $(SCRIPTS)/extract_d1_trees.sh | $(SCRIPTS)/trees2words.sh > $@
 
-data/simplewiki_d1.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
+gendata/simplewiki_d1.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
 	cat $< | grep -v "#" | $(SCRIPTS)/extract_d1_trees.sh | grep "^(S" | $(SCRIPTS)/trees2poswords.sh > $@
 
-data/simplewiki_d2_5k.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
+gendata/simplewiki_d2_5k.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
 	cat $< $(SCRIPTS)/extract_d2_trees.sh | grep "^(S" | $(SCRIPTS)/trees2poswords.sh | sort -R --random-source /dev/zero | head -5000 > $@ 
 
-data/simplewiki_d2_all.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
+gendata/simplewiki_d2_all.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
 	cat $< $(SCRIPTS)/extract_d2_trees.sh | $(SCRIPTS)/remove_wiki_junk.sh | $(SCRIPTS)/trees2poswords.sh > $@ 
 
-data/simplewiki_all.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
+gendata/simplewiki_all.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
 	cat $< | $(SCRIPTS)/remove_wiki_junk.sh | $(SCRIPTS)/trees2poswords.sh > $@
 
 %.ints.txt: %.txt
@@ -234,31 +234,31 @@ data/simplewiki_all.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02t
 %.1kvocabfilter.txt: %.1kvocab %.txt
 	python $(SCRIPTS)/filter_sentence_with_vocab.py $^ > $@
 
-data/hungltf_tagwords.txt: user-lorelei-location.txt
+gendata/hungltf_tagwords.txt: user-lorelei-location.txt
 	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Hungarian_LDC2015E82_V1.1/data/annotation/pos_tagged/ltf > $@
 
-data/urdu_tagwords.txt: user-lorelei-location.txt
+gendata/urdu_tagwords.txt: user-lorelei-location.txt
 	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Urdu_LDC2015E14_V1.1/data/annotation/pos_tagged > $@
 
-data/thailtf_tagwords.txt: user-lorelei-location.txt
+gendata/thailtf_tagwords.txt: user-lorelei-location.txt
 	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Thai_LDC2015E84_V1.1/data/annotation/pos_tagged/ltf > $@
 
-data/tamiltf_tagwords.txt: user-lorelei-location.txt
+gendata/tamiltf_tagwords.txt: user-lorelei-location.txt
 	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Tamil_LDC2015E83_V1.1/data/annotation/pos_tagged/ltf > $@
 
-data/darpa_y1eval_set%.tagwords.txt: user-lorelei-location.txt
+gendata/darpa_y1eval_set%.tagwords.txt: user-lorelei-location.txt
 	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/LDC2016E57_LORELEI_IL3_Incident_Language_Pack_for_Year_1_Eval/set$*/data/monolingual_text/ltf/ > $@
 
-data/darpa_y1eval_set0,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_setE.tagwords.txt
+gendata/darpa_y1eval_set0,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_setE.tagwords.txt
 	cat $^ > $@
 
-data/darpa_y1eval_set0,1.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_set1.tagwords.txt
+gendata/darpa_y1eval_set0,1.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_set1.tagwords.txt
 	cat $^ > $@
 
-data/darpa_y1eval_set0,1,2.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_set1.tagwords.txt data/darpa_y1eval_set2.tagwords.txt
+gendata/darpa_y1eval_set0,1,2.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_set1.tagwords.txt data/darpa_y1eval_set2.tagwords.txt
 	cat $^ > $@
 
-data/darpa_y1eval_set0,1,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_set1.tagwords.txt data/darpa_y1eval_setE.tagwords.txt
+gendata/darpa_y1eval_set0,1,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_set1.tagwords.txt data/darpa_y1eval_setE.tagwords.txt
 	cat $^ > $@
 
 gendata/ktb.linetrees.txt: gendata/ktb.trees.txt
@@ -271,6 +271,9 @@ gendata/ktb.linetrees.txt: gendata/ktb.trees.txt
 	cat $^ | $(SCRIPTS)/words2len_words.sh 10 > $@
 
 %-l20.words.txt: %.words.txt
+	cat $^ | $(SCRIPTS)/words2len_words.sh 20 > $@
+
+%-l20.tagwords.txt: %.tagwords.txt
 	cat $^ | $(SCRIPTS)/words2len_words.sh 20 > $@
 
 %-l3-10.words.txt: %-l10.words.txt

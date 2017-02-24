@@ -168,7 +168,7 @@ class Sink(Thread):
                         self.outputs.append(parse)
                     elif job_outcome.job_type == PyzmqJob.COMPILE:
                         compiled_row = job_outcome.result
-                        self.model_rows[compiled_row.index] = (compiled_row.indices, compiled_row.data)
+                        self.model_rows[compiled_row.index] = (compiled_row.indices, compiled_row.data, compiled_row.indices_full, compiled_row.data_full)
                         logging.log(logging.DEBUG-1, "Sink received model row %d" % compiled_row.index)
                     else:   
                         logging.warn("Received a job with an unknown job type!")
@@ -315,10 +315,10 @@ class WorkDistributerServer():
         while self.sink.getProcessing():
             time.sleep(2)
         
-    def submitBuildModelJobs(self, num_rows):
+    def submitBuildModelJobs(self, num_rows, full_pi=False):
         self.model_server.reset_models()
         for i in range(0, num_rows):
-            compile_job = CompileJob(i)
+            compile_job = CompileJob(i, full_pi)
             job = PyzmqJob(PyzmqJob.COMPILE, compile_job)
             self.vent.addJob(job)
     
