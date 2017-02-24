@@ -40,7 +40,7 @@ def compile_one_line(int depth, int prevIndex, models, indexer, full_pi = False)
 
     if prevIndex == indexer.get_state_size()/4:
         ## previous was EOS, no outgoing transitions allowed
-        return indices, data
+        return indices, data, indices_full, data_full
     
     ## Skip invalid start states
     if depth > 1:
