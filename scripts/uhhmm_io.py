@@ -144,7 +144,7 @@ def checkpoint(sample, config):
 
     if os.path.isfile(output_dir + "/sample.obj"):
         logging.info("Saving previous checkpoint")
-        shutil.copy2(output_dir +"/sample.obj", output_dir + "/sample.obj.last")
+        shutil.copy(output_dir +"/sample.obj", output_dir + "/sample.obj.last")
 
     logging.info("Creating new checkpoint")
     out_file = open(output_dir + "/sample.obj", 'wb')
