@@ -112,9 +112,18 @@ class DistributedModelCompiler(FullDepthCompiler):
         pi = pi.tocsc()
         if self.gpu == True:
             lex_dist = 10**(models.lex.dist.astype(np.float32))
-            pos_dist = models.pos.dist.astype(np.float32)
+            pos_dist = models.pos.dist
             pos_dist[:, -1].fill(0)
-            pos_dist = np.ravel(pos_dist)
+            if self.depth > 1:
+                corrected_pos_dist = np.zeros((pos_dist.shape[0]**2, pos_dist.shape[1]))
+                original_num_rows = pos_dist.shape[0]
+                for row_number in range(0, corrected_pos_dist.shape[0]):
+                    replicate_row_number = row_number % original_num_rows
+                    if replicate_row_number != 0:
+                        corrected_pos_dist[row_number, :] = pos_dist[replicate_row_number]
+                    else:
+                        corrected_pos_dist[row_number, :] = pos_dist[int(row_number / original_num_rows)]
+            pos_dist = np.ravel(corrected_pos_dist.astype(np.float32))
             model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, pos_dist), self.depth)
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
             logging.info("Saving GPU models for use")

@@ -180,7 +180,7 @@ Sparse * expand(int g_len, int state_size){
 }
 
 void get_row(csr_matrix_view<IndexArrayView, IndexArrayView, ValueArrayView>* s, int i, Array& result,
-Array* pos_matrix, int g_max, int b_max){
+Array* pos_full_array, int g_max, int b_max){
     blas::fill(result, 0.0f);
     int pi_row_index = i / g_max;
     int b_index = pi_row_index % b_max;
@@ -193,9 +193,8 @@ Array* pos_matrix, int g_max, int b_max){
         ValueArrayView values = s -> values.subarray(start_column_index, num_of_entry);
         thrust::scatter(thrust::device, values.begin(), values.end(), column_indices.begin(), result.begin());
 //        cusp::print(result);
-        int pos_matrix_dim = g_index + b_index * g_max;
 //        cout << "g is " << g_index << "and the prob is " <<(*pos_matrix)[pos_matrix_dim] << endl;
-        blas::scal(result, (*pos_matrix)[pos_matrix_dim]);
+        blas::scal(result, (*pos_full_array)[i]);
     }
 }
 
@@ -264,14 +263,16 @@ void HmmSampler::set_models(Model * models){
     sum_dict = trans_slice;
     int b_len = p_model -> b_max;
 //    cout << "pos full array" << endl;
-    pos_full_array = make_pos_full_array(pos_matrix, g_len, b_len, state_size);
+    int depth = p_model -> get_depth();
+    pos_full_array = make_pos_full_array(pos_matrix, g_len, b_len, depth, state_size);
 //    print(*pos_full_array);
     // cout.precision(float_limit::max_digits10);
 }
 
-Array* HmmSampler::make_pos_full_array(Array* pos_matrix ,int g_max, int b_max, int state_size){
-    int copy_times = state_size / (b_max * g_max);
-    int pos_matrix_size = b_max * g_max;
+Array* HmmSampler::make_pos_full_array(Array* pos_matrix ,int g_max, int b_max, int depth, int state_size){
+
+    int pos_matrix_size = pow(b_max, depth) * g_max;
+    int copy_times = state_size / pos_matrix_size;
     Array* temp_array = new Array(state_size, 0.0f);
     for (int i = 0; i < copy_times; i ++){
 //        cout << "calc full pos " << i  << " from " << i*pos_matrix_size << " to " << (i+1)*pos_matrix_size <<
@@ -370,7 +371,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
         // but not evidence
 //        cout << "Performing transition multiplication" << endl;
         g_factored_multiply(prev_mat, cur_mat);
-        
+//        print(cur_mat[0]);
 //        cout << "Done with transition" << endl;
         //cout << "performing observation multiplications" << endl;
 
@@ -530,7 +531,7 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
 //    int prev_sample_t = sample_t;
     int g_max =  p_model -> g_max;
     int b_max = p_model -> b_max;
-    get_row(pi->get_view(), sample_t, *trans_slice, pos_matrix, g_max, b_max);
+    get_row(pi->get_view(), sample_t, *trans_slice, pos_full_array, g_max, b_max);
 //     cout << "trans_slice" << endl;
     // print(*trans_slice); 
     // auto t12 = Clock::now();

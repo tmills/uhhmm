@@ -90,7 +90,7 @@ public:
 private:
     void g_factored_multiply(Dense* prev_dyn_prog_slice, Dense* this_dyn_prog_slice);
     std::tuple<State, int> _reverse_sample_inner(int& sample_t, int& t, int sent_ind);
-    Array* make_pos_full_array(Array* pos_matrix ,int g_max, int b_max, int state_size);
+    Array* make_pos_full_array(Array* pos_matrix ,int g_max, int b_max, int depth, int state_size);
     Model * p_model = NULL;
     Indexer * p_indexer = NULL;
     DenseView* lexMatrix = NULL;
