@@ -33,14 +33,15 @@ def compile_one_line(int depth, int prevIndex, models, indexer, full_pi = False)
     start_depth = get_cur_awa_depth(prevB)
     (a_max, b_max, g_max) = indexer.getVariableMaxes()
     totalK = indexer.get_state_size()
-    EOS = totalK / 4
+    EOS_full = indexer.getStateIndex(0, 1, np.asarray([0]), np.asarray([0]), 0)
+    EOS = int(EOS_full / g_max)
     indices =  []
     data = []
     indices_full = []
     data_full = []
 
-    if prevIndex == EOS:
-        ## previous was EOS, no outgoing transitions allowed
+    if prevIndex == EOS_full:
+        ## previous was EOS_full, no outgoing transitions allowed
         return indices, data, indices_full, data_full
     
     ## Skip invalid start states
@@ -123,14 +124,14 @@ def compile_one_line(int depth, int prevIndex, models, indexer, full_pi = False)
             if f==0 and j==1 and start_depth == 0:
                 EOS_prob = cumProbs[1] * models.next[start_depth].dist[ prevA[start_depth], above_awa, 0 ]
                 if full_pi:
-                  indices_full.append(EOS)
+                  indices_full.append(EOS_full)
                   data_full.append(EOS_prob)
                 indices.append(EOS)
                 data.append(EOS_prob)
             elif f==1 and j==1 and start_depth == -1:
                 EOS_prob = cumProbs[1] * models.cont[0].dist[ 0, 0, 0 ]
                 if full_pi:
-                  indices_full.append(EOS)
+                  indices_full.append(EOS_full)
                   data_full.append(EOS_prob)
                 indices.append(EOS)
                 data.append(EOS_prob)
@@ -243,7 +244,6 @@ cdef class FullDepthCompiler:
         out_file = open(fn, 'wb')
         logging.info("Transforming and writing csc model")
         model = ModelWrapper(ModelWrapper.HMM, (models,pi.tocsc()), self.depth)
-        print('breadcrumb1')
         pickle.dump(model, out_file)
         out_file.close()
         nnz = pi.nnz

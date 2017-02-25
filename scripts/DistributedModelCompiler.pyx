@@ -109,7 +109,9 @@ class DistributedModelCompiler(FullDepthCompiler):
         out_file = open(fn, 'wb')
         logging.info("Transforming and writing csc model")
         # if gpu then dumping out two models, the one used by worker should be *.bin.gpu
+        print('breadcrumb1')
         pi = pi.tocsc()
+        print('breadcrumb2')
         if self.gpu == True:
             lex_dist = 10**(models.lex.dist.astype(np.float32))
             pos_dist = models.pos.dist
