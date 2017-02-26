@@ -36,6 +36,18 @@ std::tuple<int, int, int> Indexer::getVariableMaxes(){
 int Indexer::get_state_size(){
     return state_size;
 }
+int Indexer::get_EOS(){
+    return state_size / (4 * g_max);
+}
+int Indexer::get_EOS_full(){
+    return state_size / 4;
+}
+int Indexer::get_EOS_1wrd(){
+    return state_size / (4 * g_max);
+}
+int Indexer::get_EOS_1wrd_full(){
+    return state_size / 4;
+}
 tuple<int, int, vector<int>, vector<int>, int> Indexer::extractStacks(int index){
     int fj_ind, a_ind, b_ind, g, f, j; //max_d, f_val,j_val, 
     auto result = unravel_index(index, stack_dims);

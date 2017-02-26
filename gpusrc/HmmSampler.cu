@@ -453,8 +453,12 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
        // }
         //cout << endl;
        
-        // Start with EOS, which is 1/4 way through state list 
-        sample_t = p_indexer->get_state_size() / 4;
+        // Start with EOS
+        if (sent.size() == 1) {
+            sample_t = 3*p_indexer->get_state_size() / 4; 
+        } else {
+            sample_t = p_indexer->get_state_size() / 4; 
+        }
 
         for (int t = sent.size() - 1; t > -1; t --){
             //cout << 't' << t << endl;

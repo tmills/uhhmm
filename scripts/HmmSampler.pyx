@@ -141,7 +141,10 @@ cdef class HmmSampler(Sampler.Sampler):
             self.dyn_prog[last_index,:] /= self.dyn_prog[last_index,:].sum()
             
             ## EOS state is f=0,j=1,a=[0]*d,b=[0]*d,g=0. Located 1/4 way through state list.
-            sample_t = self.indexer.get_state_size()/4
+            if len(sent) == 1:
+                sample_t = 3*self.indexer.get_state_size()/4
+            else:
+                sample_t = self.indexer.get_state_size()/4
   
             for t in range(len(sent)-1,-1,-1):              
                 sample_state, sample_t = self._reverse_sample_inner(pi, sample_t, t)
