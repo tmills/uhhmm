@@ -36,7 +36,7 @@ def sampleDirichlet(counts, H):
         elif base[0,0] > 0:
             P[ind][:] = np.log10(sampleSimpleDirichlet(base))
         else:
-            P[ind][0] = 0.
+            P[ind][0] = -np.inf
             P[ind][1:] = np.log10(sampleSimpleDirichlet(base[:,1:]))
 
     return P
