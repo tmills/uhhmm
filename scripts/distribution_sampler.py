@@ -15,8 +15,7 @@ def sampleDirichlet(counts, H):
     ## words for every pos tag:
     
     for ind,val in np.ndenumerate(counts[...,0]):       
-        ## Get distribution for existing table by slicing out the null state
-        ## and the new table state:
+        ## Get distribution for existing table by slicing out the new table state:
         base = np.zeros((1, counts.shape[-1]))
         if counts.shape == H.shape:
             ## Case for hierarchical prior:
@@ -32,11 +31,11 @@ def sampleDirichlet(counts, H):
             logging.warning("Could not compute base with counts shape %s and base shape %s" % (counts.shape, H.shape) )
             
         if base.shape[1] == 1:
-            P[ind,1] = 1.0
+            P[ind,1] = 0.0
         elif base[0,0] > 0:
             P[ind][:] = np.log10(sampleSimpleDirichlet(base))
         else:
-            P[ind][0] = 0.
+            P[ind][0] = -np.inf
             P[ind][1:] = np.log10(sampleSimpleDirichlet(base[:,1:]))
 
     return P

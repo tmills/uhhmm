@@ -142,9 +142,9 @@ cdef class HmmSampler(Sampler.Sampler):
             
             ## EOS state is f=0,j=1,a=[0]*d,b=[0]*d,g=0. Located 1/4 way through state list.
             if len(sent) == 1:
-                sample_t = 3*self.indexer.get_state_size()/4
+                sample_t = self.indexer.get_EOS_1wrd_full()
             else:
-                sample_t = self.indexer.get_state_size()/4
+                sample_t = self.indexer.get_EOS_full()
   
             for t in range(len(sent)-1,-1,-1):              
                 sample_state, sample_t = self._reverse_sample_inner(pi, sample_t, t)
@@ -176,7 +176,7 @@ cdef class HmmSampler(Sampler.Sampler):
         
         normalizer = self.dyn_prog[t,:].sum()
         if normalizer == 0.0:
-            logging.warning("No positive probability states at this time step %d." % (t))
+            logging.warning("No positive probability states at this time step %d. Sampling backward from state %d." % (t, sample_t))
         
         self.dyn_prog[t,:] /= normalizer
         

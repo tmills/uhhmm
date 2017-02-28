@@ -43,10 +43,10 @@ int Indexer::get_EOS_full(){
     return state_size / 4;
 }
 int Indexer::get_EOS_1wrd(){
-    return state_size / (4 * g_max);
+    return 3*state_size / (4 * g_max);
 }
 int Indexer::get_EOS_1wrd_full(){
-    return state_size / 4;
+    return 3*state_size / 4;
 }
 tuple<int, int, vector<int>, vector<int>, int> Indexer::extractStacks(int index){
     int fj_ind, a_ind, b_ind, g, f, j; //max_d, f_val,j_val, 

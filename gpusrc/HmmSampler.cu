@@ -455,9 +455,9 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
        
         // Start with EOS
         if (sent.size() == 1) {
-            sample_t = 3*p_indexer->get_state_size() / 4; 
+            sample_t = p_indexer->get_EOS_1wrd_full(); 
         } else {
-            sample_t = p_indexer->get_state_size() / 4; 
+            sample_t = p_indexer->get_EOS_full(); 
         }
 
         for (int t = sent.size() - 1; t > -1; t --){
@@ -515,9 +515,9 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
 //     cout << "Dyn_prog_row" << endl;
     // print(dyn_prog_row);
     float trans_slice_sum = thrust::reduce(thrust::device, (*trans_slice).begin(), (*trans_slice).end());
-    if (trans_slice_sum != 0.0f){
+    //if (trans_slice_sum != 0.0f){
         cusp::blas::xmy(*trans_slice, dyn_prog_col, dyn_prog_col);
-    }
+    //}
     // auto t13 = Clock::now();
 //    cusp::array1d<float, host_memory> un_normalized_sums(dyn_prog_col);
     normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
@@ -527,7 +527,6 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
     // auto t14 = Clock::now();
     sample_t = get_sample(dyn_prog_col);
 //    sample_t = fake_ts.back();
-//    cout << "sample t" << sample_t << endl;
 //    fake_ts.pop_back();
     //if (sample_t == 0){
     //    print(dyn_prog_row);

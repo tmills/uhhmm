@@ -24,6 +24,18 @@ cdef class Indexer:
 
     def get_state_size(self):   
         return self.state_size
+
+    def get_EOS(self):
+        return int(self.state_size / (4*self.g_max))
+
+    def get_EOS_full(self):
+        return int(self.state_size / 4)
+
+    def get_EOS_1wrd(self):
+        return int(3*self.state_size / (4*self.g_max))
+
+    def get_EOS_1wrd_full(self):
+        return int(3*self.state_size / 4)
     
     #@profile
     def extractState(self, int index):

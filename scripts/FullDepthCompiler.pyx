@@ -33,16 +33,16 @@ def compile_one_line(int depth, int prevIndex, models, indexer, full_pi = False)
     start_depth = get_cur_awa_depth(prevB)
     (a_max, b_max, g_max) = indexer.getVariableMaxes()
     totalK = indexer.get_state_size()
-    EOS_full = totalK / 4
-    EOS = int(EOS_full / g_max)
-    EOS_1wrd_full = 3*totalK / 4
-    EOS_1wrd = int(EOS_1wrd_full / g_max)
+    EOS_full = indexer.get_EOS_full()
+    EOS = indexer.get_EOS()
+    EOS_1wrd_full = indexer.get_EOS_1wrd_full()
+    EOS_1wrd = indexer.get_EOS_1wrd()
     indices =  []
     data = []
     indices_full = []
     data_full = []
 
-    if prevIndex == EOS_full or prevIndex == EOS_1wrd_full:
+    if prevIndex/g_max == EOS or prevIndex/g_max == EOS_1wrd:
         ## previous was EOS, no outgoing transitions allowed
         return indices, data, indices_full, data_full
     
@@ -131,7 +131,7 @@ def compile_one_line(int depth, int prevIndex, models, indexer, full_pi = False)
                 indices.append(EOS)
                 data.append(EOS_prob)
             elif f==1 and j==1 and start_depth == -1:
-                EOS_prob = cumProbs[1] * models.cont[0].dist[ 0, 0, 0 ]
+                EOS_prob = cumProbs[1] * models.cont[0].dist[ 0, prevG, 0 ]
                 if full_pi:
                   indices_full.append(EOS_1wrd_full)
                   data_full.append(EOS_prob)
