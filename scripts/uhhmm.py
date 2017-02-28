@@ -987,21 +987,22 @@ def increment_counts(hid_seq, sent, models, inc=1):
     sent = sent[:] + [0]
     hid_seq = hid_seq[:] + [EOS]
 
-    for index,word in enumerate(sent):
-        state = hid_seq[index]
-        cur_depth = prev_depth
-        
-        if cur_depth <= 0:
-            above_awa = 0
-        else:
-            above_awa = state.b[cur_depth-1]
+    if len(sent) > 1:
+        for index,word in enumerate(sent):
+            state = hid_seq[index]
+            cur_depth = prev_depth
+            
+            if cur_depth <= 0:
+                above_awa = 0
+            else:
+                above_awa = state.b[cur_depth-1]
 
-        if prev_depth <= 0:
-            prev_above_awa = 0
-        else:
-            prev_above_awa = prevState.b[prev_depth-1]
+            if prev_depth <= 0:
+                prev_above_awa = 0
+            else:
+                prev_above_awa = prevState.b[prev_depth-1]
 
-        ## Count F & J
+            ## Count F & J
 
         # Transition from start symbol is stored in depth 0 for space
         # since disjoint from other conditions

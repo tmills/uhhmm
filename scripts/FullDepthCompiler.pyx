@@ -126,8 +126,8 @@ def compile_one_line(int depth, int prevIndex, models, indexer, full_pi = False)
             if f==0 and j==1 and start_depth == 0:
                 EOS_prob = cumProbs[1] * models.next[start_depth].dist[ prevA[start_depth], above_awa, 0 ]
                 if full_pi:
-                  indices_full.append(EOS_full)
-                  data_full.append(EOS_prob)
+                    indices_full.append(EOS_full)
+                    data_full.append(EOS_prob)
                 indices.append(EOS)
                 data.append(EOS_prob)
             elif f==1 and j==1 and start_depth == -1:
