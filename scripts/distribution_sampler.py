@@ -58,7 +58,7 @@ def sampleBernoulli(counts, H):
         else:
             base = counts[ind][:] + H.flatten()
         P[ind][:] = np.log10(sampleSimpleBernoulli(base))
-        
+     
     return P
         
         

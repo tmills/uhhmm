@@ -738,7 +738,7 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
         models.fork[d] = Model((b_max, g_max, 2), name="Fork"+str(d))
 
         ## Two join models:
-        models.trans[d] = Model((b_max, g_max, 2), name="J|F1_"+str(d+1))
+        models.trans[d] = Model((b_max, g_max, 2), name="J|F1_"+str(d))
         models.reduce[d] = Model((a_max, b_max, 2), name="J|F0_"+str(d))
 
         ## TODO -- set d > 0 beta to the value of the model at d (can probably do this later)
@@ -933,24 +933,24 @@ def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
 
             if index != 0:
                 if index == 1:
-                    models.root[0].trans_prob[sent_index, index] = models.root[0].dist[0, prevState.g, state.a[0]]
-                    models.exp[0].trans_prob[sent_index, index] = models.exp[0].dist[prevState.g, state.a[0], state.b[0]]
+                    models.root[0].trans_prob[sent_index, index] = models.root[0].dist[0, prev_state.g, state.a[0]]
+                    models.exp[0].trans_prob[sent_index, index] = models.exp[0].dist[prev_state.g, state.a[0], state.b[0]]
                 else:
                     ## Fork and join don't have trans_probs because they are finite:
                     if state.f == 0 and state.j == 0:
-                        models.act[d].trans_prob[sent_index, index] = models.root[d].trans_prob[sent_index, index] = models.act[d].dist[ prevState.a[d], 0, state.a[d] ]
-                        models.start[d].trans_prob[sent_index, index] = models.cont[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.start[d].dist[ prevState.a[d], state.a[d], state.b[d] ]
+                        models.act[d].trans_prob[sent_index, index] = models.root[d].trans_prob[sent_index, index] = models.act[d].dist[ prev_state.a[d], 0, state.a[d] ]
+                        models.start[d].trans_prob[sent_index, index] = models.cont[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.start[d].dist[ prev_state.a[d], state.a[d], state.b[d] ]
                     elif state.f == 1 and state.j == 1:
                         models.act[d].trans_prob[sent_index, index] = models.root[d].trans_prob[sent_index, index] = 0
-                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.cont[d].dist[ prevState.b[d], prevState.g, state.b[d] ]
+                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.cont[d].dist[ prev_state.b[d], prev_state.g, state.b[d] ]
                     elif state.f == 1 and state.j == 0:
-                        models.root[d].trans_prob[sent_index, index] = models.act[d].trans_prob[sent_index, index]  = models.root[d].dist[ 0, prevState.g, state.a[d] ]
-                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.exp[0].dist[prevState.g, state.a[d], state.b[d] ]
+                        models.root[d].trans_prob[sent_index, index] = models.act[d].trans_prob[sent_index, index]  = models.root[d].dist[ 0, prev_state.g, state.a[d] ]
+                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.exp[0].dist[prev_state.g, state.a[d], state.b[d] ]
                     elif state.f == 0 and state.j == 1:
                         models.act[d-1].trans_prob[sent_index, index] = models.root[d-1].trans_prob[sent_index, index] = 0
-                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.cont[d-1].dist[ prevState.b[d-1], prevState.g, state.b[d] ]
+                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.cont[d-1].dist[ prev_state.b[d-1], prev_state.g, state.b[d] ]
             models.pos.trans_prob[sent_index, index] = models.pos.dist[state.b[0], state.g]
-            prevState = state
+            prev_state = state
 
 def increment_counts(hid_seq, sent, models, inc=1):
     depth = len(models.fork)
@@ -958,16 +958,17 @@ def increment_counts(hid_seq, sent, models, inc=1):
     ## for every state transition in the sentence increment the count
     ## for the condition and for the output
 
-    # Create start and end symbol states
+    # Create start state
     max_depth = len(hid_seq[0].a)
-    prevState = State.State(max_depth)
-    prevState.f = 0
-    prevState.j = 0
-    prevState.a = np.asarray([0]*max_depth)
-    prevState.b = np.asarray([0]*max_depth)
-    prevState.g = 0
-    prev_depth = -1
+    prev_state = State.State(max_depth)
+    prev_state.f = 0
+    prev_state.j = 0
+    prev_state.a = np.asarray([0]*max_depth)
+    prev_state.b = np.asarray([0]*max_depth)
+    prev_state.g = 0
+    depth = -1
 
+    # Create end state
     if len(sent) == 1:
         EOS = State.State(max_depth)
         EOS.f = 1
@@ -983,105 +984,101 @@ def increment_counts(hid_seq, sent, models, inc=1):
         EOS.b = np.asarray([0]*max_depth)
         EOS.g = 0
 
-
+    # Append end state
     sent = sent[:] + [0]
     hid_seq = hid_seq[:] + [EOS]
 
-    if len(sent) > 1:
-        for index,word in enumerate(sent):
-            state = hid_seq[index]
-            cur_depth = prev_depth
-            
-            if cur_depth <= 0:
-                above_awa = 0
-            else:
-                above_awa = state.b[cur_depth-1]
+    for index,word in enumerate(sent):
+        state = hid_seq[index]
 
-            if prev_depth <= 0:
-                prev_above_awa = 0
-            else:
-                prev_above_awa = prevState.b[prev_depth-1]
-
-            ## Count F & J
-
-        # Transition from start symbol is stored in depth 0 for space
-        # since disjoint from other conditions
-        if prev_depth == -1:
-            models.fork[0].count((0, prevState.g), state.f, inc)
+        # Populate previous state conditional dependencies
+        prev_g = prev_state.g
+        if depth == -1:
+            prev_a = 0
+            prev_b = 0
+            prev_b_above = 0
         else:
-            models.fork[cur_depth].count((prevState.b[prev_depth], prevState.g), state.f, inc)
+            prev_a = prev_state.a[depth]
+            prev_b = prev_state.b[depth]
+            if depth == 0:
+                prev_b_above = 0
+            else:
+                prev_b_above = prev_state.b[depth-1]
 
+        # Count fork decision
+        if depth >= 0 and (prev_b == 0 and prev_g == 0):
+            print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
+        models.fork[max(0,depth)].count((prev_b, prev_g), state.f, inc)
+
+        # Count join decision
         if state.f == 0:
-            if prev_depth == -1:
-                models.reduce[0].count((0, 0), state.j, inc)
-            else:
-                models.reduce[cur_depth].count((prevState.a[prev_depth], prev_above_awa), state.j, inc)
+            if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
+                print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
+            models.reduce[max(0,depth)].count((prev_a, prev_b_above), state.j, inc)
         elif state.f == 1:
-            if prev_depth == -1:
-                models.trans[0].count((0, prevState.g), state.j, inc)
-            else:
-                models.trans[cur_depth].count((prevState.b[prev_depth], prevState.g), state.j, inc)
+            if depth >= 0 and (prev_b == 0 and prev_g == 0):
+                print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
+            models.trans[max(0,depth)].count((prev_b, prev_g), state.j, inc)
         else:
             raise Exception("Unallowed value (%s) of the fork variable!" %state.f)
 
-        cur_depth += state.f - state.j
+        # Populate current state conditional dependencies
+        cur_depth = depth + state.f - state.j
+        cur_g = state.g
+        if cur_depth == -1:
+            cur_a = 0
+            cur_b = 0
+            cur_b_above = 0
+        else:
+            cur_a = state.a[cur_depth]
+            cur_b = state.b[cur_depth]
+            if cur_depth == 0:
+                cur_b_above = 0
+            else:
+                cur_b_above = state.b[cur_depth-1]
+
+
         ## Count A & B
         if state.f == 0 and state.j == 0:
-            assert prev_depth == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
-            if prev_depth == -1:
-                # This should only happen at the first word (transition from start symbol)
-                assert index == 0, "Found a non-initial -/- decision at depth -1 (should not be possible)."
-                models.act[0].count((0, prev_above_awa), 0, inc)
-                models.start[0].count((0, 0), state.b[0], inc)
-            else:
-                # This should only happen at non-initial words
-                assert index != 0, "Found a non-initial -/- decision at depth -1 (should not be possible)."
-                models.act[cur_depth].count((prevState.a[prev_depth], prev_above_awa), state.a[cur_depth], inc)
-                models.start[cur_depth].count((prevState.a[prev_depth], state.a[cur_depth]), state.b[cur_depth], inc)
+            assert depth >= 0 or index == 0, "Found a non-initial -/- decision at depth -1 (should not be possible)."
+            if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
+                print('Collision check -- A model at depth >=0 has same conditions as at depth -1.')
+            models.act[max(0,depth)].count((prev_a, prev_b_above), cur_a, inc)
+            if depth >= 0 and (prev_a == 0 and cur_a == 0):
+                print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
+            models.start[max(0,depth)].count((prev_a, cur_a), cur_b, inc)
+
         elif state.f == 1 and state.j == 1:
-            assert prev_depth == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
-            assert prev_depth >= 0 or (len(sent) == 2 and index == 1), "Found an illegal +/+ transition at depth -1. %s %s" %(sent, index)
-            ## no change to act, awa increments cont model
-            if prev_depth == -1:
-                 models.cont[0].count((0, prevState.g), 0, inc)
-            else:
-                models.cont[cur_depth].count((prevState.b[prev_depth], prevState.g), state.b[cur_depth], inc)
+            assert depth >= 0 or (len(sent) == 2 and index == 1), "Found an illegal +/+ transition at depth -1. %s %s" %(sent, index)
+            if depth >= 0 and (prev_b == 0 and prev_g == 0):
+                print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
+            models.cont[max(0,depth)].count((prev_b, prev_g), cur_b, inc)
+
         elif state.f == 1 and state.j == 0:
-            assert prev_depth+1 == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
-            ## run root and exp models at depth d+1
-            if prev_depth == -1:
-                models.root[0].count((0, prevState.g), state.a[cur_depth], inc)
-                models.exp[0].count((prevState.g, state.a[cur_depth]), state.b[cur_depth], inc)
-            else:
-                models.root[cur_depth].count((prevState.b[prev_depth], prevState.g), state.a[cur_depth], inc)
-                models.exp[cur_depth].count((prevState.g, state.a[cur_depth]), state.b[cur_depth], inc)
+            assert depth <= max_depth, "Found a +/- decision at the maximum depth level."
+            if depth >= 0 and (prev_b == 0 and prev_g == 0):
+                print('Collision check -- A model at depth >=0 has same conditions as at depth -1.')
+            models.root[depth+1].count((prev_b, prev_g), cur_a, inc)
+            if depth >= 0 and (prev_g == 0 and cur_a == 0):
+                print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
+            models.exp[depth+1].count((prev_g, cur_a), cur_b, inc)
+
         elif state.f == 0 and state.j == 1:
-            assert prev_depth == cur_depth+1, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
-            ## lower level finished -- awaited can transition
-            ## Made the following deciison in a confusing rebase -- left other version
-            ## commented in in case I decided wrong.
-            if cur_depth == -1:
-                models.next[0].count((prevState.a[prev_depth], prev_above_awa),  0, inc)
-            else:
-                models.next[cur_depth].count((prevState.a[prev_depth], prev_above_awa), state.b[cur_depth], inc)
+            assert depth > 0 or index == len(sent) - 1, "Found a -/+ decision at depth 0 prior to sentence end."
+            if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
+                print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
+            models.next[max(0,depth-1)].count((prev_a, prev_b_above), cur_b, inc)
+
         else:
             raise Exception("Unallowed value of f=%d and j=%d, index=%d" % (state.f, state.j, index) )
 
         ## Count G
-        if cur_depth == -1:
-            models.pos.count(0, state.g, inc)
-        else:
-            models.pos.count(state.b[cur_depth], state.g, inc)
+        models.pos.count(cur_b, cur_g, inc)
         ## Count w
-        models.lex.count(state.g, word, inc)
+        models.lex.count(cur_g, word, inc)
 
-        prevState = state
-        prev_depth = prevState.max_awa_depth()
-
-#    prevBG = bg_state(hid_seq[-1].b, hid_seq[-1].g)
-## WS: REMOVED THESE: WAS DISTORTING OUTPUTS BC F MODEL NOT REALLY CONSULTED AT END (MODEL ACTUALLY KNOWS ITS AT END)
-#    models.fork.count(prevBG, 0)
-#    models.reduce.count(hid_seq[-1].a, 1)
+        depth = state.max_awa_depth()
+        prev_state = state
 
 def decrement_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
     for ind in range(start_ind, end_ind):

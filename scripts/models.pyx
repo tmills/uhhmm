@@ -42,6 +42,16 @@ cdef class Model:
 
     def sampleBernoulli(self, base):
         self.dist = sampler.sampleBernoulli(self.pairCounts, base)
+        print('Model name: %s' %self.name)
+#        print('Counts : %s' %self.pairCounts)
+#        print('Sampled distirbutions: %s' %(10**self.dist))
+#        print('Count sums: %s' %self.pairCounts.sum(axis=(0,1)))
+        with np.errstate(divide='ignore', invalid='ignore'):
+            norm_cts = np.nan_to_num(self.pairCounts/self.pairCounts.sum(2)[:,:,None]).sum(axis=(0,1))
+            print('Normalized count sums: %s' %(norm_cts / norm_cts.sum()))
+            print('Sampled distribution sums: %s' %((10**self.dist).sum(axis=(0,1))))
+            print('Sampled marginal distribution: %s' %((10**self.dist).sum(axis=(0,1))/(10**self.dist).sum()))
+            print('')
     
     def resetCounts(self):
         self.pairCounts[:] = 0
