@@ -87,9 +87,17 @@ cdef class GPUHmmSampler:
         else:
             self.hmmsampler = HmmSampler()
     def set_models(self, GPUModel model):
-        self.hmmsampler.set_models(model.c_model)
+        try:
+            self.hmmsampler.set_models(model.c_model)
+        except Exception as e:
+            print("Exception in set models: %s" % (str(e)))
+            raise Exception
     def initialize_dynprog(self, int batch_size, int k):
-        self.hmmsampler.initialize_dynprog(batch_size, k)
+        try:
+            self.hmmsampler.initialize_dynprog(batch_size, k)
+        except Exception as e:
+            print("Exception in initialize_dynprog: %s" % (str(e)))
+            raise Exception
     def forward_pass(self, vector[vector[int]] sents, int sent_index):
         return self.hmmsampler.forward_pass(sents, sent_index)
     def reverse_sample(self, vector[vector[int]] sents, int sent_index):
@@ -109,13 +117,13 @@ cdef class GPUHmmSampler:
         try:
             log_probs = self.forward_pass(sents, sent_index)
         except Exception as e:
-            print("Exception in forward pass: %s" % (str(e)))
+            print("Exception in forward pass: %s at sent %d" % (str(e), sent_index))
             raise Exception
             
         try:
             states = self.reverse_sample(sents, sent_index)
         except Exception as e:
-            print("Exception in reverse sample: %s" % (str(e)))
+            print("Exception in reverse sample: %s at sent %d" % (str(e), sent_index))
             raise Exception
             
         return (states, log_probs)

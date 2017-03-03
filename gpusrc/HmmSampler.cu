@@ -5,6 +5,7 @@
 #include <thrust/reduce.h>
 #include <thrust/execution_policy.h>
 #include <thrust/scatter.h>
+#include <thrust/system.h>
 #include <tuple>
 #include <ctime>
 #include <utility>
@@ -249,8 +250,23 @@ void HmmSampler::set_models(Model * models){
         delete lexMultiplier;
         lexMultiplier = NULL;
     }
-    lexMultiplier = tile(g_len, p_indexer->get_state_size());
-    expand_mat = expand(g_len, p_indexer->get_state_size());
+    try {
+        lexMultiplier = tile(g_len, p_indexer->get_state_size());
+    } catch (thrust::system_error e) {
+        std::cerr << "Error at set_models line 254." << e.what() << endl;
+        throw;
+    } catch (...) {
+        throw;
+    }
+    try {
+        expand_mat = expand(g_len, p_indexer->get_state_size());
+    } catch (thrust::system_error e) {
+        std::cerr << "Error at set_models line 260." << e.what() << endl;
+        throw;
+    } catch (...) {
+        throw;
+    }
+
     // print(*lexMultiplier);
     pi = p_model -> pi;
     // print( *(pi->get_view()) );
@@ -264,7 +280,17 @@ void HmmSampler::set_models(Model * models){
     int b_len = p_model -> b_max;
 //    cout << "pos full array" << endl;
     int depth = p_model -> get_depth();
-    pos_full_array = make_pos_full_array(pos_matrix, g_len, b_len, depth, state_size);
+    try {
+        pos_full_array = make_pos_full_array(pos_matrix, g_len, b_len, depth, state_size);
+    } catch (thrust::system_error e) {
+        print(pos_matrix);
+        std::cerr << g_len << "," << b_len << "," << depth << "," << state_size << endl;
+        std::cerr << "Error at set_models line 282." << e.what() << endl;
+        throw;
+    } catch (...) {
+        throw;
+    }
+
 //    print(*pos_full_array);
     // cout.precision(float_limit::max_digits10);
 }
@@ -370,7 +396,17 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
         // so after this multiply cur_mat is |states| x |batches| incorporating transition probabilities
         // but not evidence
 //        cout << "Performing transition multiplication" << endl;
-        g_factored_multiply(prev_mat, cur_mat);
+        try{
+            g_factored_multiply(prev_mat, cur_mat);
+        } catch (thrust::system_error e){
+            cerr << "Error in g_factored_multiply. prev mat:" << endl;
+            print(prev_mat);
+            cerr << "Error in g_factored_multiply. cur mat:" << endl;
+            print(cur_mat);
+            throw;
+        } catch (...){
+        throw;
+        }
 //        print(cur_mat[0]);
 //        cout << "Done with transition" << endl;
         //cout << "performing observation multiplications" << endl;
@@ -531,7 +567,14 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
 //    int prev_sample_t = sample_t;
     int g_max =  p_model -> g_max;
     int b_max = p_model -> b_max;
-    get_row(pi->get_view(), sample_t, *trans_slice, pos_full_array, g_max, b_max);
+    try {
+        get_row(pi->get_view(), sample_t, *trans_slice, pos_full_array, g_max, b_max);
+    } catch (thrust::system_error e){
+        cerr << "Error in reverse sample inner get row. t is " << sample_t << endl;
+        throw;
+    } catch (...) {
+        throw;
+    }
 //     cout << "trans_slice" << endl;
     // print(*trans_slice); 
     // auto t12 = Clock::now();
@@ -591,13 +634,19 @@ std::tuple<std::vector<std::vector<State> >, std::vector<float>> HmmSampler::sam
         log_probs = forward_pass(sents, sent_index);
     }catch(thrust::system_error &e){
         cerr << "Error in forward pass: " << e.what() << endl;
-        exit(-1);
+        throw std:runtime_error();
+    } catch (...) {
+        cerr << "Non thrust error happened." << endl;
+        throw;
     }
     try{
         states = reverse_sample(sents, sent_index);
     }catch(thrust::system_error &e){
         cerr << "Error in reverse sample: " << e.what() << endl;
-        exit(-1);
+        throw std:runtime_error();
+    } catch (...) {
+        cerr << "Non thrust error happened." << endl;
+        throw;
     }
     
     
