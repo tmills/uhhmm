@@ -5,7 +5,6 @@
 #include <thrust/reduce.h>
 #include <thrust/execution_policy.h>
 #include <thrust/scatter.h>
-#include <thrust/system.h>
 #include <tuple>
 #include <ctime>
 #include <utility>
