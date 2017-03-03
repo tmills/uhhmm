@@ -29,39 +29,16 @@ def sampleDirichlet(counts, H):
             base += counts[ind][:] + H[:]
         else:
             logging.warning("Could not compute base with counts shape %s and base shape %s" % (counts.shape, H.shape) )
-            
+
         if base.shape[1] == 1:
             P[ind,1] = 0.0
-        elif base[0,0] > 0:
-            P[ind][:] = np.log10(sampleSimpleDirichlet(base))
         else:
-            P[ind][0] = -np.inf
-            P[ind][1:] = np.log10(sampleSimpleDirichlet(base[:,1:]))
+            P[ind][:] = np.log10(sampleSimpleDirichlet(base))
 
     return P
 
 def sampleSimpleDirichlet(base):
-    dist = np.random.gamma(base, 1)
-    dist /= dist.sum()
+    shape = base.shape
+    dist = np.random.dirichlet(base.flatten()).reshape(shape)
     return dist
-    
-def sampleBernoulli(counts, H):
-    ## How many inputs?
-    K = counts.shape[0:-1]
-    assert counts.shape[-1] == 2, 'This method can only be called for a distribution with 2 outputs (F or J models)'
-    
-    P = np.zeros(counts.shape)
-    
-    for ind,val in np.ndenumerate(counts[...,0]):
-        if counts.shape == H.shape:
-            base = counts[ind][:] + H[ind][:]
-        else:
-            base = counts[ind][:] + H.flatten()
-        P[ind][:] = np.log10(sampleSimpleBernoulli(base))
-     
-    return P
-        
-        
-def sampleSimpleBernoulli(base):
-    return np.random.dirichlet(base)
     

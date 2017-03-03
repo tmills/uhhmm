@@ -116,33 +116,32 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, a_max, b_max, g_max)
         if input_seqs_file is None:
-            hid_seqs = initialize_state(ev_seqs, models, depth, gold_seqs)
+            hid_seqs = [None] * len(ev_seqs)
         else:
             logging.info("Trainer was initialized with input sequences from a previous run.")
             hid_seqs = initialize_and_load_state(ev_seqs, models, depth, uhhmm_io.read_input_states(input_seqs_file, depth))
-
-        max_state_check(hid_seqs, models, "initialization")
+            max_state_check(hid_seqs, models, "initialization")
 
         sample = Sample()
-        sample.alpha_a = models.root[0].alpha ## float(params.get('alphaa'))
-        sample.alpha_b = float(params.get('alphab'))
-        sample.alpha_g = float(params.get('alphag'))
-        sample.alpha_f = float(params.get('alphaf'))
-        sample.alpha_j = float(params.get('alphaj'))
-        ## use plus 2 here (until moved later) since we need the null state (0) as well as
-        ## the extra part of the stick for "new tables"
-        sample.beta_a = models.root[0].beta ## np.ones((1,start_a+2)) / start_a
-    #    sample.beta_a[0][0] = 0
+        sample.alpha_f = models.fork[0].alpha
+        sample.alpha_j = models.trans[0].alpha
+        sample.alpha_a = models.root[0].alpha
+        sample.alpha_b = models.cont[0].alpha
+        sample.alpha_g = models.pos.alpha
+        sample.alpha_h = models.lex.alpha
+        
+        sample.beta_f = models.fork[0].beta 
+        sample.beta_j = models.trans[0].beta
+        sample.beta_a = models.root[0].beta 
         sample.beta_b = models.cont[0].beta
-    #    sample.beta_b[0] = 0
         sample.beta_g = models.pos.beta
-        sample.beta_f = np.ones(2) / 2
-        sample.beta_j = np.ones(2) / 2
+        sample.beta_h = models.lex.beta
         sample.gamma = float(params.get('gamma'))
         sample.discount = float(params.get('discount'))
         sample.ev_seqs = ev_seqs
 
         resample_all(models, sample, params, depth)
+        models.resetAll()
 
         sample.models = models
         iter = 0
@@ -161,6 +160,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         b_max = models.cont[0].dist.shape[-1]
         g_max = models.pos.dist.shape[-1]
 
+        models.resetAll()
+
         iter = sample.iter+1
 
     # import pickle
@@ -176,9 +177,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
     stats = Stats()
     inf_procs = list()
-
-    logging.debug(ev_seqs[0])
-    logging.debug(list(map(lambda x: x.str(), hid_seqs[0])))
 
     workDistributer = WorkDistributerServer(ev_seqs, working_dir)
     logging.info("GPU is %s with batch size %d" % (gpu, gpu_batch_size) )
@@ -275,21 +273,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         ## Give the models to the model server. (Note: We used to pass them to workers via temp files which works when you create new
         ## workers but is harder when you need to coordinate timing of reading new models in every pass)
-
-        pos_counts = models.pos.pairCounts[:].sum() - num_sents
-        lex_counts = models.lex.pairCounts[:].sum() - num_sents
-        logging.info("Have %d pos counts, %d lex counts before sample - should equal number of tokens %d" % (pos_counts, lex_counts, num_tokens) )
-
-        ## remove the counts from these sentences
-        if batch_size < num_sents:
-            logging.info("Decrementing counts for sentence indices %d-%d" % (start_ind, end_ind) )
-            decrement_sentence_counts(hid_seqs, ev_seqs, models, start_ind, end_ind)
-        else:
-            logging.info("Resetting all counts to zero for next iteration")
-            models.resetAll()
-            pos_counts = models.pos.pairCounts[:].sum()
-            lex_counts = models.lex.pairCounts[:].sum()
-            assert pos_counts == 0 and lex_counts == 0
 
         t0 = time.time()
         if finite:
@@ -388,16 +371,18 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             ## This is, e.g., where we might add categories to the a,b,g variables with
             ## stick-breaking. Without that, the values will stay what they were
             next_sample.alpha_f = sample.alpha_f
-            next_sample.beta_f = sample.beta_f
             next_sample.alpha_j = sample.alpha_j
-            next_sample.beta_j = sample.beta_j
-
             next_sample.alpha_a = models.root[0].alpha
-            next_sample.beta_a = models.root[0].beta
             next_sample.alpha_b = models.cont[0].alpha
-            next_sample.beta_b = models.cont[0].beta
             next_sample.alpha_g = models.pos.alpha
+            next_sample.alpha_h = models.lex.alpha
+            
+            next_sample.beta_f = sample.beta_f
+            next_sample.beta_j = sample.beta_j
+            next_sample.beta_a = models.root[0].beta
+            next_sample.beta_b = models.cont[0].beta
             next_sample.beta_g = models.pos.beta
+            next_sample.beta_h = models.lex.beta
             next_sample.gamma = sample.gamma
             next_sample.ev_seqs = ev_seqs
 
@@ -412,7 +397,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## TODO -- make the Models class do this in a resample_all() method
         ## After stick-breaking we probably need to re-sample all the models:
         #remove_unused_variables(models, hid_seqs)
-        resample_beta_g(models, sample.gamma)
+        if split_merge:
+            resample_beta_g(models, sample.gamma)
 
         resample_all(models, sample, params, depth)
 
@@ -431,6 +417,21 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if not finite and return_to_finite:
             finite = True
             return_to_finite = False
+
+        pos_counts = models.pos.pairCounts[:].sum() - num_sents
+        lex_counts = models.lex.pairCounts[:].sum() - num_sents
+        logging.info("Have %d pos counts, %d lex counts after sample - should equal number of tokens %d" % (pos_counts, lex_counts, num_tokens) )
+
+        ## remove the counts from these sentences
+        if batch_size < num_sents:
+            logging.info("Decrementing counts for sentence indices %d-%d" % (start_ind, end_ind) )
+            decrement_sentence_counts(hid_seqs, ev_seqs, models, start_ind, end_ind)
+        else:
+            logging.info("Resetting all counts to zero for next iteration")
+            models.resetAll()
+            pos_counts = models.pos.pairCounts[:].sum()
+            lex_counts = models.lex.pairCounts[:].sum()
+            assert pos_counts == 0 and lex_counts == 0
 
         iter += 1
 
@@ -720,6 +721,7 @@ def resample_beta_g(models, gamma):
 
 def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_max, g_max):
 
+    ## F model:
     models.fork = [None] * depth
     ## J models:
     models.trans = [None] * depth
@@ -733,41 +735,47 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
     models.next = [None] * depth
     models.start = [None] * depth
 
-    ## One fork model:
     for d in range(0, depth):
-        models.fork[d] = Model((b_max, g_max, 2), name="Fork"+str(d))
+        ## One fork model:
+        models.fork[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaf')), name="Fork"+str(d))
+        models.fork[d].beta = np.ones(2) / 2
 
         ## Two join models:
-        models.trans[d] = Model((b_max, g_max, 2), name="J|F1_"+str(d))
-        models.reduce[d] = Model((a_max, b_max, 2), name="J|F0_"+str(d))
+        models.trans[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaj')), name="J|F1_"+str(d))
+        models.trans[d].beta = np.ones(2) / 2
+        
+        models.reduce[d] = Model((a_max, b_max, 2), alpha=float(params.get('alphaj')), name="J|F0_"+str(d))
+        models.reduce[d].beta = np.ones(2) / 2
 
         ## TODO -- set d > 0 beta to the value of the model at d (can probably do this later)
         ## One active model:
         models.act[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|00_"+str(d))
+        models.act[d].beta = np.ones(a_max) / a_max
+        
         models.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
-        models.root[d].beta = np.zeros(a_max)
-        models.root[d].beta[1:] = np.ones(a_max-1) / (a_max-1)
-        models.act[d].beta = models.root[d].beta
+        models.root[d].beta = np.ones(a_max) / a_max
 
         ## four awaited models:
         models.cont[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|11_"+str(d))
+        models.cont[d].beta = np.ones(b_max) / b_max
+        
         models.exp[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|10_"+str(d))
-        models.next[d] = Model((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|01_"+str(d))
-        models.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|00_"+str(d))
-        models.cont[d].beta = np.zeros(b_max)
-        models.cont[d].beta[1:] = np.ones(b_max-1) / (b_max-1)
         models.exp[d].beta = models.cont[d].beta
+        
+        models.next[d] = Model((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|01_"+str(d))
         models.next[d].beta = models.cont[d].beta
+        
+        models.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|00_"+str(d))
         models.start[d].beta = models.cont[d].beta
 
 
     ## one pos model:
     models.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape, name="POS")
-    models.pos.beta = np.zeros(g_max)
-    models.pos.beta[1:] = np.ones(g_max-1) / (g_max-1)
+    models.pos.beta = np.ones(g_max) / g_max
 
     ## one lex model:
-    models.lex = Model((g_max, max_output+1), name="Lex")
+    models.lex = Model((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
+    models.lex.beta = np.ones(max_output+1) / (max_output + 1)
 
     models.append(models.fork)
     models.append(models.trans)
@@ -1008,13 +1016,19 @@ def increment_counts(hid_seq, sent, models, inc=1):
         # Count fork decision
         if depth >= 0 and (prev_b == 0 and prev_g == 0):
             print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
-        models.fork[max(0,depth)].count((prev_b, prev_g), state.f, inc)
+        if depth >= 0 and (prev_b == 0 and prev_g == 0):
+            print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
+        ## Final state is deterministic, don't include counts from final decisions:
+        if word != 0:
+            models.fork[max(0,depth)].count((prev_b, prev_g), state.f, inc)
 
         # Count join decision
         if state.f == 0:
             if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
                 print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
-            models.reduce[max(0,depth)].count((prev_a, prev_b_above), state.j, inc)
+            ## Final state is deterministic, don't include counts from final decisions:
+            if word != 0:
+                models.reduce[max(0,depth)].count((prev_a, prev_b_above), state.j, inc)
         elif state.f == 1:
             if depth >= 0 and (prev_b == 0 and prev_g == 0):
                 print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
@@ -1112,20 +1126,23 @@ def getBmax():
 def resample_all(models, sample, params, depth):
     ## Sample distributions for all the model params and emissions params
     ## TODO -- make the Models class do this in a resample_all() method
-    models.lex.sampleDirichlet(params['h'])
-
-    # Make sure the null tag can only generate the null word
-    models.lex.dist[0,0] = 0.0
-    models.lex.dist[0,1:].fill(-np.inf)
-
-    models.pos.selfSampleDirichlet()
-    if np.argwhere(np.isnan(models.pos.dist)).size > 0:
-        logging.error("Resampling the pos dist resulted in a nan")
-
     a_base =  sample.alpha_a * sample.beta_a
     b_base = sample.alpha_b * sample.beta_b
     f_base = sample.alpha_f * sample.beta_f
     j_base = sample.alpha_j * sample.beta_j
+    g_base = sample.alpha_g * sample.beta_g
+    h_base = sample.alpha_h * sample.beta_h
+    
+    # Resample lex and make sure the null tag can only generate the null word
+    models.lex.sampleDirichlet(h_base)
+    models.lex.dist[0,0] = 0.0
+    models.lex.dist[0,1:].fill(-np.inf)
+
+    # Resample pos
+    models.pos.sampleDirichlet(g_base)
+    if np.argwhere(np.isnan(models.pos.dist)).size > 0:
+        logging.error("Resampling the pos dist resulted in a nan")
+
     for d in range(depth-1, -1, -1):
         models.start[d].sampleDirichlet(b_base if d == 0 else b_base + models.start[d-1].pairCounts * sample.alpha_b)
         models.exp[d].sampleDirichlet(b_base if d == 0 else b_base + models.exp[d-1].pairCounts * sample.alpha_b)
@@ -1133,7 +1150,7 @@ def resample_all(models, sample, params, depth):
         models.next[d].sampleDirichlet(b_base if d == 0 else b_base + models.next[d-1].pairCounts * sample.alpha_b)
         models.act[d].sampleDirichlet(a_base if d == 0 else a_base + models.act[d-1].pairCounts * sample.alpha_a)
         models.root[d].sampleDirichlet(a_base if d == 0 else a_base + models.root[d-1].pairCounts * sample.alpha_a)
-        models.reduce[d].sampleBernoulli(j_base if d == 0 else j_base + models.reduce[d-1].pairCounts * sample.alpha_j)
-        models.trans[d].sampleBernoulli(j_base if d == 0 else j_base + models.trans[d-1].pairCounts * sample.alpha_j)
-        models.fork[d].sampleBernoulli(f_base if d == 0 else f_base + models.fork[d-1].pairCounts * sample.alpha_f)
+        models.reduce[d].sampleDirichlet(j_base if d == 0 else j_base + models.reduce[d-1].pairCounts * sample.alpha_j)
+        models.trans[d].sampleDirichlet(j_base if d == 0 else j_base + models.trans[d-1].pairCounts * sample.alpha_j)
+        models.fork[d].sampleDirichlet(f_base if d == 0 else f_base + models.fork[d-1].pairCounts * sample.alpha_f)
 
