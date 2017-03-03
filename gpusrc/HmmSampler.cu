@@ -633,7 +633,7 @@ std::tuple<std::vector<std::vector<State> >, std::vector<float>> HmmSampler::sam
         log_probs = forward_pass(sents, sent_index);
     }catch(thrust::system_error &e){
         cerr << "Error in forward pass: " << e.what() << endl;
-        throw std:runtime_error();
+        throw std:runtime_error(e.what());
     } catch (...) {
         cerr << "Non thrust error happened." << endl;
         throw;
@@ -642,7 +642,7 @@ std::tuple<std::vector<std::vector<State> >, std::vector<float>> HmmSampler::sam
         states = reverse_sample(sents, sent_index);
     }catch(thrust::system_error &e){
         cerr << "Error in reverse sample: " << e.what() << endl;
-        throw std:runtime_error();
+        throw std:runtime_error(e.what());
     } catch (...) {
         cerr << "Non thrust error happened." << endl;
         throw;
