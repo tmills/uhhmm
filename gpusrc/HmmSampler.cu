@@ -237,7 +237,7 @@ void HmmSampler::set_models(Model * models){
         cudaMemcpyToSymbol(G_SIZE, &g_len, sizeof(int), 0, cudaMemcpyHostToDevice);
     } catch (...){
         cerr << "Error at cuda memory copy of g_size" << endl;
-        throw std::runtime_error("memory copy");
+        throw runtime_error("memory copy");
     }
 
     // cout << '4' << endl;
@@ -259,7 +259,7 @@ void HmmSampler::set_models(Model * models){
         lexMultiplier = tile(g_len, p_indexer->get_state_size());
     } catch (thrust::system_error e) {
         std::cerr << "Error at set_models line 254." << e.what() << endl;
-        throw std::runtime_error("set models line 254");
+        throw runtime_error("set models line 254");
     } catch (...) {
         throw;
     }
@@ -267,7 +267,7 @@ void HmmSampler::set_models(Model * models){
         expand_mat = expand(g_len, p_indexer->get_state_size());
     } catch (thrust::system_error e) {
         std::cerr << "Error at set_models line 260." << e.what() << endl;
-        throw std::runtime_error("set models line 260");
+        throw runtime_error("set models line 260");
     } catch (...) {
         throw;
     }
@@ -288,10 +288,10 @@ void HmmSampler::set_models(Model * models){
     try {
         pos_full_array = make_pos_full_array(pos_matrix, g_len, b_len, depth, state_size);
     } catch (thrust::system_error e) {
-        print(pos_matrix);
+        print(*pos_matrix);
         std::cerr << g_len << "," << b_len << "," << depth << "," << state_size << endl;
         std::cerr << "Error at set_models line 282." << e.what() << endl;
-        throw std::runtime_error("set models line 282");
+        throw runtime_error("set models line 282");
     } catch (...) {
         throw;
     }
@@ -324,7 +324,7 @@ void HmmSampler::initialize_dynprog(int batch_size, int max_len){
         }
         } catch (...){
         cerr << "Error in intialize dynprog part 1." << endl;
-        throw std::runtime_error("intialize dynprog part 1");
+        throw runtime_error("intialize dynprog part 1");
     }
     try{
         start_state = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
@@ -337,7 +337,7 @@ void HmmSampler::initialize_dynprog(int batch_size, int max_len){
         dyn_prog_part = new Dense(state_size_no_g, batch_size, 0.0f);
     } catch (...){
         cerr << "Error in intialize dynprog part 2" << endl;
-        throw std::runtime_error("intialize dynprog part 2");
+        throw runtime_error("intialize dynprog part 2");
     }
 }
 
@@ -414,9 +414,9 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             g_factored_multiply(prev_mat, cur_mat);
         } catch (thrust::system_error e){
             cerr << "Error in g_factored_multiply. prev mat:" << endl;
-            print(prev_mat);
+            print(*prev_mat);
             cerr << "Error in g_factored_multiply. cur mat:" << endl;
-            print(cur_mat);
+            print(*cur_mat);
             throw;
         } catch (...){
         throw;
@@ -648,7 +648,7 @@ std::tuple<std::vector<std::vector<State> >, std::vector<float>> HmmSampler::sam
         log_probs = forward_pass(sents, sent_index);
     }catch(thrust::system_error &e){
         cerr << "Error in forward pass: " << e.what() << endl;
-        throw std:runtime_error(e.what());
+        throw runtime_error(e.what());
     } catch (...) {
         cerr << "Non thrust error happened." << endl;
         throw;
@@ -657,7 +657,7 @@ std::tuple<std::vector<std::vector<State> >, std::vector<float>> HmmSampler::sam
         states = reverse_sample(sents, sent_index);
     }catch(thrust::system_error &e){
         cerr << "Error in reverse sample: " << e.what() << endl;
-        throw std:runtime_error(e.what());
+        throw runtime_error(e.what());
     } catch (...) {
         cerr << "Non thrust error happened." << endl;
         throw;
