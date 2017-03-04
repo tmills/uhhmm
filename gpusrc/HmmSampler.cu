@@ -232,8 +232,14 @@ void HmmSampler::set_models(Model * models){
     // cout << '3' << endl;
     int g_len = p_model-> g_max;
     int state_size = p_indexer -> get_state_size();
-    cudaMemset(&G_SIZE,0,sizeof(int));
-    cudaMemcpyToSymbol(G_SIZE, &g_len, sizeof(int), 0, cudaMemcpyHostToDevice);
+    try {
+        cudaMemset(&G_SIZE,0,sizeof(int));
+        cudaMemcpyToSymbol(G_SIZE, &g_len, sizeof(int), 0, cudaMemcpyHostToDevice);
+    } catch (...){
+        cerr << "Error at cuda memory copy of g_size" << endl;
+        throw std::runtime_error("memory copy");
+    }
+
     // cout << '4' << endl;
     //if (lexMatrix != NULL){
     //    delete lexMatrix;
@@ -253,7 +259,7 @@ void HmmSampler::set_models(Model * models){
         lexMultiplier = tile(g_len, p_indexer->get_state_size());
     } catch (thrust::system_error e) {
         std::cerr << "Error at set_models line 254." << e.what() << endl;
-        throw;
+        throw std::runtime_error("set models line 254");
     } catch (...) {
         throw;
     }
@@ -261,7 +267,7 @@ void HmmSampler::set_models(Model * models){
         expand_mat = expand(g_len, p_indexer->get_state_size());
     } catch (thrust::system_error e) {
         std::cerr << "Error at set_models line 260." << e.what() << endl;
-        throw;
+        throw std::runtime_error("set models line 260");
     } catch (...) {
         throw;
     }
@@ -285,7 +291,7 @@ void HmmSampler::set_models(Model * models){
         print(pos_matrix);
         std::cerr << g_len << "," << b_len << "," << depth << "," << state_size << endl;
         std::cerr << "Error at set_models line 282." << e.what() << endl;
-        throw;
+        throw std::runtime_error("set models line 282");
     } catch (...) {
         throw;
     }
@@ -309,21 +315,30 @@ Array* HmmSampler::make_pos_full_array(Array* pos_matrix ,int g_max, int b_max, 
 }
 
 void HmmSampler::initialize_dynprog(int batch_size, int max_len){
-    sampler_batch_size = batch_size;
-    max_sent_len = max_len;
-    dyn_prog = new Dense*[max_len];
-    for(int i = 0; i < max_len; i++){
-        dyn_prog[i] = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
+    try{
+        sampler_batch_size = batch_size;
+        max_sent_len = max_len;
+        dyn_prog = new Dense*[max_len];
+        for(int i = 0; i < max_len; i++){
+            dyn_prog[i] = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
+        }
+        } catch (...){
+        cerr << "Error in intialize dynprog part 1." << endl;
+        throw std::runtime_error("intialize dynprog part 1");
     }
-
-    start_state = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
-    for(int i = 0; i < batch_size; i++){
-        start_state->operator()(0, i) = 1;
+    try{
+        start_state = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
+        for(int i = 0; i < batch_size; i++){
+            start_state->operator()(0, i) = 1;
+        }
+        int a_max, b_max, g_max;
+        std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();
+        int state_size_no_g = p_indexer->get_state_size() / g_max;
+        dyn_prog_part = new Dense(state_size_no_g, batch_size, 0.0f);
+    } catch (...){
+        cerr << "Error in intialize dynprog part 2" << endl;
+        throw std::runtime_error("intialize dynprog part 2");
     }
-    int a_max, b_max, g_max;
-    std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();
-    int state_size_no_g = p_indexer->get_state_size() / g_max;
-    dyn_prog_part = new Dense(state_size_no_g, batch_size, 0.0f);
 }
 
 void HmmSampler::g_factored_multiply(Dense* prev_dyn_prog_slice, Dense* this_dyn_prog_slice){
