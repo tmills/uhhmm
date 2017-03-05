@@ -10,6 +10,6 @@ cdef class Model:
     
 cdef class Models:
     cdef list models
-    cdef public list fork, trans, reduce, act, root, cont, start, exp, next
+    cdef public list fj, act, root, cont, start, exp, next
     cdef public Model pos, lex
 

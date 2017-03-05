@@ -100,9 +100,7 @@ cdef class Models:
 
     def __reduce__(self):
         d = {}
-        d['fork'] = self.fork
-        d['trans'] = self.trans
-        d['reduce'] = self.reduce
+        d['fj'] = self.fj
         d['act'] = self.act
         d['root'] = self.root
         d['next'] = self.next
@@ -114,9 +112,7 @@ cdef class Models:
         return (Models, (), d)
     
     def __setstate__(self, d):
-        self.fork = d['fork']
-        self.trans = d['trans']
-        self.reduce = d['reduce']
+        self.fj = d['fj']
         self.act = d['act']
         self.root = d['root']
         self.next = d['next']
@@ -125,5 +121,5 @@ cdef class Models:
         self.start = d['start']
         self.pos = d['pos']
         self.lex = d['lex']
-        self.models = [self.fork, self.trans, self.reduce, self.act, self.root, self.next, self.cont, self.exp, self.start, self.pos, self.lex]
+        self.models = [self.fj, self.act, self.root, self.next, self.cont, self.exp, self.start, self.pos, self.lex]
 

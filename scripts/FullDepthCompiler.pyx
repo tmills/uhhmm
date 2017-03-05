@@ -72,7 +72,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                 if prev_state.a[d] == 0 or prev_state.b[d] == 0:
                     return indices, data, indices_full, data_full
 
-    cum_probs = np.zeros(3)
+    cum_probs = np.zeros(2)
     next_state = State.State(depth)
 
     # Populate previous state conditional dependencies
@@ -106,36 +106,27 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     for f in (0,1):
         next_state.f = f
 
-        ## when t=0, start_depth will be -1, which in the d> 1 case will wraparound.
-        ## we want in the t=0 case for f_{t=1} to be [-/-]*d
-        if start_depth >= 0:
-            cum_probs[0] = models.fork[start_depth].dist[ prev_b, prev_g, f ]
-        else:
-            ## if start depth is -1 we're only allowed to fork:
-            if next_state.f == 1:
-                cum_probs[0] = 1.0
-            else:
-                continue
-            
         for j in (0,1):
             next_state.j = j
-            ## See note above where we set next_state.f
-            if f == 0:
-                cum_probs[1] = cum_probs[0] * models.reduce[start_depth].dist[ prev_a, prev_b_above, j ]
+            
+            ## when t=0, start_depth will be -1, which in the d> 1 case will wraparound.
+            ## we want in the t=0 case for f_{t=1} to be [-/-]*d
+            if start_depth >= 0 or next_state.f == 1:
+                cum_probs[0] = models.fj[start_depth].dist[ prev_a, prev_b, prev_b_above, prev_g, 2*f+j ]
             else:
-                cum_probs[1] = cum_probs[0] * models.trans[start_depth].dist[ prev_b, prev_g, j ]
+                continue
             
             ## Add probs for transition to EOS
             if next_state.f==0 and j==1 and start_depth == 0:
                 # FJ decision into EOS is observed, don't model. Just extract prob from awaited transition
-                EOS_prob = models.next[start_depth].dist[ prev_a, prev_b_above, 0 ]
+                EOS_prob = cum_probs[0] * models.next[start_depth].dist[ prev_a, prev_b_above, 0 ]
                 if full_pi:
                     indices_full.append(EOS_full)
                     data_full.append(EOS_prob)
                 indices.append(EOS)
                 data.append(EOS_prob)
             elif f==1 and j==1 and start_depth == -1:
-                EOS_prob = cum_probs[1] * models.cont[0].dist[ prev_b, prev_g, 0 ]
+                EOS_prob = cum_probs[0] * models.cont[0].dist[ prev_b, prev_g, 0 ]
                 if full_pi:
                   indices_full.append(EOS_1wrd_full)
                   data_full.append(EOS_prob)
@@ -154,7 +145,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                         
                             next_state.a[start_depth] = a
                         
-                            cum_probs[2] = cum_probs[1] * models.cont[start_depth].dist[ prev_b, prev_g, b ]
+                            cum_probs[1] = cum_probs[0] * models.cont[start_depth].dist[ prev_b, prev_g, b ]
                             next_state.b[start_depth] = b
                         else:
                             continue
@@ -169,7 +160,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                         if a == prev_state.a[start_depth-1]:
                             next_state.a[start_depth-1] = a
                             next_state.b[start_depth-1] = b
-                            cum_probs[2] = cum_probs[1] * models.next[start_depth-1].dist[ prev_a, prev_b_above, b ]
+                            cum_probs[1] = cum_probs[0] * models.next[start_depth-1].dist[ prev_a, prev_b_above, b ]
                         else:
                             continue
 
@@ -178,7 +169,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                         next_state.a[0:start_depth] = prev_state.a[0:start_depth]
                         next_state.b[0:start_depth] = prev_state.b[0:start_depth]
                         next_state.a[start_depth] = a
-                        cum_probs[2] = cum_probs[1] * models.act[start_depth].dist[ prev_a, prev_b_above, a ] * models.start[start_depth].dist[ prev_a, a, b ]
+                        cum_probs[1] = cum_probs[0] * models.act[start_depth].dist[ prev_a, prev_b_above, a ] * models.start[start_depth].dist[ prev_a, a, b ]
                     
                         next_state.b[start_depth] = b
 
@@ -189,7 +180,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                         next_state.a[0:start_depth+1] = prev_state.a[0:start_depth+1]
                         next_state.b[0:start_depth+1] = prev_state.b[0:start_depth+1]
                         next_state.a[start_depth+1] = a
-                        cum_probs[2] = cum_probs[1] * models.root[start_depth+1].dist[ prev_b_above, prev_g, a ] * models.exp[start_depth+1].dist[ prev_g, a, b ]
+                        cum_probs[1] = cum_probs[0] * models.root[start_depth+1].dist[ prev_b_above, prev_g, a ] * models.exp[start_depth+1].dist[ prev_g, a, b ]
                     
                         next_state.b[start_depth+1] = b
                                             
@@ -197,9 +188,9 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     state_index = indexer.getStateIndex(next_state.f, next_state.j, next_state.a, next_state.b, 0) / g_max
                     state_index_full = indexer.getStateIndex(next_state.f, next_state.j, next_state.a, next_state.b, 0)
                     # the g is factored out
-                    range_probs = cum_probs[2] #* (models.pos.dist[b,:-1])
+                    range_probs = cum_probs[1] #* (models.pos.dist[b,:-1])
                     if full_pi:
-                        range_probs_full = cum_probs[2] * (models.pos.dist[b,:-1])
+                        range_probs_full = cum_probs[1] * (models.pos.dist[b,:-1])
                         #logging.info("Building model with %s => %s" % (prev_state.str(), next_state.str() ) )
                         for g in range(1,len(range_probs_full)):
                             indices_full.append(state_index_full + g)
@@ -262,10 +253,7 @@ cdef class FullDepthCompiler:
 def unlog_models(models, depth):
 
     for d in range(0, depth):
-        models.fork[d].dist = 10**models.fork[d].dist
-        
-        models.reduce[d].dist = 10**models.reduce[d].dist
-        models.trans[d].dist = 10**models.trans[d].dist
+        models.fj[d].dist = 10**models.fj[d].dist
         
         models.act[d].dist = 10**models.act[d].dist
         models.root[d].dist = 10**models.root[d].dist
@@ -279,10 +267,7 @@ def unlog_models(models, depth):
 
 def relog_models(models, depth):
     for d in range(0, depth):
-        models.fork[d].dist = np.log10(models.fork[d].dist)
-        
-        models.reduce[d].dist = np.log10(models.reduce[d].dist)
-        models.trans[d].dist = np.log10(models.trans[d].dist)
+        models.fj[d].dist = np.log10(models.fj[d].dist)
         
         models.act[d].dist = np.log10(models.act[d].dist)
         models.root[d].dist = np.log10(models.root[d].dist)

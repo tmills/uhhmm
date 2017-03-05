@@ -123,15 +123,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             max_state_check(hid_seqs, models, "initialization")
 
         sample = Sample()
-        sample.alpha_f = models.fork[0].alpha
-        sample.alpha_j = models.trans[0].alpha
+        sample.alpha_fj = models.fj[0].alpha
         sample.alpha_a = models.root[0].alpha
         sample.alpha_b = models.cont[0].alpha
         sample.alpha_g = models.pos.alpha
         sample.alpha_h = models.lex.alpha
         
-        sample.beta_f = models.fork[0].beta 
-        sample.beta_j = models.trans[0].beta
+        sample.beta_fj = models.fj[0].beta 
         sample.beta_a = models.root[0].beta 
         sample.beta_b = models.cont[0].beta
         sample.beta_g = models.pos.beta
@@ -370,15 +368,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             logging.info("Sampling hyperparameters")
             ## This is, e.g., where we might add categories to the a,b,g variables with
             ## stick-breaking. Without that, the values will stay what they were
-            next_sample.alpha_f = sample.alpha_f
-            next_sample.alpha_j = sample.alpha_j
+            next_sample.alpha_fj = sample.alpha_fj
             next_sample.alpha_a = models.root[0].alpha
             next_sample.alpha_b = models.cont[0].alpha
             next_sample.alpha_g = models.pos.alpha
             next_sample.alpha_h = models.lex.alpha
             
-            next_sample.beta_f = sample.beta_f
-            next_sample.beta_j = sample.beta_j
+            next_sample.beta_fj = sample.beta_fj
             next_sample.beta_a = models.root[0].beta
             next_sample.beta_b = models.cont[0].beta
             next_sample.beta_g = models.pos.beta
@@ -477,13 +473,10 @@ def remove_pos_from_hid_seqs(hid_seqs, pos):
 
 def remove_pos_from_models(models, pos):
     ## delete the 1st dimension from the fork distribution:
-    depth = len(models.fork)
+    depth = len(models.fj)
     for d in range(depth):
-        models.fork[d].pairCounts = np.delete(models.fork[d].pairCounts, pos, 1)
-        models.fork[d].dist = np.delete(models.fork[d].dist, pos, 1)
-
-        models.trans[d].pairCounts = np.delete(models.trans[d].pairCounts, pos, 1)
-        models.trans[d].dist = np.delete(models.trans[d].dist, pos, 1)
+        models.fj[d].pairCounts = np.delete(models.fj[d].pairCounts, pos, 1)
+        models.fj[d].dist = np.delete(models.fj[d].dist, pos, 1)
 
         models.root[d].pairCounts = np.delete(models.root[d].pairCounts, pos, 1)
         models.root[d].dist = np.delete(models.root[d].dist, pos, 1)
@@ -721,11 +714,8 @@ def resample_beta_g(models, gamma):
 
 def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_max, g_max):
 
-    ## F model:
-    models.fork = [None] * depth
-    ## J models:
-    models.trans = [None] * depth
-    models.reduce = [None] * depth
+    ## FJ model:
+    models.fj = [None] * depth
     ## Active models:
     models.act = [None] * depth
     models.root = [None] * depth
@@ -737,17 +727,9 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
 
     for d in range(0, depth):
         ## One fork model:
-        models.fork[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaf')), name="Fork"+str(d))
-        models.fork[d].beta = np.ones(2) / 2
+        models.fj[d] = Model((a_max, b_max, b_max, g_max, 4), alpha=float(params.get('alphafj')), name="FJ"+str(d))
+        models.fj[d].beta = np.ones(4) / 4
 
-        ## Two join models:
-        models.trans[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaj')), name="J|F1_"+str(d))
-        models.trans[d].beta = np.ones(2) / 2
-        
-        models.reduce[d] = Model((a_max, b_max, 2), alpha=float(params.get('alphaj')), name="J|F0_"+str(d))
-        models.reduce[d].beta = np.ones(2) / 2
-
-        ## TODO -- set d > 0 beta to the value of the model at d (can probably do this later)
         ## One active model:
         models.act[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|00_"+str(d))
         models.act[d].beta = np.ones(a_max) / a_max
@@ -777,9 +759,7 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
     models.lex = Model((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
     models.lex.beta = np.ones(max_output+1) / (max_output + 1)
 
-    models.append(models.fork)
-    models.append(models.trans)
-    models.append(models.reduce)
+    models.append(models.fj)
     models.append(models.act)
     models.append(models.root)
     models.append(models.cont)
@@ -961,7 +941,7 @@ def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
             prev_state = state
 
 def increment_counts(hid_seq, sent, models, inc=1):
-    depth = len(models.fork)
+    depth = len(models.fj)
 
     ## for every state transition in the sentence increment the count
     ## for the condition and for the output
@@ -1014,27 +994,9 @@ def increment_counts(hid_seq, sent, models, inc=1):
                 prev_b_above = prev_state.b[depth-1]
 
         # Count fork decision
-        if depth >= 0 and (prev_b == 0 and prev_g == 0):
-            print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
-        if depth >= 0 and (prev_b == 0 and prev_g == 0):
-            print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
-        ## Final state is deterministic, don't include counts from final decisions:
-        if word != 0:
-            models.fork[max(0,depth)].count((prev_b, prev_g), state.f, inc)
-
-        # Count join decision
-        if state.f == 0:
-            if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
-                print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
-            ## Final state is deterministic, don't include counts from final decisions:
-            if word != 0:
-                models.reduce[max(0,depth)].count((prev_a, prev_b_above), state.j, inc)
-        elif state.f == 1:
-            if depth >= 0 and (prev_b == 0 and prev_g == 0):
-                print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
-            models.trans[max(0,depth)].count((prev_b, prev_g), state.j, inc)
-        else:
-            raise Exception("Unallowed value (%s) of the fork variable!" %state.f)
+        if depth >= 0 and (prev_a == 0 and prev_b == 0 and prev_b_above == 0 and prev_g == 0):
+            print('Collision check -- FJ model at depth >=0 has same conditions as at depth -1.')
+        models.fj[max(0,depth)].count((prev_a, prev_b, prev_b_above, prev_g), 2*state.f+state.j, inc)
 
         # Populate current state conditional dependencies
         cur_depth = depth + state.f - state.j
@@ -1126,31 +1088,27 @@ def getBmax():
 def resample_all(models, sample, params, depth):
     ## Sample distributions for all the model params and emissions params
     ## TODO -- make the Models class do this in a resample_all() method
+    fj_base = sample.alpha_fj * sample.beta_fj
     a_base =  sample.alpha_a * sample.beta_a
     b_base = sample.alpha_b * sample.beta_b
-    f_base = sample.alpha_f * sample.beta_f
-    j_base = sample.alpha_j * sample.beta_j
     g_base = sample.alpha_g * sample.beta_g
     h_base = sample.alpha_h * sample.beta_h
     
-    # Resample lex and make sure the null tag can only generate the null word
-    models.lex.sampleDirichlet(h_base)
-    models.lex.dist[0,0] = 0.0
-    models.lex.dist[0,1:].fill(-np.inf)
-
-    # Resample pos
-    models.pos.sampleDirichlet(g_base)
-    if np.argwhere(np.isnan(models.pos.dist)).size > 0:
-        logging.error("Resampling the pos dist resulted in a nan")
-
     for d in range(depth-1, -1, -1):
+        models.fj[d].sampleDirichlet(fj_base if d == 0 else fj_base + models.fj[d-1].pairCounts * sample.alpha_fj)
         models.start[d].sampleDirichlet(b_base if d == 0 else b_base + models.start[d-1].pairCounts * sample.alpha_b)
         models.exp[d].sampleDirichlet(b_base if d == 0 else b_base + models.exp[d-1].pairCounts * sample.alpha_b)
         models.cont[d].sampleDirichlet(b_base if d == 0 else b_base + models.cont[d-1].pairCounts * sample.alpha_b)
         models.next[d].sampleDirichlet(b_base if d == 0 else b_base + models.next[d-1].pairCounts * sample.alpha_b)
         models.act[d].sampleDirichlet(a_base if d == 0 else a_base + models.act[d-1].pairCounts * sample.alpha_a)
         models.root[d].sampleDirichlet(a_base if d == 0 else a_base + models.root[d-1].pairCounts * sample.alpha_a)
-        models.reduce[d].sampleDirichlet(j_base if d == 0 else j_base + models.reduce[d-1].pairCounts * sample.alpha_j)
-        models.trans[d].sampleDirichlet(j_base if d == 0 else j_base + models.trans[d-1].pairCounts * sample.alpha_j)
-        models.fork[d].sampleDirichlet(f_base if d == 0 else f_base + models.fork[d-1].pairCounts * sample.alpha_f)
+    
+    # Resample pos and make sure only the null awa can generate the null tag
+    models.pos.sampleDirichlet(g_base)
+    models.lex.dist[1:,0].fill(-np.inf)
+
+    # Resample lex and make sure the null tag can only generate the null word
+    models.lex.sampleDirichlet(h_base)
+    models.lex.dist[0,0] = 0.0
+    models.lex.dist[0,1:].fill(-np.inf)
 
