@@ -137,6 +137,14 @@ class DistributedModelCompiler(FullDepthCompiler):
             model = ModelWrapper(ModelWrapper.HMM, (models, pi_full), self.depth)
         else:
             model = ModelWrapper(ModelWrapper.HMM, (models, pi), self.depth)
+        EOS = indexer.get_EOS()
+        EOS_full = indexer.get_EOS_full()
+        EOS_1wrd = indexer.get_EOS_1wrd()
+        EOS_1wrd_full = indexer.get_EOS_1wrd_full()
+#        print(pi[EOS_full,:].sum())
+#        print(pi[:,EOS].sum())
+#        print(pi[EOS_1wrd_full,:].sum())
+#        print(pi[:,EOS_1wrd].sum())
         pickle.dump(model, out_file)
         out_file.close()
         nnz = pi.nnz

@@ -62,10 +62,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     start_g = int(params.get('startg'))
 
     sent_lens = list(map(len, ev_seqs))
-    num_tokens = np.sum(sent_lens)
     maxLen = max(map(len, ev_seqs))
     max_output = max(map(max, ev_seqs))
     num_sents = len(ev_seqs)
+    num_tokens = np.sum(sent_lens) - num_sents
 
     num_samples = 0
     depth = int(params.get('depth', 1))
@@ -116,53 +116,32 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, a_max, b_max, g_max)
         if input_seqs_file is None:
-            hid_seqs = initialize_state(ev_seqs, models, depth, gold_seqs)
+            hid_seqs = [None] * len(ev_seqs)
         else:
             logging.info("Trainer was initialized with input sequences from a previous run.")
             hid_seqs = initialize_and_load_state(ev_seqs, models, depth, uhhmm_io.read_input_states(input_seqs_file, depth))
-
-        max_state_check(hid_seqs, models, "initialization")
+            max_state_check(hid_seqs, models, "initialization")
 
         sample = Sample()
-        sample.alpha_a = models.root[0].alpha ## float(params.get('alphaa'))
-        sample.alpha_b = float(params.get('alphab'))
-        sample.alpha_g = float(params.get('alphag'))
-        sample.alpha_f = float(params.get('alphaf'))
-        sample.alpha_j = float(params.get('alphaj'))
-        ## use plus 2 here (until moved later) since we need the null state (0) as well as
-        ## the extra part of the stick for "new tables"
-        sample.beta_a = models.root[0].beta ## np.ones((1,start_a+2)) / start_a
-    #    sample.beta_a[0][0] = 0
+        sample.alpha_f = models.fork[0].alpha
+        sample.alpha_j = models.trans[0].alpha
+        sample.alpha_a = models.root[0].alpha
+        sample.alpha_b = models.cont[0].alpha
+        sample.alpha_g = models.pos.alpha
+        sample.alpha_h = models.lex.alpha
+        
+        sample.beta_f = models.fork[0].beta 
+        sample.beta_j = models.trans[0].beta
+        sample.beta_a = models.root[0].beta 
         sample.beta_b = models.cont[0].beta
-    #    sample.beta_b[0] = 0
         sample.beta_g = models.pos.beta
-        sample.beta_f = np.ones(2) / 2
-        sample.beta_j = np.ones(2) / 2
+        sample.beta_h = models.lex.beta
         sample.gamma = float(params.get('gamma'))
         sample.discount = float(params.get('discount'))
         sample.ev_seqs = ev_seqs
 
-        ## Sample distributions for all the model params and emissions params
-        ## TODO -- make the Models class do this in a resample_all() method
-        models.lex.sampleDirichlet(params['h'])
-        models.pos.selfSampleDirichlet()
-        if np.argwhere(np.isnan(models.pos.dist)).size > 0:
-            logging.error("Resampling the pos dist resulted in a nan")
-
-        a_base =  sample.alpha_a * sample.beta_a
-        b_base = sample.alpha_b * sample.beta_b
-        f_base = sample.alpha_f * sample.beta_f
-        j_base = sample.alpha_j * sample.beta_j
-        for d in range(depth-1, -1, -1):
-            models.start[d].sampleDirichlet(b_base if d == 0 else b_base + models.start[d-1].pairCounts * sample.alpha_b)
-            models.exp[d].sampleDirichlet(b_base if d == 0 else b_base + models.exp[d-1].pairCounts * sample.alpha_b)
-            models.cont[d].sampleDirichlet(b_base if d == 0 else b_base + models.cont[d-1].pairCounts * sample.alpha_b)
-            models.next[d].sampleDirichlet(b_base if d == 0 else b_base + models.next[d-1].pairCounts * sample.alpha_b)
-            models.act[d].sampleDirichlet(a_base if d == 0 else a_base + models.act[d-1].pairCounts * sample.alpha_a)
-            models.root[d].sampleDirichlet(a_base if d == 0 else a_base + models.root[d-1].pairCounts * sample.alpha_a)
-            models.reduce[d].sampleBernoulli(j_base if d == 0 else j_base + models.reduce[d-1].pairCounts * sample.alpha_j)
-            models.trans[d].sampleBernoulli(j_base if d == 0 else j_base + models.trans[d-1].pairCounts * sample.alpha_j)
-            models.fork[d].sampleBernoulli(f_base if d == 0 else f_base + models.fork[d-1].pairCounts * sample.alpha_f)
+        resample_all(models, sample, params, depth)
+        models.resetAll()
 
         sample.models = models
         iter = 0
@@ -181,6 +160,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         b_max = models.cont[0].dist.shape[-1]
         g_max = models.pos.dist.shape[-1]
 
+        models.resetAll()
+
         iter = sample.iter+1
 
     # import pickle
@@ -196,9 +177,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
     stats = Stats()
     inf_procs = list()
-
-    logging.debug(ev_seqs[0])
-    logging.debug(list(map(lambda x: x.str(), hid_seqs[0])))
 
     workDistributer = WorkDistributerServer(ev_seqs, working_dir)
     logging.info("GPU is %s with batch size %d" % (gpu, gpu_batch_size) )
@@ -296,21 +274,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## Give the models to the model server. (Note: We used to pass them to workers via temp files which works when you create new
         ## workers but is harder when you need to coordinate timing of reading new models in every pass)
 
-        pos_counts = models.pos.pairCounts[:].sum()
-        lex_counts = models.lex.pairCounts[:].sum()
-        logging.info("Have %d pos counts, %d lex counts before sample - should equal number of tokens %d" % (pos_counts, lex_counts, num_tokens) )
-
-        ## remove the counts from these sentences
-        if batch_size < num_sents:
-            logging.info("Decrementing counts for sentence indices %d-%d" % (start_ind, end_ind) )
-            decrement_sentence_counts(hid_seqs, ev_seqs, models, start_ind, end_ind)
-        else:
-            logging.info("Resetting all counts to zero for next iteration")
-            models.resetAll()
-            pos_counts = models.pos.pairCounts[:].sum()
-            lex_counts = models.lex.pairCounts[:].sum()
-            assert pos_counts == 0 and lex_counts == 0
-
         t0 = time.time()
         if finite:
             DistributedModelCompiler.DistributedModelCompiler(depth, workDistributer, gpu, limit_depth=init_depth).compile_and_store_models(models, working_dir)
@@ -349,6 +312,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 except:
                     logging.error('This parse is bad:')
                     logging.error('The sentence is ' + ' '.join([str(x) for x in ev_seqs[parse.index]]))
+                    logging.error('The state sequence is ' + ' '.join([str(indexer.getStateIndex(x.f, x.j, x.a, x.b, x.g)) for x in parse.state_list]))
                     logging.error(' '.join([x.str() for x in parse.state_list]))
                     logging.error('The index is %d' % parse.index)
                     raise(ValueError)
@@ -407,16 +371,18 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             ## This is, e.g., where we might add categories to the a,b,g variables with
             ## stick-breaking. Without that, the values will stay what they were
             next_sample.alpha_f = sample.alpha_f
-            next_sample.beta_f = sample.beta_f
             next_sample.alpha_j = sample.alpha_j
-            next_sample.beta_j = sample.beta_j
-
             next_sample.alpha_a = models.root[0].alpha
-            next_sample.beta_a = models.root[0].beta
             next_sample.alpha_b = models.cont[0].alpha
-            next_sample.beta_b = models.cont[0].beta
             next_sample.alpha_g = models.pos.alpha
+            next_sample.alpha_h = models.lex.alpha
+            
+            next_sample.beta_f = sample.beta_f
+            next_sample.beta_j = sample.beta_j
+            next_sample.beta_a = models.root[0].beta
+            next_sample.beta_b = models.cont[0].beta
             next_sample.beta_g = models.pos.beta
+            next_sample.beta_h = models.lex.beta
             next_sample.gamma = sample.gamma
             next_sample.ev_seqs = ev_seqs
 
@@ -430,33 +396,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## Sample distributions for all the model params and emissions params
         ## TODO -- make the Models class do this in a resample_all() method
         ## After stick-breaking we probably need to re-sample all the models:
-        remove_unused_variables(models, hid_seqs)
-        resample_beta_g(models, sample.gamma)
+        #remove_unused_variables(models, hid_seqs)
+        if split_merge:
+            resample_beta_g(models, sample.gamma)
 
-        models.lex.sampleDirichlet(params['h'])
-        models.pos.selfSampleDirichlet()
-
-        a_base =  sample.alpha_a * sample.beta_a
-        b_base = sample.alpha_b * sample.beta_b
-        f_base = sample.alpha_f * sample.beta_f
-        j_base = sample.alpha_j * sample.beta_j
-        for d in range(depth-1, -1, -1):
-            models.start[d].sampleDirichlet(b_base if d == 0 else b_base + models.start[d-1].pairCounts * sample.alpha_b)
-            models.exp[d].sampleDirichlet(b_base if d == 0 else b_base + models.exp[d-1].pairCounts * sample.alpha_b)
-            models.cont[d].sampleDirichlet(b_base if d == 0 else b_base + models.cont[d-1].pairCounts * sample.alpha_b)
-            models.next[d].sampleDirichlet(b_base if d == 0 else b_base + models.next[d-1].pairCounts * sample.alpha_b)
-            models.act[d].sampleDirichlet(a_base if d == 0 else a_base + models.act[d-1].pairCounts * sample.alpha_a)
-            models.root[d].sampleDirichlet(a_base if d == 0 else a_base + models.root[d-1].pairCounts * sample.alpha_a)
-            models.reduce[d].sampleBernoulli(j_base if d == 0 else j_base + models.reduce[d-1].pairCounts * sample.alpha_j)
-            models.trans[d].sampleBernoulli(j_base if d == 0 else j_base + models.trans[d-1].pairCounts * sample.alpha_j)
-            models.fork[d].sampleBernoulli(f_base if d == 0 else f_base + models.fork[d-1].pairCounts * sample.alpha_f)
-
-        if not finite:
-            collect_trans_probs(hid_seqs, models, start_ind, end_ind)
-
-        t1 = time.time()
-
-        logging.debug("Resampling models took %d s" % (t1-t0))
+        resample_all(models, sample, params, depth)
 
         ## Update sentence indices for next batch:
         if end_ind == len(ev_seqs):
@@ -473,6 +417,21 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if not finite and return_to_finite:
             finite = True
             return_to_finite = False
+
+        pos_counts = models.pos.pairCounts[:].sum() - num_sents
+        lex_counts = models.lex.pairCounts[:].sum() - num_sents
+        logging.info("Have %d pos counts, %d lex counts after sample - should equal number of tokens %d" % (pos_counts, lex_counts, num_tokens) )
+
+        ## remove the counts from these sentences
+        if batch_size < num_sents:
+            logging.info("Decrementing counts for sentence indices %d-%d" % (start_ind, end_ind) )
+            decrement_sentence_counts(hid_seqs, ev_seqs, models, start_ind, end_ind)
+        else:
+            logging.info("Resetting all counts to zero for next iteration")
+            models.resetAll()
+            pos_counts = models.pos.pairCounts[:].sum()
+            lex_counts = models.lex.pairCounts[:].sum()
+            assert pos_counts == 0 and lex_counts == 0
 
         iter += 1
 
@@ -762,6 +721,7 @@ def resample_beta_g(models, gamma):
 
 def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_max, g_max):
 
+    ## F model:
     models.fork = [None] * depth
     ## J models:
     models.trans = [None] * depth
@@ -775,41 +735,47 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
     models.next = [None] * depth
     models.start = [None] * depth
 
-    ## One fork model:
     for d in range(0, depth):
-        models.fork[d] = Model((b_max, g_max, 2), name="Fork"+str(d))
+        ## One fork model:
+        models.fork[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaf')), name="Fork"+str(d))
+        models.fork[d].beta = np.ones(2) / 2
 
         ## Two join models:
-        models.trans[d] = Model((b_max, g_max, 2), name="J|F1_"+str(d+1))
-        models.reduce[d] = Model((a_max, b_max, 2), name="J|F0_"+str(d))
+        models.trans[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaj')), name="J|F1_"+str(d))
+        models.trans[d].beta = np.ones(2) / 2
+        
+        models.reduce[d] = Model((a_max, b_max, 2), alpha=float(params.get('alphaj')), name="J|F0_"+str(d))
+        models.reduce[d].beta = np.ones(2) / 2
 
         ## TODO -- set d > 0 beta to the value of the model at d (can probably do this later)
         ## One active model:
         models.act[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|00_"+str(d))
+        models.act[d].beta = np.ones(a_max) / a_max
+        
         models.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
-        models.root[d].beta = np.zeros(a_max)
-        models.root[d].beta[1:] = np.ones(a_max-1) / (a_max-1)
-        models.act[d].beta = models.root[d].beta
+        models.root[d].beta = np.ones(a_max) / a_max
 
         ## four awaited models:
         models.cont[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|11_"+str(d))
+        models.cont[d].beta = np.ones(b_max) / b_max
+        
         models.exp[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|10_"+str(d))
-        models.next[d] = Model((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|01_"+str(d))
-        models.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|00_"+str(d))
-        models.cont[d].beta = np.zeros(b_max)
-        models.cont[d].beta[1:] = np.ones(b_max-1) / (b_max-1)
         models.exp[d].beta = models.cont[d].beta
+        
+        models.next[d] = Model((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|01_"+str(d))
         models.next[d].beta = models.cont[d].beta
+        
+        models.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|00_"+str(d))
         models.start[d].beta = models.cont[d].beta
 
 
     ## one pos model:
     models.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape, name="POS")
-    models.pos.beta = np.zeros(g_max)
-    models.pos.beta[1:] = np.ones(g_max-1) / (g_max-1)
+    models.pos.beta = np.ones(g_max) / g_max
 
     ## one lex model:
-    models.lex = Model((g_max, max_output+1), name="Lex")
+    models.lex = Model((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
+    models.lex.beta = np.ones(max_output+1) / (max_output + 1)
 
     models.append(models.fork)
     models.append(models.trans)
@@ -886,11 +852,8 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None, strategy=RANDOM
             state = State.State(max_depth)
             ## special case for first word
             if index == 0:
-                state.f = 1
-                if len(sent) > 1:
-                    state.j = 0
-                else:
-                    state.j = 1
+                state.f = 0
+                state.j = 0
                 state.a[0] = 0
                 state.b[0] = 0
             else:
@@ -978,118 +941,158 @@ def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
 
             if index != 0:
                 if index == 1:
-                    models.root[0].trans_prob[sent_index, index] = models.root[0].dist[0, prevState.g, state.a[0]]
-                    models.exp[0].trans_prob[sent_index, index] = models.exp[0].dist[prevState.g, state.a[0], state.b[0]]
+                    models.root[0].trans_prob[sent_index, index] = models.root[0].dist[0, prev_state.g, state.a[0]]
+                    models.exp[0].trans_prob[sent_index, index] = models.exp[0].dist[prev_state.g, state.a[0], state.b[0]]
                 else:
                     ## Fork and join don't have trans_probs because they are finite:
                     if state.f == 0 and state.j == 0:
-                        models.act[d].trans_prob[sent_index, index] = models.root[d].trans_prob[sent_index, index] = models.act[d].dist[ prevState.a[d], 0, state.a[d] ]
-                        models.start[d].trans_prob[sent_index, index] = models.cont[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.start[d].dist[ prevState.a[d], state.a[d], state.b[d] ]
+                        models.act[d].trans_prob[sent_index, index] = models.root[d].trans_prob[sent_index, index] = models.act[d].dist[ prev_state.a[d], 0, state.a[d] ]
+                        models.start[d].trans_prob[sent_index, index] = models.cont[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.start[d].dist[ prev_state.a[d], state.a[d], state.b[d] ]
                     elif state.f == 1 and state.j == 1:
                         models.act[d].trans_prob[sent_index, index] = models.root[d].trans_prob[sent_index, index] = 0
-                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.cont[d].dist[ prevState.b[d], prevState.g, state.b[d] ]
+                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.cont[d].dist[ prev_state.b[d], prev_state.g, state.b[d] ]
                     elif state.f == 1 and state.j == 0:
-                        models.root[d].trans_prob[sent_index, index] = models.act[d].trans_prob[sent_index, index]  = models.root[d].dist[ 0, prevState.g, state.a[d] ]
-                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.exp[0].dist[prevState.g, state.a[d], state.b[d] ]
+                        models.root[d].trans_prob[sent_index, index] = models.act[d].trans_prob[sent_index, index]  = models.root[d].dist[ 0, prev_state.g, state.a[d] ]
+                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.exp[0].dist[prev_state.g, state.a[d], state.b[d] ]
                     elif state.f == 0 and state.j == 1:
                         models.act[d-1].trans_prob[sent_index, index] = models.root[d-1].trans_prob[sent_index, index] = 0
-                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.cont[d-1].dist[ prevState.b[d-1], prevState.g, state.b[d] ]
+                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.cont[d-1].dist[ prev_state.b[d-1], prev_state.g, state.b[d] ]
             models.pos.trans_prob[sent_index, index] = models.pos.dist[state.b[0], state.g]
-            prevState = state
+            prev_state = state
 
 def increment_counts(hid_seq, sent, models, inc=1):
     depth = len(models.fork)
 
     ## for every state transition in the sentence increment the count
     ## for the condition and for the output
+
+    # Create start state
+    max_depth = len(hid_seq[0].a)
+    prev_state = State.State(max_depth)
+    prev_state.f = 0
+    prev_state.j = 0
+    prev_state.a = np.asarray([0]*max_depth)
+    prev_state.b = np.asarray([0]*max_depth)
+    prev_state.g = 0
+    depth = -1
+
+    # Create end state
+    if len(sent) == 1:
+        EOS = State.State(max_depth)
+        EOS.f = 1
+        EOS.j = 1
+        EOS.a = np.asarray([0]*max_depth)
+        EOS.b = np.asarray([0]*max_depth)
+        EOS.g = 0
+    else:
+        EOS = State.State(max_depth)
+        EOS.f = 0
+        EOS.j = 1
+        EOS.a = np.asarray([0]*max_depth)
+        EOS.b = np.asarray([0]*max_depth)
+        EOS.g = 0
+
+    # Append end state
+    sent = sent[:] + [0]
+    hid_seq = hid_seq[:] + [EOS]
+
     for index,word in enumerate(sent):
         state = hid_seq[index]
-        if index == 0:
-            ## print('new sent')
-            prev_depth = -1
-        else:
-            prev_depth = prevState.max_awa_depth()
 
-        cur_depth = prev_depth
-        ## print(state.str())
-        if cur_depth <= 0:
-            above_awa = 0
+        # Populate previous state conditional dependencies
+        prev_g = prev_state.g
+        if depth == -1:
+            prev_a = 0
+            prev_b = 0
+            prev_b_above = 0
         else:
-            above_awa = state.b[cur_depth-1]
-
-        if prev_depth <= 0:
-            prev_above_awa = 0
-        else:
-            prev_above_awa = prevState.b[prev_depth-1]
-
-        if index != 0:
-            ## Count F & J
-            if index == 1:
-                ## No counts for f -- deterministically + at depth 0
-                cur_depth += state.f
-                models.trans[cur_depth].count((0, prevState.g), state.j, inc) 
-                ## J always 0 at this point, no need to update cur_depth
-                models.root[cur_depth].count((0, prevState.g), state.a[0], inc)
-                models.exp[cur_depth].count((prevState.g, state.a[0]), state.b[0], inc)
+            prev_a = prev_state.a[depth]
+            prev_b = prev_state.b[depth]
+            if depth == 0:
+                prev_b_above = 0
             else:
-                models.fork[cur_depth].count((prevState.b[prev_depth], prevState.g), state.f, inc)
+                prev_b_above = prev_state.b[depth-1]
 
-                if state.f == 0:
-                    models.reduce[cur_depth].count((prevState.a[prev_depth], prev_above_awa), state.j, inc)
-                elif state.f == 1:
-                    models.trans[cur_depth].count((prevState.b[prev_depth], prevState.g), state.j, inc)
-                else:
-                    raise Exception("Unallowed value of the fork variable!")
+        # Count fork decision
+        if depth >= 0 and (prev_b == 0 and prev_g == 0):
+            print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
+        if depth >= 0 and (prev_b == 0 and prev_g == 0):
+            print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
+        ## Final state is deterministic, don't include counts from final decisions:
+        if word != 0:
+            models.fork[max(0,depth)].count((prev_b, prev_g), state.f, inc)
 
-                ## Count A & B
-                if state.f == 0 and state.j == 0:
-                    assert prev_depth == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
-                    models.act[cur_depth].count((prevState.a[prev_depth], prev_above_awa), state.a[cur_depth], inc)
-                    models.start[cur_depth].count((prevState.a[prev_depth], state.a[cur_depth]), state.b[cur_depth], inc)
-                elif state.f == 1 and state.j == 1:
-                    assert prev_depth == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
-                    ## no change to act, awa increments cont model
-                    models.cont[cur_depth].count((prevState.b[prev_depth], prevState.g), state.b[cur_depth], inc)
-                elif state.f == 1 and state.j == 0:
-                    assert prev_depth+1 == cur_depth, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
-                    ## run root and exp models at depth d+1
-                    models.root[cur_depth].count((prevState.b[prev_depth], prevState.g), state.a[cur_depth], inc)
-                    models.exp[cur_depth].count((prevState.g, state.a[cur_depth]), state.b[cur_depth], inc)
-                elif state.f == 0 and state.j == 1:
-                    assert prev_depth == cur_depth+1, "Found a transition where prev_depth=%d and cur_depth=%d, depth=%d and index=%d/%d, prev_state=%s, cur_state=%s, prev_depth_recalc=%d, cur_depth_recalc=%d" % (prev_depth, cur_depth, depth, index, len(sent), prevState.str(), state.str(), prevState.max_awa_depth_err(), state.max_awa_depth_err() )
-                    ## lower level finished -- awaited can transition
-                    ## Made the following deciison in a confusing rebase -- left other version
-                    ## commented in in case I decided wrong.
-                    models.next[cur_depth].count((prevState.a[prev_depth], prevState.b[cur_depth]), state.b[cur_depth], inc)
-                else:
-                    raise Exception("Unallowed value of f=%d and j=%d, index=%d" % (state.f, state.j, index) )
-
-            ## Count G
-            models.pos.count(state.b[cur_depth], state.g, inc)
+        # Count join decision
+        if state.f == 0:
+            if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
+                print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
+            ## Final state is deterministic, don't include counts from final decisions:
+            if word != 0:
+                models.reduce[max(0,depth)].count((prev_a, prev_b_above), state.j, inc)
+        elif state.f == 1:
+            if depth >= 0 and (prev_b == 0 and prev_g == 0):
+                print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
+            models.trans[max(0,depth)].count((prev_b, prev_g), state.j, inc)
         else:
-            models.pos.count(0, state.g, inc)
+            raise Exception("Unallowed value (%s) of the fork variable!" %state.f)
 
+        # Populate current state conditional dependencies
+        cur_depth = depth + state.f - state.j
+        cur_g = state.g
+        if cur_depth == -1:
+            cur_a = 0
+            cur_b = 0
+            cur_b_above = 0
+        else:
+            cur_a = state.a[cur_depth]
+            cur_b = state.b[cur_depth]
+            if cur_depth == 0:
+                cur_b_above = 0
+            else:
+                cur_b_above = state.b[cur_depth-1]
+
+
+        ## Count A & B
+        if state.f == 0 and state.j == 0:
+            assert depth >= 0 or index == 0, "Found a non-initial -/- decision at depth -1 (should not be possible)."
+            if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
+                print('Collision check -- A model at depth >=0 has same conditions as at depth -1.')
+            models.act[max(0,depth)].count((prev_a, prev_b_above), cur_a, inc)
+            if depth >= 0 and (prev_a == 0 and cur_a == 0):
+                print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
+            models.start[max(0,depth)].count((prev_a, cur_a), cur_b, inc)
+
+        elif state.f == 1 and state.j == 1:
+            assert depth >= 0 or (len(sent) == 2 and index == 1), "Found an illegal +/+ transition at depth -1. %s %s" %(sent, index)
+            if depth >= 0 and (prev_b == 0 and prev_g == 0):
+                print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
+            models.cont[max(0,depth)].count((prev_b, prev_g), cur_b, inc)
+
+        elif state.f == 1 and state.j == 0:
+            assert depth <= max_depth, "Found a +/- decision at the maximum depth level."
+            if depth >= 0 and (prev_b == 0 and prev_g == 0):
+                print('Collision check -- A model at depth >=0 has same conditions as at depth -1.')
+            models.root[depth+1].count((prev_b, prev_g), cur_a, inc)
+            if depth >= 0 and (prev_g == 0 and cur_a == 0):
+                print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
+            models.exp[depth+1].count((prev_g, cur_a), cur_b, inc)
+
+        elif state.f == 0 and state.j == 1:
+            assert depth > 0 or index == len(sent) - 1, "Found a -/+ decision at depth 0 prior to sentence end."
+            if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
+                print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
+            models.next[max(0,depth-1)].count((prev_a, prev_b_above), cur_b, inc)
+
+        else:
+            raise Exception("Unallowed value of f=%d and j=%d, index=%d" % (state.f, state.j, index) )
+
+        ## Count G
+        models.pos.count(cur_b, cur_g, inc)
         ## Count w
-        models.lex.count(state.g, word, inc)
+        models.lex.count(cur_g, word, inc)
 
-        prevState = state
-    
-    # Update counts for eos
-    if cur_depth == -1: #F=1,J=1
-        models.fork[0].count((0,prevState.g), 1, inc)
-        models.trans[0].count((0,prevState.g), 1, inc)
-        models.cont[0].count((0,prevState.g), 0, inc)
-    else: #F=0,J=1
-        models.fork[0].count((prevState.b[0],prevState.g), 0, inc)
-        models.reduce[0].count((prevState.a[0],0), 1, inc)
-        models.next[0].count((prevState.a[0],0), 0, inc)
-    models.pos.count(0, 0, inc)
-    models.lex.count(0, 0, inc)
-
-#    prevBG = bg_state(hid_seq[-1].b, hid_seq[-1].g)
-## WS: REMOVED THESE: WAS DISTORTING OUTPUTS BC F MODEL NOT REALLY CONSULTED AT END (MODEL ACTUALLY KNOWS ITS AT END)
-#    models.fork.count(prevBG, 0)
-#    models.reduce.count(hid_seq[-1].a, 1)
+        depth = state.max_awa_depth()
+        prev_state = state
 
 def decrement_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
     for ind in range(start_ind, end_ind):
@@ -1119,3 +1122,35 @@ def getAmax():
 def getBmax():
     global b_max
     return b_max
+
+def resample_all(models, sample, params, depth):
+    ## Sample distributions for all the model params and emissions params
+    ## TODO -- make the Models class do this in a resample_all() method
+    a_base =  sample.alpha_a * sample.beta_a
+    b_base = sample.alpha_b * sample.beta_b
+    f_base = sample.alpha_f * sample.beta_f
+    j_base = sample.alpha_j * sample.beta_j
+    g_base = sample.alpha_g * sample.beta_g
+    h_base = sample.alpha_h * sample.beta_h
+    
+    # Resample lex and make sure the null tag can only generate the null word
+    models.lex.sampleDirichlet(h_base)
+    models.lex.dist[0,0] = 0.0
+    models.lex.dist[0,1:].fill(-np.inf)
+
+    # Resample pos
+    models.pos.sampleDirichlet(g_base)
+    if np.argwhere(np.isnan(models.pos.dist)).size > 0:
+        logging.error("Resampling the pos dist resulted in a nan")
+
+    for d in range(depth-1, -1, -1):
+        models.start[d].sampleDirichlet(b_base if d == 0 else b_base + models.start[d-1].pairCounts * sample.alpha_b)
+        models.exp[d].sampleDirichlet(b_base if d == 0 else b_base + models.exp[d-1].pairCounts * sample.alpha_b)
+        models.cont[d].sampleDirichlet(b_base if d == 0 else b_base + models.cont[d-1].pairCounts * sample.alpha_b)
+        models.next[d].sampleDirichlet(b_base if d == 0 else b_base + models.next[d-1].pairCounts * sample.alpha_b)
+        models.act[d].sampleDirichlet(a_base if d == 0 else a_base + models.act[d-1].pairCounts * sample.alpha_a)
+        models.root[d].sampleDirichlet(a_base if d == 0 else a_base + models.root[d-1].pairCounts * sample.alpha_a)
+        models.reduce[d].sampleDirichlet(j_base if d == 0 else j_base + models.reduce[d-1].pairCounts * sample.alpha_j)
+        models.trans[d].sampleDirichlet(j_base if d == 0 else j_base + models.trans[d-1].pairCounts * sample.alpha_j)
+        models.fork[d].sampleDirichlet(f_base if d == 0 else f_base + models.fork[d-1].pairCounts * sample.alpha_f)
+

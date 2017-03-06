@@ -58,8 +58,6 @@ def main(argv):
 
     params = read_params(config)
 
-    params['h'] = init_emission_base(num_types)
-
     ## Store tag sequences of gold tagged sentences
     gold_seq = dict()
     if 'num_gold_sents' in params and params['num_gold_sents'] == 'all':
@@ -82,11 +80,6 @@ def read_params(config):
         params[key] = val
 
     return params
-
-def init_emission_base(size):
-    ## Uniform distribution:
-    H = np.zeros((1,size)) + 0.01
-    return H
 
 
 

@@ -17,6 +17,10 @@ public:
     Indexer(Model * model);
     tuple<int, int, int> getVariableMaxes();
     int get_state_size();
+    int get_EOS();
+    int get_EOS_full();
+    int get_EOS_1wrd();
+    int get_EOS_1wrd_full();
     tuple<int, int, vector<int>, vector<int>, int> extractStacks(int index);
     State extractState(int index);
 private:
