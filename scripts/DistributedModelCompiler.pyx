@@ -126,6 +126,7 @@ class DistributedModelCompiler(FullDepthCompiler):
             else:
                 corrected_pos_dist = pos_dist
             pos_dist = np.ravel(corrected_pos_dist.astype(np.float32))
+            pos_dist = np.repeat(pos_dist, 2)
             model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, pos_dist), self.depth)
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
             logging.info("Saving GPU models for use")

@@ -21,7 +21,7 @@ import scipy.sparse
 #@profile
 def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False):
     cdef int totalK, a_max, b_max, g_max, start_depth, above_act, prev_b_above, state_index
-    cdef int f,j,a,b,g, prevF, prefJ
+    cdef int f,j,a,b,g, prevF, prevJ
     cdef float range_probs
     cdef np.ndarray range_probs_full
 
@@ -31,10 +31,10 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     totalK = indexer.get_state_size()
     
     ## Get EOS indices
-    EOS_full = indexer.get_EOS_full()
-    EOS = indexer.get_EOS()
-    EOS_1wrd_full = indexer.get_EOS_1wrd_full()
-    EOS_1wrd = indexer.get_EOS_1wrd()
+    EOS_full = EOS_1wrd_full = indexer.get_EOS_full()
+    EOS =  EOS_1wrd = indexer.get_EOS()
+    # EOS_1wrd_full = indexer.get_EOS_1wrd_full()
+    # EOS_1wrd = indexer.get_EOS_1wrd()
 
     ## Initialize sparse value lists
     indices =  []
@@ -93,7 +93,13 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     
     ## special case for start state:
     if prev_index == 0:
-        state_index = 0
+
+        state_f = 1
+        state_j = 0
+        state_a = np.zeros(self.depth)
+        state_b = np.zeros(self.depth)
+        state_g = 0
+        state_index = indexer.getStateIndex(state_j, state_a, state_b, state_f, state_g) / g_max
         if full_pi:
             range_probs_full = models.pos.dist[0, :-1]
             for g in range(1,len(range_probs_full)):
@@ -103,99 +109,115 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
         data.append(1)
         return indices, data, indices_full, data_full
         
-    for f in (0,1):
-        next_state.f = f
+    # for f in (0,1):
+    #     next_state.j = j
+    #
+    #     ## when t=0, start_depth will be -1, which in the d> 1 case will wraparound.
+    #     ## we want in the t=0 case for f_{t=1} to be [-/-]*d
+    #     if start_depth > 0:
+    #         cum_probs[0] = models.fork[start_depth].dist[ prev_b, prev_g, f ]
+    #     else:
+    #         ## if start depth is -1 we're only allowed to fork:
+    #         if next_state.j == 1:
+    #             cum_probs[0] = 1.0
+    #         else:
+    #             continue
 
-        ## when t=0, start_depth will be -1, which in the d> 1 case will wraparound.
-        ## we want in the t=0 case for f_{t=1} to be [-/-]*d
-        if start_depth >= 0:
-            cum_probs[0] = models.fork[start_depth].dist[ prev_b, prev_g, f ]
+    for j in (0,1):
+        next_state.j = j
+        ## See note above where we set next_state.f
+        if prev.f == 0:
+            cum_probs[0] = models.trans[start_depth].dist[ prev_a, prev_b_above, j ]
         else:
-            ## if start depth is -1 we're only allowed to fork:
-            if next_state.f == 1:
-                cum_probs[0] = 1.0
-            else:
-                continue
-            
-        for j in (0,1):
-            next_state.j = j
-            ## See note above where we set next_state.f
-            if f == 0:
-                cum_probs[1] = cum_probs[0] * models.reduce[start_depth].dist[ prev_a, prev_b_above, j ]
-            else:
-                cum_probs[1] = cum_probs[0] * models.trans[start_depth].dist[ prev_b, prev_g, j ]
-            
-            ## Add probs for transition to EOS
-            if next_state.f==0 and j==1 and start_depth == 0:
-                # FJ decision into EOS is observed, don't model. Just extract prob from awaited transition
-                EOS_prob = models.next[start_depth].dist[ prev_a, prev_b_above, 0 ]
-                if full_pi:
-                    indices_full.append(EOS_full)
-                    data_full.append(EOS_prob)
-                indices.append(EOS)
-                data.append(EOS_prob)
-            elif f==1 and j==1 and start_depth == -1:
-                EOS_prob = cum_probs[1] * models.cont[0].dist[ prev_b, prev_g, 0 ]
-                if full_pi:
-                  indices_full.append(EOS_1wrd_full)
-                  data_full.append(EOS_prob)
-                indices.append(EOS_1wrd)
-                data.append(EOS_prob)
-          
-            for a in range(1, a_max-1):
-                next_state.a[:] = 0
-                for b in range(1, b_max-1):
-                    next_state.b[:] = 0
+            cum_probs[0] = models.trans[start_depth].dist[ prev_b, prev_g, j ]
 
-                    if f == 1 and j == 1:
-                        if a == prev_state.a[start_depth]:
-                            next_state.a[0:start_depth] = prev_state.a[0:start_depth]
-                            next_state.b[0:start_depth] = prev_state.b[0:start_depth]
-                        
-                            next_state.a[start_depth] = a
-                        
-                            cum_probs[2] = cum_probs[1] * models.cont[start_depth].dist[ prev_b, prev_g, b ]
-                            next_state.b[start_depth] = b
-                        else:
-                            continue
+        ## Add probs for transition to EOS
+        if prev.f==0 and j==1 and start_depth == 0:
+            # FJ decision into EOS is observed, don't model. Just extract prob from awaited transition
+            EOS_prob = models.cont[start_depth].dist[ prev_a, prev_b_above, 0 ]
+            if full_pi:
+                indices_full.append(EOS_full)
+                data_full.append(EOS_prob)
+            indices.append(EOS)
+            data.append(EOS_prob)
+        elif prev.f==1 and j==1 and start_depth == -1:
+            EOS_prob = cum_probs[0] * models.cont[0].dist[ prev_b, prev_g, 0 ]
+            if full_pi:
+              indices_full.append(EOS_full)
+              data_full.append(EOS_prob)
+            indices.append(EOS)
+            data.append(EOS_prob)
 
-                    elif f == 0 and j == 1:
-                        ## -/+ case, reducing a level unless already at minimum depth
-                        if start_depth <= 0:
-                            continue
-                        next_state.a[0:start_depth-1] = prev_state.a[0:start_depth-1]
-                        next_state.b[0:start_depth-1] = prev_state.b[0:start_depth-1]
-                    
-                        if a == prev_state.a[start_depth-1]:
-                            next_state.a[start_depth-1] = a
-                            next_state.b[start_depth-1] = b
-                            cum_probs[2] = cum_probs[1] * models.next[start_depth-1].dist[ prev_a, prev_b_above, b ]
-                        else:
-                            continue
+        for a in range(1, a_max-1):
+            next_state.a[:] = 0
+            for b in range(1, b_max-1):
+                next_state.b[:] = 0
 
-                    elif f == 0 and j == 0:
-                        ## -/-, reduce in place
+                if prev.f == 1 and j == 1:
+                    if a == prev_state.a[start_depth]:
                         next_state.a[0:start_depth] = prev_state.a[0:start_depth]
                         next_state.b[0:start_depth] = prev_state.b[0:start_depth]
-                        next_state.a[start_depth] = a
-                        cum_probs[2] = cum_probs[1] * models.act[start_depth].dist[ prev_a, prev_b_above, a ] * models.start[start_depth].dist[ prev_a, a, b ]
-                    
-                        next_state.b[start_depth] = b
 
-                    elif f == 1 and j == 0:
-                        ## +/-, create a new stack level unless we're at the limit
-                        if start_depth+1 == depth:
+                        next_state.a[start_depth] = a
+
+                        cum_probs[2] = cum_probs[0] * models.cont[start_depth].dist[ prev_b, prev_g, b ]
+                        next_state.b[start_depth] = b
+                    else:
+                        continue
+
+                elif prev.f == 0 and j == 1:
+                    ## -/+ case, reducing a level unless already at minimum depth
+                    if start_depth <= 0:
+                        continue
+                    next_state.a[0:start_depth-1] = prev_state.a[0:start_depth-1]
+                    next_state.b[0:start_depth-1] = prev_state.b[0:start_depth-1]
+
+                    if a == prev_state.a[start_depth-1]:
+                        next_state.a[start_depth-1] = a
+                        next_state.b[start_depth-1] = b
+                        cum_probs[1] = cum_probs[0] * models.cont[start_depth-1].dist[ prev_a, prev_b_above, b ]
+                    else:
+                        continue
+
+                elif prev.f == 0 and j == 0:
+                    ## -/-, reduce in place
+                    next_state.a[0:start_depth] = prev_state.a[0:start_depth]
+                    next_state.b[0:start_depth] = prev_state.b[0:start_depth]
+                    next_state.a[start_depth] = a
+                    cum_probs[1] = cum_probs[0] * models.act[start_depth].dist[ prev_a, prev_b_above, a ] * \
+                                   models.exp[start_depth].dist[ prev_a, a, b ]
+
+                    next_state.b[start_depth] = b
+
+                elif f == 1 and j == 0:
+                    ## +/-, create a new stack level unless we're at the limit
+                    if start_depth+1 == depth:
+                        continue
+                    next_state.a[0:start_depth+1] = prev_state.a[0:start_depth+1]
+                    next_state.b[0:start_depth+1] = prev_state.b[0:start_depth+1]
+                    next_state.a[start_depth+1] = a
+                    cum_probs[1] = cum_probs[0] * models.act[start_depth+1].dist[ prev_b_above, prev_g, a ] * \
+                                   models.exp[start_depth+1].dist[ prev_g, a, b ]
+
+                    next_state.b[start_depth+1] = b
+                for f in (0, 1):
+                    next_state.f = f
+
+                    ## when t=0, start_depth will be -1, which in the d> 1 case will wraparound.
+                    ## we want in the t=0 case for f_{t=1} to be [-/-]*d
+                    if start_depth - j >= 0:
+                        cum_probs[2] = cum_probs[1] * models.fork[start_depth].dist[b, prev_g, f]
+                    else:
+                        ## if start depth is -1 we're only allowed to fork:
+                        if next_state.f == 1:
+                            cum_probs[2] = cum_probs[1]
+                        else:
                             continue
-                        next_state.a[0:start_depth+1] = prev_state.a[0:start_depth+1]
-                        next_state.b[0:start_depth+1] = prev_state.b[0:start_depth+1]
-                        next_state.a[start_depth+1] = a
-                        cum_probs[2] = cum_probs[1] * models.root[start_depth+1].dist[ prev_b_above, prev_g, a ] * models.exp[start_depth+1].dist[ prev_g, a, b ]
-                    
-                        next_state.b[start_depth+1] = b
-                                            
+
                     ## Now multiply in the pos tag probability:
-                    state_index = indexer.getStateIndex(next_state.f, next_state.j, next_state.a, next_state.b, 0) / g_max
-                    state_index_full = indexer.getStateIndex(next_state.f, next_state.j, next_state.a, next_state.b, 0)
+                    state_index_full = indexer.getStateIndex(next_state.j, next_state.a, next_state.b, next_state.f, 0)
+                    state_index = state_index_full / g_max
+
                     # the g is factored out
                     range_probs = cum_probs[2] #* (models.pos.dist[b,:-1])
                     if full_pi:

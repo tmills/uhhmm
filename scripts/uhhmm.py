@@ -60,7 +60,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     start_a = int(params.get('starta'))
     start_b = int(params.get('startb'))
     start_g = int(params.get('startg'))
-
+    assert start_a == start_b and start_b == start_g, "A, B and G must have the same domain size!"
     sent_lens = list(map(len, ev_seqs))
     maxLen = max(map(len, ev_seqs))
     max_output = max(map(max, ev_seqs))
@@ -125,14 +125,14 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         sample = Sample()
         sample.alpha_f = models.fork[0].alpha
         sample.alpha_j = models.trans[0].alpha
-        sample.alpha_a = models.root[0].alpha
+        sample.alpha_a = models.act[0].alpha
         sample.alpha_b = models.cont[0].alpha
         sample.alpha_g = models.pos.alpha
         sample.alpha_h = models.lex.alpha
         
         sample.beta_f = models.fork[0].beta 
         sample.beta_j = models.trans[0].beta
-        sample.beta_a = models.root[0].beta 
+        sample.beta_a = models.act[0].beta
         sample.beta_b = models.cont[0].beta
         sample.beta_g = models.pos.beta
         sample.beta_h = models.lex.beta
@@ -725,15 +725,15 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
     models.fork = [None] * depth
     ## J models:
     models.trans = [None] * depth
-    models.reduce = [None] * depth
+    # models.reduce = [None] * depth
     ## Active models:
     models.act = [None] * depth
-    models.root = [None] * depth
+    # models.root = [None] * depth
     ## Reduce models:
     models.cont = [None] * depth
     models.exp = [None] * depth
-    models.next = [None] * depth
-    models.start = [None] * depth
+    # models.next = [None] * depth
+    # models.start = [None] * depth
 
     for d in range(0, depth):
         ## One fork model:
@@ -744,16 +744,16 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
         models.trans[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaj')), name="J|F1_"+str(d))
         models.trans[d].beta = np.ones(2) / 2
         
-        models.reduce[d] = Model((a_max, b_max, 2), alpha=float(params.get('alphaj')), name="J|F0_"+str(d))
-        models.reduce[d].beta = np.ones(2) / 2
+        # models.reduce[d] = Model((a_max, b_max, 2), alpha=float(params.get('alphaj')), name="J|F0_"+str(d))
+        # models.reduce[d].beta = np.ones(2) / 2
 
         ## TODO -- set d > 0 beta to the value of the model at d (can probably do this later)
         ## One active model:
         models.act[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|00_"+str(d))
         models.act[d].beta = np.ones(a_max) / a_max
         
-        models.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
-        models.root[d].beta = np.ones(a_max) / a_max
+        # models.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
+        # models.root[d].beta = np.ones(a_max) / a_max
 
         ## four awaited models:
         models.cont[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|11_"+str(d))
@@ -761,12 +761,12 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
         
         models.exp[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|10_"+str(d))
         models.exp[d].beta = models.cont[d].beta
-        
-        models.next[d] = Model((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|01_"+str(d))
-        models.next[d].beta = models.cont[d].beta
-        
-        models.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|00_"+str(d))
-        models.start[d].beta = models.cont[d].beta
+        #
+        # models.next[d] = Model((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|01_"+str(d))
+        # models.next[d].beta = models.cont[d].beta
+        #
+        # models.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|00_"+str(d))
+        # models.start[d].beta = models.cont[d].beta
 
 
     ## one pos model:
@@ -779,13 +779,13 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
 
     models.append(models.fork)
     models.append(models.trans)
-    models.append(models.reduce)
+    # models.append(models.reduce)
     models.append(models.act)
-    models.append(models.root)
+    # models.append(models.root)
     models.append(models.cont)
-    models.append(models.start)
+    # models.append(models.start)
     models.append(models.exp)
-    models.append(models.next)
+    # models.append(models.next)
     models.append(models.pos)
     models.append(models.lex)
 
@@ -1146,11 +1146,11 @@ def resample_all(models, sample, params, depth):
     for d in range(depth-1, -1, -1):
         models.start[d].sampleDirichlet(b_base if d == 0 else b_base + models.start[d-1].pairCounts * sample.alpha_b)
         models.exp[d].sampleDirichlet(b_base if d == 0 else b_base + models.exp[d-1].pairCounts * sample.alpha_b)
-        models.cont[d].sampleDirichlet(b_base if d == 0 else b_base + models.cont[d-1].pairCounts * sample.alpha_b)
-        models.next[d].sampleDirichlet(b_base if d == 0 else b_base + models.next[d-1].pairCounts * sample.alpha_b)
+        # models.cont[d].sampleDirichlet(b_base if d == 0 else b_base + models.cont[d-1].pairCounts * sample.alpha_b)
+        # models.next[d].sampleDirichlet(b_base if d == 0 else b_base + models.next[d-1].pairCounts * sample.alpha_b)
         models.act[d].sampleDirichlet(a_base if d == 0 else a_base + models.act[d-1].pairCounts * sample.alpha_a)
-        models.root[d].sampleDirichlet(a_base if d == 0 else a_base + models.root[d-1].pairCounts * sample.alpha_a)
-        models.reduce[d].sampleDirichlet(j_base if d == 0 else j_base + models.reduce[d-1].pairCounts * sample.alpha_j)
+        # models.root[d].sampleDirichlet(a_base if d == 0 else a_base + models.root[d-1].pairCounts * sample.alpha_a)
+        # models.reduce[d].sampleDirichlet(j_base if d == 0 else j_base + models.reduce[d-1].pairCounts * sample.alpha_j)
         models.trans[d].sampleDirichlet(j_base if d == 0 else j_base + models.trans[d-1].pairCounts * sample.alpha_j)
         models.fork[d].sampleDirichlet(f_base if d == 0 else f_base + models.fork[d-1].pairCounts * sample.alpha_f)
 

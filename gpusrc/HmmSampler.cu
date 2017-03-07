@@ -271,7 +271,7 @@ void HmmSampler::set_models(Model * models){
 
 Array* HmmSampler::make_pos_full_array(Array* pos_matrix ,int g_max, int b_max, int depth, int state_size){
 
-    int pos_matrix_size = pow(b_max, depth) * g_max;
+    int pos_matrix_size = pow(b_max, depth) * g_max * 2;
     int copy_times = state_size / pos_matrix_size;
     Array* temp_array = new Array(state_size, 0.0f);
     for (int i = 0; i < copy_times; i ++){
