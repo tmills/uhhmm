@@ -175,9 +175,10 @@ user-lorelei-location.txt:
 	echo 'module load cuda/7.0.28' >> $@
 	echo 'mpiexec python3 scripts/workers.py .' >> $@
 
+# NOTE: This will just create the relevant files, not run the job.
+# To run, worker jobs need to be submitted first, followed by
+# the master job with the right dependencies
 /%.uhhmm_osc: /%.master.scr /%.worker.scr /%.linetoks.ints.txt $(SCRIPTS)/uhhmm-trainer.py $(SCRIPTS)/workers.py
-	qsub $<
-	qsub $(word 2, $^)
 
 %.uhhmm_osc: $$(abspath $$@);
 
