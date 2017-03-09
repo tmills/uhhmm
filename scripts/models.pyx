@@ -16,7 +16,9 @@ cdef class Model:
     def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, corpus_shape=(0,0), name="Unspecified"):
         ## Initialize with ones to prevent underflow during distribution sampling
         ## at iteration 0
+        self.shape = shape
         self.pairCounts = np.ones(shape, dtype=np.int)
+        self.globalPairCounts = np.zeros(shape, dtype=np.int)
         self.dist = np.random.random(shape)
         self.dist /= self.dist.sum(1, keepdims=True)
         self.dist = np.log10(self.dist)
@@ -24,6 +26,7 @@ cdef class Model:
         self.trans_prob = lil_matrix(corpus_shape)
         self.alpha = alpha
         self.beta = beta
+        self.corpus_shape = corpus_shape
         self.name = name
 
     def count(self, cond, out, val):
@@ -36,9 +39,13 @@ cdef class Model:
     def dec(self, cond, out):
         self.pairCounts[cond,out] -= 1
 
-    def sampleDirichlet(self, base):
-        self.dist = sampler.sampleDirichlet(self.pairCounts, base)
+    def sampleDirichlet(self, base, L=1.0, from_global_counts=True):
+        if from_global_counts:
+            self.dist = np.log10((1-L)*10**self.dist + L*10**sampler.sampleDirichlet(self.globalPairCounts, base))
+        else:
+            self.dist = np.log10((1-L)*10**self.dist + L*10**sampler.sampleDirichlet(self.pairCounts, base))
 #        print('Model name: %s' %self.name)
+#        print(str(self.dist))
 #        print('Count sums: %s' %self.pairCounts.sum(axis=(0,1)))
 #        with np.errstate(divide='ignore', invalid='ignore'):
 #            norm_cts = np.nan_to_num(self.pairCounts/self.pairCounts.sum(2)[:,:,None]).sum(axis=(0,1))
@@ -51,31 +58,38 @@ cdef class Model:
         self.pairCounts[:] = 0
 
     def copy(self):
-        m_copy = Model( (self.pairCounts.shape[0], self.pairCounts.shape[1]), self.alpha, None if self.beta == None else self.beta.copy(), (self.trans_prob.shape[0], self.trans_prob.shape[1]))
+        m_copy = Model( self.shape, self.alpha, None if self.beta == None else self.beta.copy(), (self.trans_prob.shape[0], self.trans_prob.shape[1]))
         m_copy.pairCounts = self.pairCounts.copy()
+        m_copy.globalPairCounts = self.globalPairCounts.copy()
         m_copy.dist = self.dist.copy()
         return m_copy
         
     def __reduce__(self):
         #logging.info("Reduced called")
         d = {}
+        d['shape'] = self.shape
         d['pairCounts'] = self.pairCounts
+        d['globalPairCounts'] = self.globalPairCounts
         d['dist'] = self.dist
         d['u'] = self.u
         d['trans_prob'] = self.trans_prob
         d['beta'] = self.beta
+        d['corpus_shape'] = self.corpus_shape
         d['alpha'] = self.alpha
         d['name'] = self.name
         
-        return (Model, ( (self.pairCounts.shape[0], self.pairCounts.shape[1]),), d)
+        return (Model, (self.shape, self.alpha, self.beta, self.corpus_shape, self.name), d)
         
     def __setstate__(self, d):
         #logging.info("Into set_state")
+        self.shape = d['shape']
         self.pairCounts = d['pairCounts']
+        self.globalPairCounts = d['globalPairCounts']
         self.dist = d['dist']
         self.u = d['u']
         self.trans_prob = d['trans_prob']
         self.beta = d['beta']
+        self.corpus_shape = d['corpus_shape']
         self.alpha = d['alpha']
         self.name = d['name']        
         

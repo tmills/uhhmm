@@ -84,6 +84,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     batch_size = min(num_sents, int(params.get('batch_size', num_sents)))
     gpu = bool(int(params.get('gpu', 0)))
     gpu_batch_size = min(num_sents, int(params.get('gpu_batch_size', 32 if gpu == 1 else 1)))
+    from_global_counts = bool(int(params.get('from_global_counts', 0)))
+    decay = float(params.get('decay', 1.0))
     return_to_finite = False
     ready_for_sample = False
 
@@ -138,10 +140,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         sample.discount = float(params.get('discount'))
         sample.ev_seqs = ev_seqs
 
-        resample_all(models, sample, params, depth)
-        models.resetAll()
-
         sample.models = models
+        resample_all(models, sample, params, depth, decay)
         iter = 0
 
     else:
@@ -158,9 +158,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         b_max = models.cont[0].dist.shape[-1]
         g_max = models.pos.dist.shape[-1]
 
-        models.resetAll()
-
+        resample_all(models, sample, params, depth, decay, from_global_counts)
         iter = sample.iter+1
+
+    models.resetAll()
 
     # import pickle
     # fixed_model = working_dir+'/fixed.models.bin'
@@ -317,14 +318,16 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 sample.log_prob += parse.log_prob
             hid_seqs[parse.index] = parse.state_list
 
+        increment_global_counts(models)
+
         if num_processed < (end_ind - start_ind):
             logging.warning("Didn't receive the correct number of parses at iteration %d" % iter)
 
         logging.info("Parsed %d sentences this batch -- now have %d parses" % (end_ind-start_ind, end_ind ) )
         max_state_check(hid_seqs, models, "parses")
 
-        pos_counts = models.pos.pairCounts[:].sum()
-        lex_counts = models.lex.pairCounts[:].sum()
+        pos_counts = models.pos.pairCounts[:].sum() - num_sents
+        lex_counts = models.lex.pairCounts[:].sum() - num_sents
         assert pos_counts == lex_counts
 
         if not pos_counts == num_tokens:
@@ -396,7 +399,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if split_merge:
             resample_beta_g(models, sample.gamma)
 
-        resample_all(models, sample, params, depth)
+        resample_all(models, sample, params, depth, decay, from_global_counts)
 
         ## Update sentence indices for next batch:
         if end_ind == len(ev_seqs):
@@ -804,6 +807,7 @@ def initialize_and_load_state(ev_seqs, models, max_depth, init_seqs):
             hid_seq.append(state)
         state_seqs.append(hid_seq)
         increment_counts(hid_seq, sent, models)
+        increment_global_counts(models)
 
     return state_seqs
 
@@ -900,6 +904,7 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None, strategy=RANDOM
             hid_seq.append(state)
 
         increment_counts(hid_seq, sent, models)
+        increment_global_counts(models)
         state_seqs.append(hid_seq)
 
     return state_seqs
@@ -1085,7 +1090,7 @@ def getBmax():
     global b_max
     return b_max
 
-def resample_all(models, sample, params, depth):
+def resample_all(models, sample, params, depth, decay=1.0, from_global_counts=False):
     ## Sample distributions for all the model params and emissions params
     ## TODO -- make the Models class do this in a resample_all() method
     fj_base = sample.alpha_fj * sample.beta_fj
@@ -1095,20 +1100,33 @@ def resample_all(models, sample, params, depth):
     h_base = sample.alpha_h * sample.beta_h
     
     for d in range(depth-1, -1, -1):
-        models.fj[d].sampleDirichlet(fj_base if d == 0 else fj_base + models.fj[d-1].pairCounts * sample.alpha_fj)
-        models.start[d].sampleDirichlet(b_base if d == 0 else b_base + models.start[d-1].pairCounts * sample.alpha_b)
-        models.exp[d].sampleDirichlet(b_base if d == 0 else b_base + models.exp[d-1].pairCounts * sample.alpha_b)
-        models.cont[d].sampleDirichlet(b_base if d == 0 else b_base + models.cont[d-1].pairCounts * sample.alpha_b)
-        models.next[d].sampleDirichlet(b_base if d == 0 else b_base + models.next[d-1].pairCounts * sample.alpha_b)
-        models.act[d].sampleDirichlet(a_base if d == 0 else a_base + models.act[d-1].pairCounts * sample.alpha_a)
-        models.root[d].sampleDirichlet(a_base if d == 0 else a_base + models.root[d-1].pairCounts * sample.alpha_a)
-    
+        models.fj[d].sampleDirichlet(fj_base if d == 0 else fj_base + models.fj[d-1].pairCounts * sample.alpha_fj, decay, from_global_counts)
+        models.start[d].sampleDirichlet(b_base if d == 0 else b_base + models.start[d-1].pairCounts * sample.alpha_b, decay, from_global_counts)
+        models.exp[d].sampleDirichlet(b_base if d == 0 else b_base + models.exp[d-1].pairCounts * sample.alpha_b, decay, from_global_counts)
+        models.cont[d].sampleDirichlet(b_base if d == 0 else b_base + models.cont[d-1].pairCounts * sample.alpha_b, decay, from_global_counts)
+        models.next[d].sampleDirichlet(b_base if d == 0 else b_base + models.next[d-1].pairCounts * sample.alpha_b, decay, from_global_counts)
+        models.act[d].sampleDirichlet(a_base if d == 0 else a_base + models.act[d-1].pairCounts * sample.alpha_a, decay, from_global_counts)
+        models.root[d].sampleDirichlet(a_base if d == 0 else a_base + models.root[d-1].pairCounts * sample.alpha_a, decay, from_global_counts)
+
     # Resample pos and make sure only the null awa can generate the null tag
-    models.pos.sampleDirichlet(g_base)
+    models.pos.sampleDirichlet(g_base, decay, from_global_counts)
     models.lex.dist[1:,0].fill(-np.inf)
 
     # Resample lex and make sure the null tag can only generate the null word
-    models.lex.sampleDirichlet(h_base)
+    models.lex.sampleDirichlet(h_base, decay, from_global_counts)
     models.lex.dist[0,0] = 0.0
     models.lex.dist[0,1:].fill(-np.inf)
+
+def increment_global_counts(models):
+    depth = len(models.fj)
+    for d in range(depth-1, -1, -1):
+        models.fj[d].globalPairCounts += models.fj[d].pairCounts
+        models.start[d].globalPairCounts += models.start[d].pairCounts
+        models.exp[d].globalPairCounts += models.exp[d].pairCounts
+        models.cont[d].globalPairCounts += models.cont[d].pairCounts
+        models.next[d].globalPairCounts += models.next[d].pairCounts
+        models.act[d].globalPairCounts += models.act[d].pairCounts
+        models.root[d].globalPairCounts += models.root[d].pairCounts
+    models.pos.globalPairCounts += models.pos.pairCounts
+    models.lex.globalPairCounts += models.lex.pairCounts
 

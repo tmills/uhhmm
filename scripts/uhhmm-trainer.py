@@ -76,6 +76,8 @@ def main(argv):
 
 def read_params(config):
     params = {}
+    for (key, val) in config.items('io'):
+        params[key] = val
     for (key, val) in config.items('params'):
         params[key] = val
 

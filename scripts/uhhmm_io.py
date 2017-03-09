@@ -123,17 +123,17 @@ def write_output(sample, stats, config, gold_pos=None):
     f.close()
 
     for d in range(0, depth):
-        write_model(models.act[d].dist, output_dir + "/p_act_act_%d.txt" % sample.iter, condPrefix="AB", outcomePrefix="ACT", depth=d)
-        write_model(models.root[d].dist, output_dir + "/p_act_root_%d.txt" %sample.iter, condPrefix="BG", outcomePrefix="ACT", depth=d)
-        write_model(models.fj[d].dist, output_dir + "/p_fj_%d.txt" % sample.iter, condPrefix="ABBG", outcomePrefix="FJ", depth=d)
-        write_model(models.cont[d].dist, output_dir + "/p_awa_cont_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="AWA", depth=d)
-        write_model(models.start[d].dist, output_dir + "/p_awa_start_%d.txt" % sample.iter, condPrefix="AA", outcomePrefix="AWA", depth=d)
-        write_model(models.exp[d].dist, output_dir + "/p_awa_exp_%d.txt" % sample.iter, condPrefix="GA", outcomePrefix="AWA", depth=d)
-        write_model(models.next[d].dist, output_dir + "/p_awa_next_%d.txt" % sample.iter, condPrefix="BA", outcomePrefix="AWA", depth=d)
+        write_model(models.act[d].globalPairCounts, output_dir + "/p_act_act_%d.txt" % sample.iter, condPrefix="AB", outcomePrefix="ACT", depth=d)
+        write_model(models.root[d].globalPairCounts, output_dir + "/p_act_root_%d.txt" %sample.iter, condPrefix="BG", outcomePrefix="ACT", depth=d)
+        write_model(models.fj[d].globalPairCounts, output_dir + "/p_fj_%d.txt" % sample.iter, condPrefix="ABBG", outcomePrefix="FJ", depth=d)
+        write_model(models.cont[d].globalPairCounts, output_dir + "/p_awa_cont_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="AWA", depth=d)
+        write_model(models.start[d].globalPairCounts, output_dir + "/p_awa_start_%d.txt" % sample.iter, condPrefix="AA", outcomePrefix="AWA", depth=d)
+        write_model(models.exp[d].globalPairCounts, output_dir + "/p_awa_exp_%d.txt" % sample.iter, condPrefix="GA", outcomePrefix="AWA", depth=d)
+        write_model(models.next[d].globalPairCounts, output_dir + "/p_awa_next_%d.txt" % sample.iter, condPrefix="BA", outcomePrefix="AWA", depth=d)
 
     #write_lex_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
-    write_model(models.pos.dist, output_dir + "/p_pos_%d.txt" % sample.iter, condPrefix="B", outcomePrefix="POS")
-    write_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
+    write_model(models.pos.globalPairCounts, output_dir + "/p_pos_%d.txt" % sample.iter, condPrefix="B", outcomePrefix="POS")
+    write_model(models.lex.globalPairCounts, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
 
     write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter, word_dict)
 
@@ -148,28 +148,45 @@ def checkpoint(sample, config):
     out_file = open(output_dir + "/sample.obj", 'wb')
     pickle.dump(sample, out_file)
     out_file.close()
+#    out_file = open(output_dir + "/sample.obj", 'rb')
+#    sample2 = pickle.load(out_file)
+#    print('Saved object FJ:')
+#    print(sample.models.fj[0].dist.shape)
+#    print(sample.models.fj[0].dist.sum())
+#    print(sample.models.fj[0].pairCounts.shape)
+#    print(sample.models.fj[0].pairCounts.sum())
+#    print(sample.models.fj[0].globalPairCounts.shape)
+#    print(sample.models.fj[0].globalPairCounts.sum())
+#    print('Loaded object FJ:')
+#    print(sample2.models.fj[0].dist.shape)
+#    print(sample2.models.fj[0].dist.sum())
+#    print(sample2.models.fj[0].pairCounts.shape)
+#    print(sample2.models.fj[0].pairCounts.sum())
+#    print(sample2.models.fj[0].globalPairCounts.shape)
+#    print(sample2.models.fj[0].globalPairCounts.sum())
 
     f = open(output_dir + "/logprobs.txt", 'a', encoding='utf-8')
     f.write('%d\t%f\n' % (sample.iter,sample.log_prob) )
     f.close()
 
 
-def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix="", depth=-1):
+def write_model(counts, out_file, word_dict=None, condPrefix="", outcomePrefix="", depth=-1):
     f = open(out_file, 'a' if depth > 0 else 'w', encoding='utf-8')
-    out_dim = dist.shape[-1]
+    out_dim = counts.shape[-1]
 
-    for ind,val in np.ndenumerate(dist):
+    normalized_glob_cts = np.nan_to_num(counts/(counts.sum(axis=-1)[...,None]))
+
+    for ind,val in np.ndenumerate(normalized_glob_cts):
         lhs = ind[0:-1]
         rhs = ind[-1]
-        unlog_val = 10**val
 
-        if (out_dim > 2 and rhs == 0) or unlog_val < 0.000001:
+        if val < 0.000001:
             continue
 
         if word_dict == None:
-            f.write("P( %s%d | %s%s, %d ) = %f \n" % (outcomePrefix, rhs, condPrefix, str(lhs), depth, unlog_val))
-        else:
-            f.write("P( %s | %s, %d ) = %f \n" % (word_dict[rhs], str(lhs), depth, unlog_val))
+            f.write("P( %s%d | %s%s, %d ) = %f \n" % (outcomePrefix, rhs, condPrefix, str(lhs), depth, val))
+        elif rhs != 0:
+            f.write("P( %s | %s, %d ) = %f \n" % (word_dict[rhs], str(lhs), depth, val))
 
     f.close()
 
@@ -179,15 +196,14 @@ def write_lex_model(dist, out_file, word_dict=None):
     for ind,val in np.ndenumerate(dist):
         lhs = ind[0:-1]
         rhs = ind[-1]
-        unlog_val = 10**val
 
-        if (out_dim > 2 and rhs == 0) or unlog_val < 0.000001:
+        if (out_dim > 2 and rhs == 0) or val < 0.000001:
             continue
 
         if word_dict == None:
-            f.write("X %s : %s = %f \n" % (str(lhs), str(rhs), 10**val))
+            f.write("X %s : %s = %f \n" % (str(lhs), str(rhs), val))
         else:
-            f.write("X %s : %s = %f \n" % (str(lhs), word_dict[rhs], 10**val))
+            f.write("X %s : %s = %f \n" % (str(lhs), word_dict[rhs], val))
 
 ## Sample output format -- each time step (token) is represented as the following:
 ## F/J::Active/Awaited:Pos   (see str() method in the State() class)
