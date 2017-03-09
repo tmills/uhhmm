@@ -28,6 +28,7 @@ argparser.add_argument('-fin', '--finite', dest='finite', action='store_true', h
 argparser.add_argument('-d', '--depth', dest='depth', action='store', default=1, help='Maximum store depth')
 argparser.add_argument('-P', '--gpu', dest='gpu', action='store_true', help='Use GPU-ified learner (defaults to CPU only)')
 argparser.add_argument('-l', '--num_gold_sents', dest='num_gold_sents', action='store', help='Number of gold PoS-tagged sentences to use (requires gold tags in the input). If all, use "-l all".')
+argparser.add_argument('-S', '--split_merge_iters', dest='split_merge_iters', action='store', help='Iteration modulus at which to perform split-merge.')
 args, unknown = argparser.parse_known_args()
 
 print('[io]')
@@ -63,3 +64,5 @@ if args.gpu:
     print('gpu_batch_size=32')
 if args.num_gold_sents:
     print('num_gold_sents=' + str(args.num_gold_sents))
+if args.split_merge_iters:
+    print('split_merge_iters=' + str(args.split_merge_iters))

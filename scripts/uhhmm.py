@@ -116,7 +116,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         b_max = start_b+2
         g_max = start_g+2
 
-        models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, a_max, b_max, g_max)
+        models.initialize_as_fjabp(max_output, params, (len(ev_seqs), maxLen), depth, a_max, b_max, g_max)
         if input_seqs_file is None:
             hid_seqs = [None] * len(ev_seqs)
         else:
@@ -141,7 +141,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         sample.ev_seqs = ev_seqs
 
         sample.models = models
-        resample_all(models, sample, params, depth, decay)
+        models.resample_all(decay, init=True)
         iter = 0
 
     else:
@@ -158,7 +158,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         b_max = models.cont[0].dist.shape[-1]
         g_max = models.pos.dist.shape[-1]
 
-        resample_all(models, sample, params, depth, decay, from_global_counts)
+        models.resample_all(decay, from_global_counts)
         iter = sample.iter+1
 
     models.resetAll()
@@ -249,7 +249,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
             while g_max < 50 and models.pos.u.min() < models.pos.dist[...,-1].max():
                 logging.info('Breaking g stick')
-                break_g_stick(models, sample, params)
+                models.break_g_stick(sample.gamma)
                 g_max = models.pos.dist.shape[-1]
                 if np.argwhere(np.isnan(models.pos.dist)).size > 0:
                     logging.error("Breaking the g stick resulted in a nan in the output distribution")
@@ -318,7 +318,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 sample.log_prob += parse.log_prob
             hid_seqs[parse.index] = parse.state_list
 
-        increment_global_counts(models)
+        models.increment_global_counts()
 
         if num_processed < (end_ind - start_ind):
             logging.warning("Didn't receive the correct number of parses at iteration %d" % iter)
@@ -371,13 +371,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             logging.info("Sampling hyperparameters")
             ## This is, e.g., where we might add categories to the a,b,g variables with
             ## stick-breaking. Without that, the values will stay what they were
-            next_sample.alpha_fj = sample.alpha_fj
+            next_sample.alpha_fj = models.fj[0].alpha
             next_sample.alpha_a = models.root[0].alpha
             next_sample.alpha_b = models.cont[0].alpha
             next_sample.alpha_g = models.pos.alpha
             next_sample.alpha_h = models.lex.alpha
             
-            next_sample.beta_fj = sample.beta_fj
+            next_sample.beta_fj = models.fj[0].beta
             next_sample.beta_a = models.root[0].beta
             next_sample.beta_b = models.cont[0].beta
             next_sample.beta_g = models.pos.beta
@@ -393,13 +393,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         t0 = time.time()
 
         ## Sample distributions for all the model params and emissions params
-        ## TODO -- make the Models class do this in a resample_all() method
         ## After stick-breaking we probably need to re-sample all the models:
         #remove_unused_variables(models, hid_seqs)
-        if split_merge:
-            resample_beta_g(models, sample.gamma)
+        #resample_beta_g(models, sample.gamma)
 
-        resample_all(models, sample, params, depth, decay, from_global_counts)
+        models.resample_all(decay, from_global_counts)
 
         ## Update sentence indices for next batch:
         if end_ind == len(ev_seqs):
@@ -463,7 +461,7 @@ def remove_unused_variables(models, hid_seqs):
     ## Have to check if it's greater than 2 -- empty state (0) and final state (-1) are not supposed to have any counts:
     while sum(models.pos.pairCounts.sum(0)==0) > 2:
         pos = np.where(models.pos.pairCounts.sum(0)==0)[0][1]
-        remove_pos_from_models(models, pos)
+        models.remove_pos(pos)
         remove_pos_from_hid_seqs(hid_seqs, pos)
     max_state_check(hid_seqs, models, "removing unused variables")
 
@@ -473,221 +471,6 @@ def remove_pos_from_hid_seqs(hid_seqs, pos):
             assert state.g != pos, "Removed POS still exists in hid_seqs!"
             if state.g > pos:
                 state.g = state.g - 1
-
-def remove_pos_from_models(models, pos):
-    ## delete the 1st dimension from the fork distribution:
-    depth = len(models.fj)
-    for d in range(depth):
-        models.fj[d].pairCounts = np.delete(models.fj[d].pairCounts, pos, 1)
-        models.fj[d].dist = np.delete(models.fj[d].dist, pos, 1)
-
-        models.root[d].pairCounts = np.delete(models.root[d].pairCounts, pos, 1)
-        models.root[d].dist = np.delete(models.root[d].dist, pos, 1)
-
-        models.cont[d].pairCounts = np.delete(models.cont[d].pairCounts, pos, 1)
-        models.cont[d].dist = np.delete(models.cont[d].dist, pos, 1)
-
-        models.exp[d].pairCounts = np.delete(models.exp[d].pairCounts, pos, 0)
-        models.exp[d].dist = np.delete(models.exp[d].dist, pos, 0)
-
-    ## for the given POS index, delete the 1st (output) dimension from the
-    ## counts and distribution of p(pos | awa)
-    models.pos.pairCounts = np.delete(models.pos.pairCounts, pos, 1)
-    models.pos.dist = np.delete(models.pos.dist, pos, 1)
-
-    ## for the given POS index, delete the 0th (input) dimension from the
-    ## counts and distribution of p(lex | pos)
-    models.lex.pairCounts = np.delete(models.lex.pairCounts, pos, 0)
-    models.lex.dist = np.delete(models.lex.dist, pos, 0)
-
-    ## Shorten the beta stick as well:
-    models.pos.beta = np.delete(models.pos.beta, pos, 0)
-
-def add_model_column(model):
-
-    model.pairCounts = np.insert(model.pairCounts, model.pairCounts.shape[-1], np.zeros(model.pairCounts.shape[0:-1]), model.pairCounts.ndim-1)
-
-    param_a = np.tile(model.alpha * model.beta[-2], model.dist.shape[0:-1])
-    param_b = model.alpha * (1 - model.beta[0:-1].sum())
-
-    if param_b < 0:
-        param_a_str = str(param_a)
-        param_b_str = str(param_b)
-        logging.error("param b is < 0! inputs are alpha=%f, beta=%s, betasum=%f" % (model.alpha, str(model.beta), model.beta[0:-1].sum()))
-        logging.info("Param a=%s and param b=%s" % (param_a_str, param_b_str))
-        param_b = 0
-
-    if param_a.min() < 1e-2 or param_b < 1e-2:
-        pg = np.random.binomial(1, param_a / (param_a+param_b))
-    else:
-        pg = np.random.beta(param_a, param_b)
-
-    ## Copy the last dimension into the new dimension:
-    model.dist = np.insert(model.dist, model.dist.shape[-1], model.dist[...,-1], model.dist.ndim-1)
-    model.dist[...,-2] += np.log10(pg)
-    model.dist[...,-1] += np.log10(1-pg)
-
-    if np.argwhere(np.isnan(model.dist)).size > 0:
-        logging.error("Addition of column resulted in nan!")
-
-def add_model_row_simple(model, base):
-    num_outs = model.dist.shape[1]
-    model.pairCounts = np.append(model.pairCounts, np.zeros((1,num_outs)), 0)
-    model.dist = np.append(model.dist, np.zeros((1,num_outs)), 0)
-    model.dist[-1,0] = -np.inf
-    model.dist[-1,1:] = np.log10(sampler.sampleSimpleDirichlet(model.pairCounts[-1,1:] + base))
-    if np.argwhere(np.isnan(model.dist)).size > 0:
-        logging.error("Addition of column resulted in nan!")
-
-def break_beta_stick(model, gamma):
-    beta_end = model.beta[-1]
-    model.beta = np.append(model.beta, np.zeros(1))
-    old_portion = new_portion = 0
-
-    while old_portion == 0 or new_portion == 0:
-        old_group_fraction = np.random.beta(1, gamma)
-        old_portion = old_group_fraction * beta_end
-        new_portion = (1-old_group_fraction) * beta_end
-
-    model.beta[-2] = old_portion
-    model.beta[-1] = new_portion
-
-def break_a_stick(models, sample, params):
-
-    a_max = models.root[0].dist.shape[-1]
-    b_max = models.cont[0].dist.shape[-1]
-
-    ## Break the a stick (stored in root by convention -- TODO --  move this out to its own class later)
-    break_beta_stick(models.root[0], sample.gamma)
-    models.act[0].beta = models.root[0].beta
-
-    ## Add a column to each of the out distributions (ACT and ROOT)
-    add_model_column(models.root[0])
-    add_model_column(models.act[0])
-
-    ## For boolean variables can't do the simple row add:
-    models.reduce[0].pairCounts = np.append(models.reduce[0].pairCounts, np.zeros((1,b_max,2)), 0)
-    new_dist = np.log10(np.zeros((1,b_max,2)) + 0.5)
-    models.reduce[0].dist = np.append(models.reduce[0].dist, new_dist, 0)
-
-    ## Add row to the 1st dimension of act model:
-    models.act[0].pairCounts = np.append(models.act[0].pairCounts, np.zeros((1, b_max, a_max+1)), 0)
-    models.act[0].dist = np.append(models.act[0].dist, np.zeros((1, b_max, a_max+1)), 0)
-    models.act[0].dist[a_max,...] = sampler.sampleDirichlet(models.act[0].pairCounts[a_max,...], models.act[0].alpha * models.act[0].beta)
-
-    ## Add row to the 2nd dimension of exp model:
-    models.exp[0].pairCounts = np.append(models.exp[0].pairCounts, np.zeros((g_max, 1, b_max)), 1)
-    models.exp[0].dist = np.append(models.exp[0].dist, np.zeros((g_max, 1, b_max)), 1)
-    models.exp[0].dist[:, a_max, :] = sampler.sampleDirichlet(models.exp[0].pairCounts[:, a_max, :], sample.alpha_b * sample.beta_b)
-
-    ## Add row to the 2nd dimension of next model:
-    models.next[0].pairCounts = np.append(models.next[0].pairCounts, np.zeros((b_max, 1, b_max)), 1)
-    models.next[0].dist = np.append(models.next[0].dist, np.zeros((b_max, 1, b_max)), 1)
-    models.next[0].dist[:, a_max, :] = sampler.sampleDirichlet(models.next[0].pairCounts[:, a_max, :], sample.alpha_b * sample.beta_b)
-
-    ## Add a row to both dimensions of the model input
-    ## need to modify shape to do appends so we'll make it a list from a tuple:
-    ## Resize the distributions in the same way but we'll also need to initialize
-    ## them to non-zero values
-    models.start[0].pairCounts = np.append(models.start[0].pairCounts, np.zeros((1,a_max,b_max)), 0)
-    models.start[0].dist = np.append(models.start[0].dist, np.zeros((1,a_max,b_max)), 0)
-    models.start[0].dist[a_max,...] = sampler.sampleDirichlet(models.start[0].pairCounts[a_max,...], sample.alpha_b * sample.beta_b)
-
-    models.start[0].pairCounts = np.append(models.start[0].pairCounts, np.zeros((a_max+1,1,b_max)), 1)
-    models.start[0].dist = np.append(models.start[0].dist, np.zeros((a_max+1,1,b_max)), 1)
-    models.start[0].dist[:,a_max,:] = sampler.sampleDirichlet(models.start[0].pairCounts[:,a_max,:], sample.alpha_b * sample.beta_b)
-
-def break_b_stick(models, sample, params):
-
-    b_max = models.cont[0].dist.shape[-1]
-    g_max = models.pos.dist.shape[-1]
-
-    ## Keep the stick with cont and copy it over to beta
-    break_beta_stick(models.cont[0], sample.gamma)
-    models.start[0].beta = models.cont[0].beta
-    models.exp[0].beta = models.cont[0].beta
-    models.next[0].beta = models.cont[0].beta
-
-    ## Add a column to both output distributions:
-    add_model_column(models.cont[0])
-    add_model_column(models.start[0])
-    add_model_column(models.exp[0])
-    add_model_column(models.next[0])
-
-    ## Add a row to the POS output distribution which depends only on b:
-    add_model_row_simple(models.pos, models.pos.alpha * models.pos.beta[1:])
-
-    ## Boolean models:
-    models.fork[0].pairCounts = np.append(models.fork[0].pairCounts, np.zeros((1,g_max,2)), 0)
-    models.fork[0].dist = np.append(models.fork[0].dist, np.zeros((1,g_max,2)), 0)
-    models.fork[0].dist[b_max,...] = sampler.sampleBernoulli(models.fork[0].pairCounts[b_max,...], sample.alpha_f * sample.beta_f)
-
-    models.trans[0].pairCounts = np.append(models.trans[0].pairCounts, np.zeros((1,g_max,2)), 0)
-    models.trans[0].dist = np.append(models.trans[0].dist, np.zeros((1,g_max,2)), 0)
-    models.trans[0].dist[b_max,...] = sampler.sampleBernoulli(models.trans[0].pairCounts[b_max,...], sample.alpha_j * sample.beta_j)
-
-    models.reduce[0].pairCounts = np.append(models.reduce[0].pairCounts, np.zeros((a_max,1,2)), 1)
-    models.reduce[0].dist = np.append(models.reduce[0].dist, np.zeros((a_max,1,2)), 1)
-    models.reduce[0].dist[:,b_max,:] = sampler.sampleBernoulli(models.reduce[0].pairCounts[:,b_max,:], sample.alpha_j * sample.beta_j)
-
-    ## Active models:
-    models.act[0].pairCounts = np.append(models.act[0].pairCounts, np.zeros((a_max, 1, a_max)), 1)
-    models.act[0].dist = np.append(models.act[0].dist, np.zeros((a_max, 1, a_max)), 1)
-    models.act[0].dist[:,b_max,:] = sampler.sampleDirichlet(models.act[0].pairCounts[:,b_max,:], models.act[0].alpha * models.act[0].beta)
-
-    models.root[0].pairCounts = np.append(models.root[0].pairCounts, np.zeros((1, g_max, a_max)), 0)
-    models.root[0].dist = np.append(models.root[0].dist, np.zeros((1, g_max, a_max)), 0)
-    models.root[0].dist[b_max,:,:] = sampler.sampleDirichlet(models.root[0].pairCounts[b_max,:,:], models.root[0].alpha * models.root[0].beta)
-
-    ## Awaited models with b as condition
-    models.cont[0].pairCounts = np.append(models.cont[0].pairCounts, np.zeros((1,g_max,b_max+1)), 0)
-    models.cont[0].dist = np.append(models.cont[0].dist, np.zeros((1,g_max,b_max+1)),0)
-    models.cont[0].dist[b_max,...] = sampler.sampleDirichlet(models.cont[0].pairCounts[b_max,...], models.cont[0].alpha * models.cont[0].beta)
-
-    models.next[0].pairCounts = np.append(models.next[0].pairCounts, np.zeros((1,a_max,b_max+1)), 0)
-    models.next[0].dist = np.append(models.next[0].dist, np.zeros((1,a_max,b_max+1)), 0)
-    models.next[0].dist[b_max,...] = sampler.sampleDirichlet(models.next[0].pairCounts[b_max,...], models.next[0].alpha * models.next[0].beta)
-
-def break_g_stick(models, sample, params):
-
-    b_max = models.cont[0].dist.shape[-1]
-    g_max = models.pos.dist.shape[-1]
-    depth = len(models.fork)
-
-    ## Resample beta when the stick is broken:
-    break_beta_stick(models.pos, sample.gamma)
-
-    if models.pos.beta[-1] == 0.0:
-        logging.error("This shouldn't be 0!")
-
-    ## Add a column to the distribution that outputs POS tags:
-    add_model_column(models.pos)
-
-    ## Add a row to the lexical distribution for this new POS tag:
-    add_model_row_simple(models.lex, params['h'][0,1:])
-
-    for d in range(0, depth):
-        models.fork[d].pairCounts = np.append(models.fork[d].pairCounts, np.zeros((b_max,1,2)), 1)
-        models.fork[d].dist = np.append(models.fork[d].dist, np.zeros((b_max,1,2)), 1)
-        models.fork[d].dist[:,g_max,:] = sampler.sampleBernoulli(models.fork[d].pairCounts[:,g_max,:], sample.alpha_f * sample.beta_f)
-
-        models.trans[d].pairCounts = np.append(models.trans[d].pairCounts, np.zeros((b_max,1,2)), 1)
-        models.trans[d].dist = np.append(models.trans[d].dist, np.zeros((b_max,1,2)), 1)
-        models.trans[d].dist[:,g_max,:] = sampler.sampleBernoulli(models.trans[d].pairCounts[:,g_max,:], sample.alpha_f * sample.beta_f)
-
-        ## One active model uses g as a condition:
-        models.root[d].pairCounts = np.append(models.root[d].pairCounts, np.zeros((b_max,1,a_max)), 1)
-        models.root[d].dist = np.append(models.root[d].dist, np.zeros((b_max,1,a_max)), 1)
-        models.root[d].dist[:,g_max,:] = sampler.sampleDirichlet(models.root[d].pairCounts[:,g_max,:], models.root[d].alpha * models.root[d].beta)
-
-        ## Two awaited models use g as a condition:
-        models.cont[d].pairCounts = np.append(models.cont[d].pairCounts, np.zeros((b_max,1,b_max)), 1)
-        models.cont[d].dist = np.append(models.cont[d].dist, np.zeros((b_max,1,b_max)), 1)
-        models.cont[d].dist[:,g_max,:] = sampler.sampleDirichlet(models.cont[d].pairCounts[:,g_max,:], models.cont[d].alpha * models.cont[d].beta)
-
-        models.exp[d].pairCounts = np.append(models.exp[d].pairCounts, np.zeros((1, a_max, b_max)), 0)
-        models.exp[d].dist = np.append(models.exp[d].dist, np.zeros((1, a_max, b_max)), 0)
-        models.exp[d].dist[g_max,...] = sampler.sampleDirichlet(models.exp[d].pairCounts[g_max,...], models.exp[d].alpha * models.exp[d].beta)
 
 def resample_beta_g(models, gamma):
     logging.info("Resampling beta g")
@@ -714,65 +497,6 @@ def resample_beta_g(models, gamma):
     models.pos.beta[1:] = 0
     models.pos.beta[1:] += sampler.sampleSimpleDirichlet(params)
     #logging.info("New beta value is %s" % model.pos.beta)
-
-def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_max, g_max):
-
-    ## FJ model:
-    models.fj = [None] * depth
-    ## Active models:
-    models.act = [None] * depth
-    models.root = [None] * depth
-    ## Reduce models:
-    models.cont = [None] * depth
-    models.exp = [None] * depth
-    models.next = [None] * depth
-    models.start = [None] * depth
-
-    for d in range(0, depth):
-        ## One fork model:
-        models.fj[d] = Model((a_max, b_max, b_max, g_max, 4), alpha=float(params.get('alphafj')), name="FJ"+str(d))
-        models.fj[d].beta = np.ones(4) / 4
-
-        ## One active model:
-        models.act[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|00_"+str(d))
-        models.act[d].beta = np.ones(a_max) / a_max
-        
-        models.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
-        models.root[d].beta = np.ones(a_max) / a_max
-
-        ## four awaited models:
-        models.cont[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|11_"+str(d))
-        models.cont[d].beta = np.ones(b_max) / b_max
-        
-        models.exp[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|10_"+str(d))
-        models.exp[d].beta = models.cont[d].beta
-        
-        models.next[d] = Model((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|01_"+str(d))
-        models.next[d].beta = models.cont[d].beta
-        
-        models.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|00_"+str(d))
-        models.start[d].beta = models.cont[d].beta
-
-
-    ## one pos model:
-    models.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape, name="POS")
-    models.pos.beta = np.ones(g_max) / g_max
-
-    ## one lex model:
-    models.lex = Model((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
-    models.lex.beta = np.ones(max_output+1) / (max_output + 1)
-
-    models.append(models.fj)
-    models.append(models.act)
-    models.append(models.root)
-    models.append(models.cont)
-    models.append(models.start)
-    models.append(models.exp)
-    models.append(models.next)
-    models.append(models.pos)
-    models.append(models.lex)
-
-    return models
 
 # In the case that we are initializing this run with the output of a Previous
 # run, it is pretty simple. We just need a lot of checks to make sure the inputs
@@ -807,105 +531,7 @@ def initialize_and_load_state(ev_seqs, models, max_depth, init_seqs):
             hid_seq.append(state)
         state_seqs.append(hid_seq)
         increment_counts(hid_seq, sent, models)
-        increment_global_counts(models)
-
-    return state_seqs
-
-# Randomly initialize all the values for the hidden variables in the
-# sequence. Obeys constraints (e.g., when f=1,j=1 a=a_{t-1}) but otherwise
-# samples randomly.
-RANDOM_INIT=0
-RB_INIT=1
-LB_INIT=2
-
-def initialize_state(ev_seqs, models, max_depth, gold_seqs=None, strategy=RANDOM_INIT):
-    global a_max, b_max, g_max
-
-    max_gold_tags = max([max(el) for el in gold_seqs.values()]) if (not gold_seqs == None and not len(gold_seqs)==0) else 0
-    if not gold_seqs == None and max_gold_tags > g_max:
-        logging.warning("There are more gold tag types (%d) than the number of initial pos tag states (%d). Will randomly initialize any gold tags that are out of bounds" % (max_gold_tags, g_max))
-
-    state_seqs = list()
-    for sent_index,sent in enumerate(ev_seqs):
-        hid_seq = list()
-        if not gold_seqs == None and sent_index in gold_seqs.keys():
-          gold_tags=gold_seqs[sent_index]
-        else:
-          gold_tags=None
-        for index,word in enumerate(sent):
-            state = State.State(max_depth)
-            ## special case for first word
-            if index == 0:
-                state.f = 0
-                state.j = 0
-                state.a[0] = 0
-                state.b[0] = 0
-            else:
-                prev_depth = prev_state.max_awa_depth()
-                if index == 1:
-                    state.f = 1
-                    state.j = 0
-                elif strategy == RANDOM_INIT:
-                    if np.random.random() >= 0.5:
-                        state.f = 1
-                    else:
-                        state.f = 0
-                    ## j is deterministic in the middle of the sentence
-                    if prev_depth+1 == max_depth and state.f == 1:
-                        ## If we are at max depth and we forked, we must reduce
-                        state.j = 1
-                    elif prev_depth <= 0 and state.f == 0:
-                        ## If we are at 0 and we did not fork, we must not reduce
-                        state.j = 0
-                    else:
-                        state.j = state.f
-
-                elif strategy == RB_INIT:
-                    state.f = 1
-                    state.j = 1
-                elif strategy == LB_INIT:
-                    state.f = 0
-                    state.j = 0
-                else:
-                    logging.error("Unknown initialization strategy %d" % (strategy))
-                    raise Exception
-
-                cur_depth = prev_depth + state.f - state.j
-                if prev_depth == -1:
-                    state.a[cur_depth] = np.random.randint(1, a_max-1)
-                elif state.f == 1 and state.j == 1:
-                    state.a[0:cur_depth] = prev_state.a[0:cur_depth]
-                    state.b[0:cur_depth] = prev_state.b[0:cur_depth]
-                    state.a[cur_depth] = prev_state.a[cur_depth]
-                elif state.f == 0 and state.j == 0:
-                    state.a[0:cur_depth] = prev_state.a[0:cur_depth]
-                    state.b[0:cur_depth] = prev_state.b[0:cur_depth]
-                    state.a[cur_depth] = np.random.randint(1,a_max-1)
-                elif state.f == 1 and state.j == 0:
-                    state.a[0:cur_depth] = prev_state.a[0:cur_depth]
-                    state.b[0:cur_depth] = prev_state.b[0:cur_depth]
-                    state.a[cur_depth] = np.random.randint(1,a_max-1)
-                elif state.f == 0 and state.j == 1:
-                    state.a[0:cur_depth] = prev_state.a[0:cur_depth]
-                    state.b[0:cur_depth] = prev_state.b[0:cur_depth]
-                    state.a[cur_depth] = prev_state.a[cur_depth]
-                else:
-                    raise Exception("Encountered unexpected condition in state initialization! f=%s, j=%s" % (state.f, state.j) )
-
-                state.b[cur_depth] = np.random.randint(1,b_max-1)
-
-            if gold_tags and gold_tags[index] < g_max:
-              state.g = gold_tags[index]
-            else:
-              state.g = np.random.randint(1,g_max-1)
-
-            prev_state = state
-
-            hid_seq.append(state)
-
-        increment_counts(hid_seq, sent, models)
-        increment_global_counts(models)
-        state_seqs.append(hid_seq)
+        models.increment_global_counts()
 
     return state_seqs
 
@@ -1089,44 +715,4 @@ def getAmax():
 def getBmax():
     global b_max
     return b_max
-
-def resample_all(models, sample, params, depth, decay=1.0, from_global_counts=False):
-    ## Sample distributions for all the model params and emissions params
-    ## TODO -- make the Models class do this in a resample_all() method
-    fj_base = sample.alpha_fj * sample.beta_fj
-    a_base =  sample.alpha_a * sample.beta_a
-    b_base = sample.alpha_b * sample.beta_b
-    g_base = sample.alpha_g * sample.beta_g
-    h_base = sample.alpha_h * sample.beta_h
-    
-    for d in range(depth-1, -1, -1):
-        models.fj[d].sampleDirichlet(fj_base if d == 0 else fj_base + models.fj[d-1].pairCounts * sample.alpha_fj, decay, from_global_counts)
-        models.start[d].sampleDirichlet(b_base if d == 0 else b_base + models.start[d-1].pairCounts * sample.alpha_b, decay, from_global_counts)
-        models.exp[d].sampleDirichlet(b_base if d == 0 else b_base + models.exp[d-1].pairCounts * sample.alpha_b, decay, from_global_counts)
-        models.cont[d].sampleDirichlet(b_base if d == 0 else b_base + models.cont[d-1].pairCounts * sample.alpha_b, decay, from_global_counts)
-        models.next[d].sampleDirichlet(b_base if d == 0 else b_base + models.next[d-1].pairCounts * sample.alpha_b, decay, from_global_counts)
-        models.act[d].sampleDirichlet(a_base if d == 0 else a_base + models.act[d-1].pairCounts * sample.alpha_a, decay, from_global_counts)
-        models.root[d].sampleDirichlet(a_base if d == 0 else a_base + models.root[d-1].pairCounts * sample.alpha_a, decay, from_global_counts)
-
-    # Resample pos and make sure only the null awa can generate the null tag
-    models.pos.sampleDirichlet(g_base, decay, from_global_counts)
-    models.lex.dist[1:,0].fill(-np.inf)
-
-    # Resample lex and make sure the null tag can only generate the null word
-    models.lex.sampleDirichlet(h_base, decay, from_global_counts)
-    models.lex.dist[0,0] = 0.0
-    models.lex.dist[0,1:].fill(-np.inf)
-
-def increment_global_counts(models):
-    depth = len(models.fj)
-    for d in range(depth-1, -1, -1):
-        models.fj[d].globalPairCounts += models.fj[d].pairCounts
-        models.start[d].globalPairCounts += models.start[d].pairCounts
-        models.exp[d].globalPairCounts += models.exp[d].pairCounts
-        models.cont[d].globalPairCounts += models.cont[d].pairCounts
-        models.next[d].globalPairCounts += models.next[d].pairCounts
-        models.act[d].globalPairCounts += models.act[d].pairCounts
-        models.root[d].globalPairCounts += models.root[d].pairCounts
-    models.pos.globalPairCounts += models.pos.pairCounts
-    models.lex.globalPairCounts += models.lex.pairCounts
 

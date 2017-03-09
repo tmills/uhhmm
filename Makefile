@@ -152,8 +152,34 @@ user-lorelei-location.txt:
 
 # Because of oddities in how Make handles wildcard expansion in prereqs,
 # this rule is necessary to allow relative-path targets
-%.uhhmm: $$(abspath $$@)
-	$(info )
+%.uhhmm: $$(abspath $$@);
+
+.PRECIOUS: /%.master.scr
+/%.master.scr: /%.ini
+	echo '#PBS -l walltime=48:00:00' > $@
+	echo '#PBS -l nodes=1:ppn=1' >> $@
+	echo '#PBS -l mem=4GB' >> $@
+	echo '#PBS -N host' >> $@
+	echo 'cd $$PBS_O_WORKDIR' >> $@
+	echo 'module load python/3.4.2' >> $@
+	echo 'module load cuda/7.0.28' >> $@
+	echo 'python3 scripts/uhhmm-trainer.py $<' >> $@
+
+.PRECIOUS: /%.worker.scr
+/%.worker.scr:
+	echo '#PBS -l nodes=1:ppn=1:gpus=1' > $@
+	echo '#PBS -l walltime=8:00:00' >> $@
+	echo '#PBS -N slave' >> $@
+	echo 'cd $$PBS_O_WORKDIR' >> $@
+	echo 'module load python/3.4.2' >> $@
+	echo 'module load cuda/7.0.28' >> $@
+	echo 'mpiexec python3 scripts/workers.py .' >> $@
+
+/%.uhhmm_osc: /%.master.scr /%.worker.scr /%.linetoks.ints.txt $(SCRIPTS)/uhhmm-trainer.py $(SCRIPTS)/workers.py
+	qsub $<
+	qsub $(word 2, $^)
+
+%.uhhmm_osc: $$(abspath $$@);
 
 # Builds an UHHMM config file from parameters in the target stem
 .PRECIOUS: /%.ini

@@ -17,7 +17,7 @@ cdef class Model:
         ## Initialize with ones to prevent underflow during distribution sampling
         ## at iteration 0
         self.shape = shape
-        self.pairCounts = np.ones(shape, dtype=np.int)
+        self.pairCounts = np.zeros(shape, dtype=np.int)
         self.globalPairCounts = np.zeros(shape, dtype=np.int)
         self.dist = np.random.random(shape)
         self.dist /= self.dist.sum(1, keepdims=True)
@@ -25,7 +25,10 @@ cdef class Model:
         self.u = np.array([])
         self.trans_prob = lil_matrix(corpus_shape)
         self.alpha = alpha
-        self.beta = beta
+        if beta != None:
+            self.beta = beta
+        else:
+            self.beta = np.ones(shape[-1]) / shape[-1]
         self.corpus_shape = corpus_shape
         self.name = name
 
@@ -92,14 +95,114 @@ cdef class Model:
         self.corpus_shape = d['corpus_shape']
         self.alpha = d['alpha']
         self.name = d['name']        
-        
+       
+    # Assumes beta stick has already been broken 
+    def add_outcome(self):
+        new_ix = self.shape[-1]
+        self.pairCounts = np.insert(self.pairCounts, new_ix, 1, -1)
+        self.globalPairCounts = np.insert(self.globalPairCounts, new_ix, 0, -1)
+        self.dist = np.insert(self.dist, new_ix, 0, -1)
+        new_shape = list(self.shape)
+        new_shape[-1] += 1
+        self.shape = tuple(new_shape)
+
+    def remove_outcome(self, outcome):
+        self.pairCounts = np.delete(self.pairCounts, outcome, -1)
+        self.globalPairCounts = np.delete(self.globalPairCounts, outcome, -1)
+        self.dist = np.delete(self.dist, outcome, -1)
+        new_shape = list(self.shape)
+        new_shape[-1] -= 1
+        self.shape = tuple(new_shape)
+
+        # Capture lost beta
+        lost_beta = self.beta[outcome]
+        # Remove outcome from beta
+        self.beta = np.delete(self.beta, outcome, -1)
+        # Uniformly redistribute lost beta
+        self.beta += lost_beta/self.shape[-1] 
+
+    def add_condition(self, axis=-2):
+        new_shape = self.shape
+        new_ix = self.shape[axis]
+        self.pairCounts = np.insert(self.pairCounts, new_ix, 0, axis)
+        self.globalPairCounts = np.insert(self.globalPairCounts, new_ix, 0, axis)
+        self.dist = np.insert(self.dist, new_ix, 0, axis)
+        new_shape = list(self.shape)
+        new_shape[axis] += 1
+        self.shape = tuple(new_shape)
+
+    def remove_condition(self, cond, axis=-2):
+        self.pairCounts = np.delete(self.pairCounts, cond, axis)
+        self.globalPairCounts = np.delete(self.globalPairCounts, cond, axis)
+        self.dist = np.delete(self.dist, cond, axis)
+        new_shape = list(self.shape)
+        new_shape[axis] -= 1
+        self.shape = tuple(new_shape)
+
+    def break_beta_stick(self, gamma):
+        beta_end = self.beta[-1]
+        self.beta = np.append(self.beta, np.zeros(1))
+        old_portion = new_portion = 0
+
+        while old_portion == 0 or new_portion == 0:
+            old_group_fraction = np.random.beta(1, gamma)
+            old_portion = old_group_fraction * beta_end
+            new_portion = (1-old_group_fraction) * beta_end
+
+        self.beta[-2] = old_portion
+        self.beta[-1] = new_portion
+
 cdef class Models:
     def __init__(self):
         self.models = []
-        
-#    def resample_all(self):
-#        for model in self.models:
-#            model.dist = sampleDirichlet(model)
+
+    def initialize_as_fjabp(self, max_output, params, corpus_shape, depth, a_max, b_max, g_max):
+
+        ## FJ model:
+        self.fj = [None] * depth
+        ## Active self:
+        self.act = [None] * depth
+        self.root = [None] * depth
+        ## Reduce self:
+        self.cont = [None] * depth
+        self.exp = [None] * depth
+        self.next = [None] * depth
+        self.start = [None] * depth
+
+        for d in range(0, depth):
+            ## One fork model:
+            self.fj[d] = Model((a_max, b_max, b_max, g_max, 4), alpha=float(params.get('alphafj')), name="FJ"+str(d))
+
+            ## One active model:
+            self.act[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|00_"+str(d))
+            
+            self.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
+
+            ## four awaited self:
+            self.cont[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|11_"+str(d))
+            
+            self.exp[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|10_"+str(d))
+            
+            self.next[d] = Model((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|01_"+str(d))
+            
+            self.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|00_"+str(d))
+
+
+        ## one pos model:
+        self.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape, name="POS")
+
+        ## one lex model:
+        self.lex = Model((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
+
+        self.append(self.fj)
+        self.append(self.act)
+        self.append(self.root)
+        self.append(self.cont)
+        self.append(self.start)
+        self.append(self.exp)
+        self.append(self.next)
+        self.append(self.pos)
+        self.append(self.lex)
 
     def resetAll(self):
         for model in self.models:
@@ -136,4 +239,105 @@ cdef class Models:
         self.pos = d['pos']
         self.lex = d['lex']
         self.models = [self.fj, self.act, self.root, self.next, self.cont, self.exp, self.start, self.pos, self.lex]
+
+    def break_a_stick(self, gamma):
+        depth = len(self.fj)
+        self.root[0].break_beta_stick(gamma)
+
+        for d in range(depth):
+            self.fj[0].add_condition(0)
+            
+            self.root[d].add_outcome()
+            self.root[d].beta[:] = self.root[0].beta[:]
+            self.act[d].add_outcome()
+            self.act[d].beta[:] = self.root[0].beta[:]
+            
+            self.exp[d].add_condition(1)
+            self.next[d].add_condition(1)
+            self.start[d].add_condition(0)
+            self.start[d].add_condition(1)
+
+    def break_b_stick(self, gamma):
+        depth = len(self.fj)
+        self.cont[0].break_beta_stick(gamma)
+
+        for d in range(depth):
+            self.fj[d].add_condition(1)
+            self.fj[d].add_condition(2)
+
+            self.root[d].add_condition(0)
+            self.act[d].add_condition(1)
+            
+            self.cont[d].add_outcome()
+            self.cont[d].beta[:] = self.cont[0].beta[:]
+            self.next[d].add_outcome()
+            self.cond[d].beta[:] = self.cont[0].beta[:]
+        
+        self.pos.add_condition(0)
+
+    def break_g_stick(self, gamma):
+        depth = len(self.fj)
+        self.pos.break_beta_stick(gamma)
+
+        for d in range(depth):
+            self.fj[d].add_condition(3)
+            self.root[d].add_condition(1)
+            self.cont[d].add_condition(1)
+            self.exp[d].add_condition(0)
+        
+        self.pos.add_outcome()
+        self.lex.add_condition(0)
+
+    def remove_pos(self, pos):
+        depth = len(self.fj)
+        for d in range(depth):
+            self.fj[d].remove_condition(pos, 3)
+            self.root[d].remove_condition(pos, 1)
+            self.cont[d].remove_condition(pos, 1)
+            self.exp[d].remove_condition(pos, 0)
+
+        self.pos.remove_outcome(pos)
+        self.lex.remove_condition(pos, 0)
+
+    ## Init is used if there are no counts yet -- buffers the pseudocounts to avoid underflow
+    def resample_all(self, decay=1.0, from_global_counts=False, init=False):
+        ## Sample distributions for all the model params and emissions params
+        ## TODO -- make the Models class do this in a resample_all() method
+        depth = len(self.fj)
+        fj_base = self.fj[0].alpha * self.fj[0].beta + int(init)
+        a_base =  self.root[0].alpha * self.root[0].beta + int(init)
+        b_base = self.cont[0].alpha * self.cont[0].beta + int(init)
+        g_base = self.pos.alpha * self.pos.beta + int(init)
+        h_base = self.lex.alpha * self.lex.beta + int(init)
+
+        for d in range(depth-1, -1, -1):
+            self.fj[d].sampleDirichlet(fj_base if d == 0 else fj_base + self.fj[d-1].pairCounts * self.fj[d].alpha, decay, from_global_counts)
+            self.start[d].sampleDirichlet(b_base if d == 0 else b_base + self.start[d-1].pairCounts * self.start[d].alpha, decay, from_global_counts)
+            self.exp[d].sampleDirichlet(b_base if d == 0 else b_base + self.exp[d-1].pairCounts * self.exp[d].alpha, decay, from_global_counts)
+            self.cont[d].sampleDirichlet(b_base if d == 0 else b_base + self.cont[d-1].pairCounts * self.cont[d].alpha, decay, from_global_counts)
+            self.next[d].sampleDirichlet(b_base if d == 0 else b_base + self.next[d-1].pairCounts * self.next[d].alpha, decay, from_global_counts)
+            self.act[d].sampleDirichlet(a_base if d == 0 else a_base + self.act[d-1].pairCounts * self.act[d].alpha, decay, from_global_counts)
+            self.root[d].sampleDirichlet(a_base if d == 0 else a_base + self.root[d-1].pairCounts * self.root[d].alpha, decay, from_global_counts)
+
+        # Resample pos and make sure only the null awa can generate the null tag
+        self.pos.sampleDirichlet(g_base, decay, from_global_counts)
+        self.lex.dist[1:,0].fill(-np.inf)
+
+        # Resample lex and make sure the null tag can only generate the null word
+        self.lex.sampleDirichlet(h_base, decay, from_global_counts)
+        self.lex.dist[0,0] = 0.0
+        self.lex.dist[0,1:].fill(-np.inf)
+
+    def increment_global_counts(self):
+        depth = len(self.fj)
+        for d in range(depth-1, -1, -1):
+            self.fj[d].globalPairCounts += self.fj[d].pairCounts
+            self.start[d].globalPairCounts += self.start[d].pairCounts
+            self.exp[d].globalPairCounts += self.exp[d].pairCounts
+            self.cont[d].globalPairCounts += self.cont[d].pairCounts
+            self.next[d].globalPairCounts += self.next[d].pairCounts
+            self.act[d].globalPairCounts += self.act[d].pairCounts
+            self.root[d].globalPairCounts += self.root[d].pairCounts
+        self.pos.globalPairCounts += self.pos.pairCounts
+        self.lex.globalPairCounts += self.lex.pairCounts
 
