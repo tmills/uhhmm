@@ -50,7 +50,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     if depth > 1:
         ## One that should not be allowed by our indexing scheme:
         for d in range(0, depth):
-            if len(np.where(prevF >= 0)[0]) > 1 or len(np.where(prevJ >= 0)[0]) > 1:                      
+            if len(np.where(prev_state.f >= 0)[0]) > 1 or len(np.where(prev_state.j >= 0)[0]) > 1:                      
                 logging.error("Two values in F stack with nonnegative value: this should not be allowed")
                 raise Exception
 
