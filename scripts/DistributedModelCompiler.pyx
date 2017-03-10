@@ -21,8 +21,6 @@ class DistributedModelCompiler(FullDepthCompiler):
         self.limit_depth = self.depth if limit_depth == -1 else limit_depth
 
     def compile_and_store_models(self, models, working_dir, per_state_connection_guess = 600, full_pi = False):
-        if self.gpu == False:
-            full_pi = True
         # models = pickle.load(open(working_dir+ "/ori_models.bin" ,'rb')).model[0]
         indexer = Indexer(models)
         logging.info("Compiling component models into mega-HMM transition and observation matrices")
