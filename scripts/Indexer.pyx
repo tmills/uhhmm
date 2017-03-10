@@ -15,16 +15,17 @@ cdef class Indexer:
         self.a_max = models.act[0].dist.shape[-1]
         self.b_max = models.start[0].dist.shape[-1]
         self.g_max = models.pos.dist.shape[-1]
-        self.state_size = self.fj_size * ((self.a_max * self.b_max) ** self.depth) * self.g_max 
+        self.state_size = self.fj_size * ((self.a_max * self.b_max) ** self.depth) * self.g_max
         self.a_size = self.a_max**self.depth
         self.b_size = self.b_max**self.depth
-    
+
     def getVariableMaxes(self):
         return (self.a_max, self.b_max, self.g_max)
 
-    def get_state_size(self):   
+    def get_state_size(self):
         return self.state_size
 
+<<<<<<< HEAD
     def get_EOS(self):
         return int(self.state_size / (4*self.g_max))
 
@@ -37,6 +38,8 @@ cdef class Indexer:
     def get_EOS_1wrd_full(self):
         return int(3*self.state_size / 4)
     
+=======
+>>>>>>> 3399e6639500ea9994ce797c991b60df648b2a02
     #@profile
     def extractState(self, int index):
         (f, j, aStack, bStack, g) = self.extractStacks(index)
@@ -50,7 +53,7 @@ cdef class Indexer:
 
     cpdef public int extractPos(self, int index):
         cdef int fj_ind, a_ind, b_ind, g, max_d, f_val, j_val
-        
+
         (fj_ind, a_ind, b_ind, g) = np.unravel_index(index, (self.fj_size, self.a_size, self.b_size, self.g_max))
         return g
 
@@ -93,21 +96,21 @@ cdef class Indexer:
     ## would happen and we don't want to blow up the state space.
     cpdef int getStateIndex(self, int f, int j, np.ndarray a, np.ndarray b, int g):
         cdef int d, fj_ind, index
-        
+
         fj_ind = 0
         if f == 1:
             fj_ind = 2
-        
+
         if j == 1:
             fj_ind += 1
-            
+
         a_stack  = np.ravel_multi_index(a, [self.a_max] * self.depth)
         b_stack = np.ravel_multi_index(b, [self.b_max] * self.depth)
-        
+
         index = np.ravel_multi_index((fj_ind, a_stack, b_stack, g), (self.fj_size, self.a_size, self.b_size, self.g_max))
-    
+
         return index
-    
+
     cpdef getStateTuple(self, int f, int j, np.ndarray a, np.ndarray b):
         cdef int start
         start = self.getStateIndex(f,j,a,b,0)
@@ -117,6 +120,5 @@ cdef class Indexer:
         f = np.zeros(self.state_size)
         for i in range(0, self.state_size):
              f[i] = i % self.g_max
-        
-        return f
 
+        return f

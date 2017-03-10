@@ -192,7 +192,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     else:
         master_config_file = './masterConfig.txt'
         with open(master_config_file, 'w') as c:
-            print(' '.join([str(x) for x in [workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, gpu, gpu_batch_size]]), file=c)
+            print(' '.join([str(x) for x in [workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, int(gpu), gpu_batch_size]]), file=c)
             print('OK', file=c)
 
     logging.info("Starting workers")

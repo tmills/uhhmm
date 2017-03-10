@@ -163,10 +163,10 @@ cdef class HmmSampler(Sampler.Sampler):
         cdef tuple maxes
         cdef np.ndarray trans_slice
         cdef State.State sample_state
-        
+
         sent = sents[0]
         t0 = time.time()
-        try:      
+        try:
             sample_seq = []
             sample_log_prob = 0
             maxes = self.indexer.getVariableMaxes()
@@ -175,7 +175,7 @@ cdef class HmmSampler(Sampler.Sampler):
         
             ## Normalize and grab the sample from the forward probs at the end of the sentence
             last_index = len(sent)-1
-                
+
             ## normalize after multiplying in the transition out probabilities
             self.dyn_prog[last_index,:] /= self.dyn_prog[last_index,:].sum()
             
@@ -188,12 +188,12 @@ cdef class HmmSampler(Sampler.Sampler):
             for t in range(len(sent)-1,-1,-1):              
                 sample_state, sample_t = self._reverse_sample_inner(pi, sample_t, t)
                 sample_seq.append(sample_state)
-           
+
             sample_seq.reverse()
         except Exception as e:
             printException()
             raise e
-        
+
         t1 = time.time()
         # print('backward time', t1-t0)
         self.bs_time += (t1-t0)

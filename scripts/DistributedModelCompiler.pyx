@@ -11,7 +11,7 @@ import pickle
 from Indexer import Indexer
 
 class DistributedModelCompiler(FullDepthCompiler):
-    
+
     def __init__(self, depth, work_server, gpu=False, limit_depth=-1):
         FullDepthCompiler.__init__(self, depth)
         self.work_server = work_server

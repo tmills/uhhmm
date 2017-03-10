@@ -10,7 +10,7 @@ def sampleDirichlet(counts, H):
     L = max(H.shape)
     K = counts.shape[0:-1]
     P = np.zeros(counts.shape)
-    
+
     ## Sample from a dirichlet to get distribution over
     ## words for every pos tag:
     
@@ -41,4 +41,3 @@ def sampleSimpleDirichlet(base):
     shape = base.shape
     dist = np.random.dirichlet(base.flatten()).reshape(shape)
     return dist
-    
