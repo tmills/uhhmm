@@ -7,7 +7,7 @@ cimport Sampler
 cdef class HmmSampler(Sampler.Sampler):
     cdef Indexer.Indexer indexer
     cdef models.Models models
-    cdef np.ndarray lexMatrix, lexMultiplier, dyn_prog, data, indices, indptr
+    cdef np.ndarray lexMatrix, lexMultiplier, dyn_prog, data, indices, indptr, start_state, factor_expand_mat
     cdef int depth
 
     cpdef public forward_pass(self, pi, list sent, int sent_index)
