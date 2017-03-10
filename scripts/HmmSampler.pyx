@@ -21,6 +21,7 @@ import subprocess
 from uhhmm_io import printException
 import models
 cimport models
+import scipy.sparse
 
 def boolean_depth(l):
     for index,val in enumerate(l):
@@ -35,6 +36,34 @@ cdef class HmmSampler(Sampler.Sampler):
         self.models = None
 #        self.pi = None
 
+    def get_factor_expand_mat(self):
+        state_size = self.indexer.get_state_size()
+        g_max = self.indexer.getVariableMaxes()[2]
+        factored_state_size = state_size // g_max;
+        temp_mat = np.zeros((factored_state_size, state_size))
+
+#        for col_ind in range(state_size):
+#            row_ind = col_ind // g_len
+#            temp_mat[row_ind, col_ind] = 1
+        col_ind = 0
+        for row_ind in range(factored_state_size):
+            expanded_ind = row_ind * g_max
+            state = self.indexer.extractState(expanded_ind)
+            b_val = self.indexer.extractAwa(expanded_ind)
+            #logging.info("Factored row index=%d expanded to full index=%d with b=%d, g=%d, col_ind=%d" % (row_ind, expanded_ind, b_val, state.g, col_ind))
+            for g in range(g_max-1):
+                prob = self.models.pos.dist[b_val, g]
+                if prob < 0.0 or prob > 1.0:
+                    logging.warn("POS model has invalid probability %f for b=%d, g=%d" % (prob, b_val, g))
+
+                if g == g_max-1 and prob > 0:
+                    logging.warn("POS model has non-zero probability %f for b=%d, g=%d" % (prob, b_val, g))
+
+                temp_mat[row_ind, col_ind + g] = prob
+            col_ind += g_max
+
+        return temp_mat
+
     def set_models(self, models):
         self.models = models[0]
         unlog_models(self.models)
@@ -48,6 +77,8 @@ cdef class HmmSampler(Sampler.Sampler):
         self.data = lexMultiplier.data
         self.indices = lexMultiplier.indices
         self.indptr = lexMultiplier.indptr
+
+        self.factor_expand_mat = self.get_factor_expand_mat()
 
     def initialize_dynprog(self, batch_size, maxLen):
         ## We ignore batch size since python only processes one at a time
@@ -81,6 +112,7 @@ cdef class HmmSampler(Sampler.Sampler):
             ## to get the return value
             self.dyn_prog[:] = 0
             lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
+            sparse_factored_expand_mat = scipy.sparse.csc_matrix(self.factor_expand_mat)
             ## Make forward be transposed up front so we don't have to do all the transposing inside the loop
             forward = np.matrix(self.dyn_prog, copy=False)
 
@@ -90,7 +122,11 @@ cdef class HmmSampler(Sampler.Sampler):
                 else:
                     prev_state = forward[index-1,:]
 
-                forward[index,:] = prev_state * pi
+                # Goes from 1 x N state to 1 x K for total state size N and factored state size K
+                factored_transition = prev_state * pi
+
+                # Expand 1 x K to 1 x N with p(g | b) replicated values
+                forward[index,:] = factored_transition * sparse_factored_expand_mat
 
                 expanded_lex = self.lexMatrix[:,token].transpose() * lexMultiplier
                 forward[index,:] = np.multiply(forward[index,:], expanded_lex)
@@ -173,8 +209,15 @@ cdef class HmmSampler(Sampler.Sampler):
         cdef np.ndarray trans_slice
         cdef int ind
         cdef float normalizer
+        cdef tuple maxes
+        maxes = self.indexer.getVariableMaxes()
+        g_max = maxes[2]
 
-        trans_slice = pi[:,sample_t].toarray()
+        #logging.info("G max is %d"  % (g_max))
+
+        reduced_state = sample_t // g_max
+        trans_slice = pi[:,reduced_state].toarray()
+
         for ind in np.where(self.dyn_prog[t,:] != 0.0)[0]:
             self.dyn_prog[t,ind] *= trans_slice[ind]
 
