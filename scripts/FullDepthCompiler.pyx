@@ -158,9 +158,16 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                 cum_probs[0] = models.J[start_depth+1].dist[ prev_g, prev_b, j ]
 
         ## Add probs for transition to EOS
-        if prev_state.f==0 and j==1 and start_depth == 0:
+        if (prev_state.f==0 and j==1 and start_depth == 0) or (prev_state.f==1 and j==1 and start_depth == -1):
             # FJ decision into EOS is observed, don't model. Just extract prob from awaited transition
-            EOS_prob = models.J[start_depth].dist[ prev_a, prev_b_above, 0 ]
+            if start_depth == -1:
+                start_depth_tmp = 0
+            else:
+                start_depth_tmp = start_depth
+            if prev_state.f == 0:
+                EOS_prob = models.J[start_depth_tmp].dist[ prev_a, prev_b_above, 1 ]
+            else:
+                EOS_prob = models.J[start_depth_tmp].dist[ prev_g, prev_b, 1]
             if full_pi:
                 indices_full.append(EOS_full)
                 data_full.append(EOS_prob)
