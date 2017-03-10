@@ -68,7 +68,7 @@ cdef class HmmSampler(Sampler.Sampler):
         self.models = models[0]
         unlog_models(self.models)
         self.lexMatrix = np.matrix(self.models.lex.dist, copy=False)
-        self.depth = len(self.models.fork)
+        self.depth = len(self.models.fj)
         self.indexer = Indexer.Indexer(self.models)
 
         g_len = self.models.pos.dist.shape[1]
@@ -171,7 +171,7 @@ cdef class HmmSampler(Sampler.Sampler):
             sample_log_prob = 0
             maxes = self.indexer.getVariableMaxes()
             totalK = self.indexer.get_state_size()
-            depth = len(self.models.fork)
+            depth = len(self.models.fj)
         
             ## Normalize and grab the sample from the forward probs at the end of the sentence
             last_index = len(sent)-1
@@ -296,12 +296,9 @@ cdef int old_get_sample(np.ndarray dist):
             return i
 
 def unlog_models(models):
-    depth = len(models.fork)
+    depth = len(models.fj)
     for d in range(0, depth):
-        models.fork[d].dist = 10**models.fork[d].dist
-
-        models.reduce[d].dist = 10**models.reduce[d].dist
-        models.trans[d].dist = 10**models.trans[d].dist
+        models.fj[d].dist = 10**models.fj[d].dist
 
         models.act[d].dist = 10**models.act[d].dist
         models.root[d].dist = 10**models.root[d].dist
