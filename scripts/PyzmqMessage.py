@@ -57,6 +57,12 @@ class CompiledRow:
         self.indices_full = indices_full
         self.data_full = data_full
 
+class ModelLocation:
+    def __init__(self, ip_addr, file_path):
+        self.ip_addr = ip_addr
+        self.file_path = file_path
+        
+
 class ModelWrapper:
     
     INFINITE = 0
