@@ -89,6 +89,23 @@ cdef class Indexer:
     
         return j, a, b, f, g
 
+
+    def extractAct(self, index):
+        (j, aStack, bStack,f, g) = self.extractStacks(index)
+        for d in range(self.depth - 1, -1, -1):
+            if aStack[d] > 0:
+                return aStack[d]
+        else:
+            return 0
+
+
+    def extractAwa(self, index):
+        ( j, aStack, bStack, f, g) = self.extractStacks(index)
+        for d in range(self.depth - 1, -1, -1):
+            if bStack[d] > 0:
+                return bStack[d]
+        else:
+            return 0
     ## We compose a state index from separate fj, a, b, and g indexes.
     ## Things get a little trickier at d == D because at time t=1 we technically have
     ## an expansion at d=-1, meaning the fj stack is completely empty. (At d=1 we just
