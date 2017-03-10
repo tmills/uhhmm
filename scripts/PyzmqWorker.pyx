@@ -241,7 +241,7 @@ cdef class PyzmqWorker:
                         if len(sent_batch) in [1,2,4,8,16,32,64,128,256]:
                             #logging.info("Batch has acceptable length of %d" % (len(sent_batch)))
                             # print('6 sampling now')
-                            print sent_index
+                            # print sent_index
                             (sent_samples, log_probs) = sampler.sample(pi, sent_batch, sent_index)
                         else:
                             logging.info("Batch size %d doesn't match power of 2 -- breaking into sub-batches" % (len(sent_batch) ) )
