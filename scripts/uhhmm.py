@@ -114,7 +114,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     else:
         logging.info("Using default seed for random number generator.")
 
-
     samples = []
     models = Models()
     start_ind = 0
