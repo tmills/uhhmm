@@ -19,8 +19,8 @@ public:
     int get_state_size();
     int get_EOS();
     int get_EOS_full();
-    int get_EOS_1wrd();
-    int get_EOS_1wrd_full();
+//    int get_EOS_1wrd();
+//    int get_EOS_1wrd_full();
     tuple<int, int, vector<int>, vector<int>, int> extractStacks(int index);
     State extractState(int index);
 private:
@@ -33,6 +33,7 @@ private:
     int a_size;
     int b_size;
     vector<int> stack_dims;
+    int EOS_index_full;
 };
 
 #endif /* Indexer_hpp */

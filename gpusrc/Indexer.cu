@@ -28,7 +28,9 @@ Indexer::Indexer(Model * model): fj_size(4){
     state_size = fj_size * pow((a_max * b_max), depth) * g_max;
     a_size = pow(a_max, depth);
     b_size = pow(b_max, depth);
-    stack_dims = {fj_size, a_size, b_size, g_max};
+//    stack_dims = {fj_size, a_size, b_size, g_max};
+    stack_dims = {fj_size/2, a_size, b_size,fj_size/2, g_max};
+    EOS_index_full = model -> EOS_index;
 }
 std::tuple<int, int, int> Indexer::getVariableMaxes(){
     return std::make_tuple(a_max, b_max, g_max);
@@ -37,39 +39,40 @@ int Indexer::get_state_size(){
     return state_size;
 }
 int Indexer::get_EOS(){
-    return state_size / (4 * g_max);
+    return EOS_index_full / g_max;
 }
 int Indexer::get_EOS_full(){
-    return state_size / 4;
+    return EOS_index_full;
 }
-int Indexer::get_EOS_1wrd(){
-    return 3*state_size / (4 * g_max);
-}
-int Indexer::get_EOS_1wrd_full(){
-    return 3*state_size / 4;
-}
+//int Indexer::get_EOS_1wrd(){
+//    return 3*state_size / (4 * g_max);
+//}
+//int Indexer::get_EOS_1wrd_full(){
+//    return 3*state_size / 4;
+//}
 tuple<int, int, vector<int>, vector<int>, int> Indexer::extractStacks(int index){
     int fj_ind, a_ind, b_ind, g, f, j; //max_d, f_val,j_val, 
     auto result = unravel_index(index, stack_dims);
-    fj_ind = result[0];
+    j = result[0];
     a_ind = result[1];
     b_ind = result[2];
-    g = result[3];
-    f = fj_ind / 2 == 0 ? 0 : 1;
-    j = fj_ind % 2 == 0 ? 0 : 1;
+    f = result[3];
+    g = result[4];
+//    f = fj_ind / 2 == 0 ? 0 : 1;
+//    j = fj_ind % 2 == 0 ? 0 : 1;
     vector<int> a_dims(depth);
     std::fill(a_dims.begin(), a_dims.end(), a_max);
     vector<int> b_dims(depth);
     std::fill(b_dims.begin(), b_dims.end(), b_max);
     auto a = unravel_index(a_ind, a_dims);
     auto b = unravel_index(b_ind, b_dims);
-    return std::make_tuple(f, j, a, b, g);
+    return std::make_tuple(j, a, b, f, g);
 }
 
 State Indexer::extractState(int index){
     int f, j, g;
     vector<int> a, b;
-    std::tie(f, j, a, b, g) = extractStacks(index);
+    std::tie(j, a, b, f, g) = extractStacks(index);
     State state = State(depth);
     state.f = f;
     state.j = j;

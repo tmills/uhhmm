@@ -722,45 +722,45 @@ def resample_beta_g(models, gamma):
 def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_max, g_max):
 
     ## F model:
-    models.fork = [None] * depth
+    models.F = [None] * depth
     ## J models:
-    models.trans = [None] * depth
+    models.J = [None] * depth
     # models.reduce = [None] * depth
     ## Active models:
-    models.act = [None] * depth
+    models.A = [None] * depth
     # models.root = [None] * depth
     ## Reduce models:
-    models.cont = [None] * depth
-    models.exp = [None] * depth
+    models.B_J1 = [None] * depth
+    models.B_J0 = [None] * depth
     # models.next = [None] * depth
     # models.start = [None] * depth
 
     for d in range(0, depth):
         ## One fork model:
-        models.fork[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaf')), name="Fork"+str(d))
-        models.fork[d].beta = np.ones(2) / 2
+        models.F[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaf')), name="Fork"+str(d))
+        models.F[d].beta = np.ones(2) / 2
 
         ## Two join models:
-        models.trans[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaj')), name="J|F1_"+str(d))
-        models.trans[d].beta = np.ones(2) / 2
+        models.J[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaj')), name="Join"+str(d))
+        models.J[d].beta = np.ones(2) / 2
         
         # models.reduce[d] = Model((a_max, b_max, 2), alpha=float(params.get('alphaj')), name="J|F0_"+str(d))
         # models.reduce[d].beta = np.ones(2) / 2
 
         ## TODO -- set d > 0 beta to the value of the model at d (can probably do this later)
         ## One active model:
-        models.act[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|00_"+str(d))
-        models.act[d].beta = np.ones(a_max) / a_max
+        models.A[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="Act"+str(d))
+        models.A[d].beta = np.ones(a_max) / a_max
         
         # models.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
         # models.root[d].beta = np.ones(a_max) / a_max
 
         ## four awaited models:
-        models.cont[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|11_"+str(d))
-        models.cont[d].beta = np.ones(b_max) / b_max
+        models.B_J1[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|J1_"+str(d))
+        models.B_J1[d].beta = np.ones(b_max) / b_max
         
-        models.exp[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|10_"+str(d))
-        models.exp[d].beta = models.cont[d].beta
+        models.B_J0[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|J0_"+str(d))
+        models.B_J0[d].beta = models.B_J1[d].beta
         #
         # models.next[d] = Model((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|01_"+str(d))
         # models.next[d].beta = models.cont[d].beta
@@ -777,14 +777,14 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
     models.lex = Model((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
     models.lex.beta = np.ones(max_output+1) / (max_output + 1)
 
-    models.append(models.fork)
-    models.append(models.trans)
+    models.append(models.F)
+    models.append(models.J)
     # models.append(models.reduce)
-    models.append(models.act)
+    models.append(models.A)
     # models.append(models.root)
-    models.append(models.cont)
+    models.append(models.B_J1)
     # models.append(models.start)
-    models.append(models.exp)
+    models.append(models.B_J0)
     # models.append(models.next)
     models.append(models.pos)
     models.append(models.lex)
@@ -852,16 +852,16 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None, strategy=RANDOM
             state = State.State(max_depth)
             ## special case for first word
             if index == 0:
-                state.f = 0
+                state.f = 1
                 state.j = 0
                 state.a[0] = 0
                 state.b[0] = 0
             else:
                 prev_depth = prev_state.max_awa_depth()
-                if index == 1:
-                    state.f = 1
-                    state.j = 0
-                elif strategy == RANDOM_INIT:
+                # if index == 1:
+                #     state.f = 1
+                #     state.j = 0
+                if strategy == RANDOM_INIT:
                     if np.random.random() >= 0.5:
                         state.f = 1
                     else:
@@ -885,8 +885,10 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None, strategy=RANDOM
                 else:
                     logging.error("Unknown initialization strategy %d" % (strategy))
                     raise Exception
+                if index == 1:
+                    state.j = 0
 
-                cur_depth = prev_depth + state.f - state.j
+                cur_depth = prev_depth - state.j
                 if prev_depth == -1:
                     state.a[cur_depth] = np.random.randint(1, a_max-1)
                 elif state.f == 1 and state.j == 1:
@@ -977,20 +979,12 @@ def increment_counts(hid_seq, sent, models, inc=1):
     depth = -1
 
     # Create end state
-    if len(sent) == 1:
-        EOS = State.State(max_depth)
-        EOS.f = 1
-        EOS.j = 1
-        EOS.a = np.asarray([0]*max_depth)
-        EOS.b = np.asarray([0]*max_depth)
-        EOS.g = 0
-    else:
-        EOS = State.State(max_depth)
-        EOS.f = 0
-        EOS.j = 1
-        EOS.a = np.asarray([0]*max_depth)
-        EOS.b = np.asarray([0]*max_depth)
-        EOS.g = 0
+    EOS = State.State(max_depth)
+    EOS.f = 0
+    EOS.j = 1
+    EOS.a = np.asarray([0]*max_depth)
+    EOS.b = np.asarray([0]*max_depth)
+    EOS.g = 0
 
     # Append end state
     sent = sent[:] + [0]
@@ -1012,32 +1006,24 @@ def increment_counts(hid_seq, sent, models, inc=1):
                 prev_b_above = 0
             else:
                 prev_b_above = prev_state.b[depth-1]
-
-        # Count fork decision
-        if depth >= 0 and (prev_b == 0 and prev_g == 0):
-            print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
-        if depth >= 0 and (prev_b == 0 and prev_g == 0):
-            print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
-        ## Final state is deterministic, don't include counts from final decisions:
-        if word != 0:
-            models.fork[max(0,depth)].count((prev_b, prev_g), state.f, inc)
+        prev_f = prev_state.f
 
         # Count join decision
-        if state.f == 0:
+        if prev_f == 0:
             if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
                 print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
             ## Final state is deterministic, don't include counts from final decisions:
             if word != 0:
-                models.reduce[max(0,depth)].count((prev_a, prev_b_above), state.j, inc)
-        elif state.f == 1:
+                models.J[max(0,depth)].count((prev_a, prev_b_above), state.j, inc)
+        elif prev_f == 1:
             if depth >= 0 and (prev_b == 0 and prev_g == 0):
                 print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
-            models.trans[max(0,depth)].count((prev_b, prev_g), state.j, inc)
+            models.J[max(0,depth)].count((prev_g, prev_b), state.j, inc)
         else:
             raise Exception("Unallowed value (%s) of the fork variable!" %state.f)
 
         # Populate current state conditional dependencies
-        cur_depth = depth + state.f - state.j
+        cur_depth = depth + prev_f - state.j
         cur_g = state.g
         if cur_depth == -1:
             cur_a = 0
@@ -1051,40 +1037,48 @@ def increment_counts(hid_seq, sent, models, inc=1):
             else:
                 cur_b_above = state.b[cur_depth-1]
 
-
         ## Count A & B
-        if state.f == 0 and state.j == 0:
+        if prev_f == 0 and state.j == 0:
             assert depth >= 0 or index == 0, "Found a non-initial -/- decision at depth -1 (should not be possible)."
             if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
                 print('Collision check -- A model at depth >=0 has same conditions as at depth -1.')
-            models.act[max(0,depth)].count((prev_a, prev_b_above), cur_a, inc)
+            models.A[max(0,depth)].count((prev_b_above, prev_a), cur_a, inc)
             if depth >= 0 and (prev_a == 0 and cur_a == 0):
                 print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
-            models.start[max(0,depth)].count((prev_a, cur_a), cur_b, inc)
+            models.B_J0[max(0,depth)].count((cur_a, prev_a), cur_b, inc)
 
-        elif state.f == 1 and state.j == 1:
+        elif prev_f == 1 and state.j == 1:
             assert depth >= 0 or (len(sent) == 2 and index == 1), "Found an illegal +/+ transition at depth -1. %s %s" %(sent, index)
             if depth >= 0 and (prev_b == 0 and prev_g == 0):
                 print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
-            models.cont[max(0,depth)].count((prev_b, prev_g), cur_b, inc)
+            models.B_J1[max(0,depth)].count((prev_b, prev_g), cur_b, inc)
 
-        elif state.f == 1 and state.j == 0:
+        elif prev_f == 1 and state.j == 0:
             assert depth <= max_depth, "Found a +/- decision at the maximum depth level."
             if depth >= 0 and (prev_b == 0 and prev_g == 0):
                 print('Collision check -- A model at depth >=0 has same conditions as at depth -1.')
-            models.root[depth+1].count((prev_b, prev_g), cur_a, inc)
+            models.A[depth+1].count((prev_b, prev_g), cur_a, inc)
             if depth >= 0 and (prev_g == 0 and cur_a == 0):
                 print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
-            models.exp[depth+1].count((prev_g, cur_a), cur_b, inc)
+            models.B_J0[depth+1].count((cur_a, prev_g), cur_b, inc)
 
-        elif state.f == 0 and state.j == 1:
+        elif prev_f == 0 and state.j == 1:
             assert depth > 0 or index == len(sent) - 1, "Found a -/+ decision at depth 0 prior to sentence end."
             if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
                 print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
-            models.next[max(0,depth-1)].count((prev_a, prev_b_above), cur_b, inc)
+            models.B_J1[max(0,depth-1)].count(( prev_b_above, prev_a), cur_b, inc)
 
         else:
             raise Exception("Unallowed value of f=%d and j=%d, index=%d" % (state.f, state.j, index) )
+
+        # Count fork decision
+        if depth >= 0 and (cur_b == 0 and cur_g == 0):
+            print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
+        if depth >= 0 and (cur_b == 0 and cur_g == 0):
+            print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
+        ## Final state is deterministic, don't include counts from final decisions:
+        if word != 0:
+            models.fork[max(0,depth)].count((prev_b, prev_g), state.f, inc)
 
         ## Count G
         models.pos.count(cur_b, cur_g, inc)

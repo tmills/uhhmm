@@ -125,23 +125,19 @@ class DistributedModelCompiler(FullDepthCompiler):
                     prev_val = None
                     switch = 0
                     for val_index, val in enumerate(row_index_bool):
-                        if prev_val is None and val is False:
-                            continue
-                        elif prev_val is None and val is True:
+                        if prev_val is None:
                             cur_val = val
                             prev_val = val
                         else:
                             cur_val = val
-                            if cur_val is not prev_val and switch == 0:
-                                switch = 1
-                                prev_val = cur_val
-                            elif cur_val is not prev_val and switch == 1:
+                            if prev_val is False and cur_val is True:
                                 corrected_pos_dist[index] = 0
                                 break
+                        prev_val = cur_val
                         if cur_val is True:
                             boundary = val_index
                     else:
-                        if prev_val is None:
+                        if prev_val is False:
                             corrected_pos_dist[index] = pos_dist[0]
                         else:
                             corrected_pos_dist[index] = pos_dist[row_index[boundary]]
@@ -164,7 +160,8 @@ class DistributedModelCompiler(FullDepthCompiler):
                             pos_dist[prob_index] = 0
                         else:
                             pos_dist[prob_index] = 1
-            model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, pos_dist), self.depth)
+            model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, pos_dist,
+                                                        indexer.get_EOS_full()), self.depth)
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
             logging.info("Saving GPU models for use")
             pickle.dump(model_gpu, gpu_out_file)

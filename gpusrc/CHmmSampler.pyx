@@ -8,13 +8,13 @@ import State as PyState
 ## model class
 cdef extern from "HmmSampler.h":
     cdef cppclass Model: # no nullary constructor
-        Model(int, int, float*, int, int*, int, int*, int, float*, int, int, int, int, int, int, int, float*, int) except +
+        Model(int, int, float*, int, int*, int, int*, int, float*, int, int, int, int, int, int, int, float*, int, int) except +
         int get_depth()
 
 cdef class GPUModel:
     cdef Model* c_model
     def __cinit__(self, models):
-        (pi, lex_dist, maxes, depth, pos_dist) = models
+        (pi, lex_dist, maxes, depth, pos_dist, EOS_index) = models
         # int a_max, b_max, g_max
         (a_max, b_max, g_max) = maxes
         lex_num_rows = lex_dist.shape[0]
@@ -35,7 +35,7 @@ cdef class GPUModel:
         #print("First 10 elements of data array are: %s" % (pi_data[0:10]) )
         self.c_model = new Model(pi_num_rows, pi_num_cols, &pi_data[0], pi_data_size, &pi_indptr[0], pi_indptr_size,
             &pi_indices[0], pi_indices_size, &lex[0,0], lex_dist_size, lex_num_rows, lex_num_cols, a_max, b_max, g_max,
-            depth, &pos[0], pos_dist_size)
+            depth, &pos[0], pos_dist_size, EOS_index)
     def __dealloc__(self):
         del self.c_model
     def get_depth(self):

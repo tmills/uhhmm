@@ -100,30 +100,22 @@ cdef class Models:
 
     def __reduce__(self):
         d = {}
-        d['fork'] = self.fork
-        d['trans'] = self.trans
-        d['reduce'] = self.reduce
-        d['act'] = self.act
-        d['root'] = self.root
-        d['next'] = self.next
-        d['cont'] = self.cont
-        d['exp'] = self.exp
-        d['start'] = self.start
+        d['F'] = self.F
+        d['J'] = self.J
+        d['A'] = self.A
+        d['B_J1'] = self.B_J1
+        d['B_J0'] = self.B_J0
         d['pos'] = self.pos
         d['lex'] = self.lex
         return (Models, (), d)
     
     def __setstate__(self, d):
-        self.fork = d['fork']
-        self.trans = d['trans']
-        self.reduce = d['reduce']
-        self.act = d['act']
-        self.root = d['root']
-        self.next = d['next']
-        self.cont = d['cont']
-        self.exp = d['exp']
-        self.start = d['start']
+        self.F = d['F']
+        self.J = d['J']
+        self.A = d['A']
+        self.B_J1 = d['B_J1']
+        self.B_J0 = d['B_J0']
         self.pos = d['pos']
         self.lex = d['lex']
-        self.models = [self.fork, self.trans, self.reduce, self.act, self.root, self.next, self.cont, self.exp, self.start, self.pos, self.lex]
+        self.models = [self.F, self.J, self.A, self.B_J1, self.B_J0, self.pos, self.lex]
 

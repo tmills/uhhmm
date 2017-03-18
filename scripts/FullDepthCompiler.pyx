@@ -27,6 +27,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
 
     prev_state = indexer.extractState(prev_index)
     start_depth = get_cur_awa_depth(prev_state.b)
+    nominal_depth = start_depth + prev_state.f
     (a_max, b_max, g_max) = indexer.getVariableMaxes()
     totalK = indexer.get_state_size()
     
@@ -124,27 +125,25 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     #             continue
 
     for j in (0,1):
+
         next_state.j = j
         ## See note above where we set next_state.f
         if prev.f == 0:
-            cum_probs[0] = models.trans[start_depth].dist[ prev_a, prev_b_above, j ]
+            cum_probs[0] = models.J[start_depth].dist[ prev_a, prev_b_above, j ]
         else:
-            cum_probs[0] = models.trans[start_depth].dist[ prev_b, prev_g, j ]
+            cum_probs[0] = models.J[start_depth].dist[ prev_b, prev_g, j ]
+
+        if nominal_depth == depth:
+            next_state.j = 1
+            cum_probs[0] = 1
 
         ## Add probs for transition to EOS
         if prev.f==0 and j==1 and start_depth == 0:
             # FJ decision into EOS is observed, don't model. Just extract prob from awaited transition
-            EOS_prob = models.cont[start_depth].dist[ prev_a, prev_b_above, 0 ]
+            EOS_prob = models.J[start_depth].dist[ prev_a, prev_b_above, 0 ]
             if full_pi:
                 indices_full.append(EOS_full)
                 data_full.append(EOS_prob)
-            indices.append(EOS)
-            data.append(EOS_prob)
-        elif prev.f==1 and j==1 and start_depth == -1:
-            EOS_prob = cum_probs[0] * models.cont[0].dist[ prev_b, prev_g, 0 ]
-            if full_pi:
-              indices_full.append(EOS_full)
-              data_full.append(EOS_prob)
             indices.append(EOS)
             data.append(EOS_prob)
 
@@ -157,11 +156,8 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     if a == prev_state.a[start_depth]:
                         next_state.a[0:start_depth] = prev_state.a[0:start_depth]
                         next_state.b[0:start_depth] = prev_state.b[0:start_depth]
-
-                        next_state.a[start_depth] = a
-
-                        cum_probs[2] = cum_probs[0] * models.cont[start_depth].dist[ prev_b, prev_g, b ]
                         next_state.b[start_depth] = b
+                        cum_probs[1] = cum_probs[0] * models.B_J1[start_depth].dist[ prev_b, prev_g, b ]
                     else:
                         continue
 
@@ -175,7 +171,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     if a == prev_state.a[start_depth-1]:
                         next_state.a[start_depth-1] = a
                         next_state.b[start_depth-1] = b
-                        cum_probs[1] = cum_probs[0] * models.cont[start_depth-1].dist[ prev_a, prev_b_above, b ]
+                        cum_probs[1] = cum_probs[0] * models.B_J0[start_depth-1].dist[ prev_b_above, prev_a, b ]
                     else:
                         continue
 
@@ -184,10 +180,10 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     next_state.a[0:start_depth] = prev_state.a[0:start_depth]
                     next_state.b[0:start_depth] = prev_state.b[0:start_depth]
                     next_state.a[start_depth] = a
-                    cum_probs[1] = cum_probs[0] * models.act[start_depth].dist[ prev_a, prev_b_above, a ] * \
-                                   models.exp[start_depth].dist[ prev_a, a, b ]
+                    cum_probs[1] = cum_probs[0] * models.A[start_depth].dist[prev_b_above, prev_a, a ] * \
+                                   models.B_J0[start_depth].dist[ a, prev_a, b ]
 
-                    next_state.b[start_depth] = prev_state.g
+                    next_state.b[start_depth] = b
 
                 elif prev.f == 1 and j == 0:
                     ## +/-, create a new stack level unless we're at the limit
@@ -196,8 +192,8 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     next_state.a[0:start_depth+1] = prev_state.a[0:start_depth+1]
                     next_state.b[0:start_depth+1] = prev_state.b[0:start_depth+1]
                     next_state.a[start_depth+1] = a
-                    cum_probs[1] = cum_probs[0] * models.act[start_depth+1].dist[ prev_b_above, prev_g, a ] * \
-                                   models.exp[start_depth+1].dist[ prev_g, a, b ]
+                    cum_probs[1] = cum_probs[0] * models.A[start_depth+1].dist[ prev_b, prev_g, a ] * \
+                                   models.B_J0[start_depth+1].dist[ a, prev_g, b ]
 
                     next_state.b[start_depth+1] = b
                 for f in (0, 1):
@@ -206,7 +202,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     ## when t=0, start_depth will be -1, which in the d> 1 case will wraparound.
                     ## we want in the t=0 case for f_{t=1} to be [-/-]*d
                     if start_depth - j >= 0:
-                        cum_probs[2] = cum_probs[1] * models.fork[start_depth].dist[b, prev_g, f]
+                        cum_probs[2] = cum_probs[1] * models.F[start_depth].dist[b, prev_g, f]
                     else:
                         ## if start depth is -1 we're only allowed to fork:
                         if next_state.f == 1:
@@ -221,7 +217,10 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     # the g is factored out
                     range_probs = cum_probs[2] #* (models.pos.dist[b,:-1])
                     if full_pi:
-                        range_probs_full = cum_probs[2] * (models.pos.dist[b,:-1])
+                        if next_state.f == 0:
+                            range_probs_full = cum_probs[2] * (np.ones_like(models.pos.dist[b, :-1]))
+                        else:
+                            range_probs_full = cum_probs[2] * (models.pos.dist[b,:-1])
                         #logging.info("Building model with %s => %s" % (prev_state.str(), next_state.str() ) )
                         for g in range(1,len(range_probs_full)):
                             indices_full.append(state_index_full + g)
@@ -284,35 +283,27 @@ cdef class FullDepthCompiler:
 def unlog_models(models, depth):
 
     for d in range(0, depth):
-        models.fork[d].dist = 10**models.fork[d].dist
+        models.F[d].dist = 10**models.F[d].dist
         
-        models.reduce[d].dist = 10**models.reduce[d].dist
-        models.trans[d].dist = 10**models.trans[d].dist
+        models.J[d].dist = 10**models.J[d].dist
         
-        models.act[d].dist = 10**models.act[d].dist
-        models.root[d].dist = 10**models.root[d].dist
-        
-        models.cont[d].dist = 10**models.cont[d].dist
-        models.exp[d].dist = 10**models.exp[d].dist
-        models.next[d].dist = 10**models.next[d].dist
-        models.start[d].dist = 10**models.start[d].dist
+        models.A[d].dist = 10**models.A[d].dist
+
+        models.B_J0[d].dist = 10**models.B_J0[d].dist
+        models.B_J1[d].dist = 10**models.B_J1[d].dist
         
     models.pos.dist = 10**models.pos.dist
 
 def relog_models(models, depth):
     for d in range(0, depth):
-        models.fork[d].dist = np.log10(models.fork[d].dist)
+        models.F[d].dist = np.log10(models.F[d].dist)
         
-        models.reduce[d].dist = np.log10(models.reduce[d].dist)
-        models.trans[d].dist = np.log10(models.trans[d].dist)
-        
-        models.act[d].dist = np.log10(models.act[d].dist)
-        models.root[d].dist = np.log10(models.root[d].dist)
-        
-        models.cont[d].dist = np.log10(models.cont[d].dist)
-        models.exp[d].dist = np.log10(models.exp[d].dist)
-        models.next[d].dist = np.log10(models.next[d].dist)
-        models.start[d].dist = np.log10(models.start[d].dist)
+        models.J[d].dist = np.log10(models.J[d].dist)
+
+        models.A[d].dist = np.log10(models.A[d].dist)
+
+        models.B_J0[d].dist = np.log10(models.B_J0[d].dist)
+        models.B_J1[d].dist = np.log10(models.B_J1[d].dist)
         
     models.pos.dist = np.log10(models.pos.dist)
 
