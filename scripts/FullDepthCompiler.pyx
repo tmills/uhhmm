@@ -187,9 +187,9 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     cum_probs[1] = cum_probs[0] * models.act[start_depth].dist[ prev_a, prev_b_above, a ] * \
                                    models.exp[start_depth].dist[ prev_a, a, b ]
 
-                    next_state.b[start_depth] = b
+                    next_state.b[start_depth] = prev_state.g
 
-                elif f == 1 and j == 0:
+                elif prev.f == 1 and j == 0:
                     ## +/-, create a new stack level unless we're at the limit
                     if start_depth+1 == depth:
                         continue

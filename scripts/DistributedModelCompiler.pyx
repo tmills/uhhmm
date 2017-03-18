@@ -9,6 +9,7 @@ import scipy.sparse
 from FullDepthCompiler import FullDepthCompiler, unlog_models, relog_models
 import pickle
 from Indexer import Indexer
+import itertools
 
 class DistributedModelCompiler(FullDepthCompiler):
     
@@ -115,18 +116,54 @@ class DistributedModelCompiler(FullDepthCompiler):
             pos_dist = models.pos.dist
             pos_dist[:, -1].fill(0)
             if self.depth > 1:
-                corrected_pos_dist = np.zeros((pos_dist.shape[0]**2, pos_dist.shape[1]))
+                corrected_pos_dist = np.zeros((pos_dist.shape[0]**self.depth, pos_dist.shape[1]))
+                row_indices = list(itertools.product(range(b_max), repeat=3))
                 original_num_rows = pos_dist.shape[0]
-                for row_number in range(0, corrected_pos_dist.shape[0]):
-                    replicate_row_number = row_number % original_num_rows
-                    if replicate_row_number != 0:
-                        corrected_pos_dist[row_number, :] = pos_dist[replicate_row_number]
+                for index, row_index in enumerate(row_indices):
+                    row_index_bool = [bool(x) for x in row_index]
+                    boundary = -1
+                    prev_val = None
+                    switch = 0
+                    for val_index, val in enumerate(row_index_bool):
+                        if prev_val is None and val is False:
+                            continue
+                        elif prev_val is None and val is True:
+                            cur_val = val
+                            prev_val = val
+                        else:
+                            cur_val = val
+                            if cur_val is not prev_val and switch == 0:
+                                switch = 1
+                                prev_val = cur_val
+                            elif cur_val is not prev_val and switch == 1:
+                                corrected_pos_dist[index] = 0
+                                break
+                        if cur_val is True:
+                            boundary = val_index
                     else:
-                        corrected_pos_dist[row_number, :] = pos_dist[int(row_number / original_num_rows)]
+                        if prev_val is None:
+                            corrected_pos_dist[index] = pos_dist[0]
+                        else:
+                            corrected_pos_dist[index] = pos_dist[row_index[boundary]]
             else:
                 corrected_pos_dist = pos_dist
             pos_dist = np.ravel(corrected_pos_dist.astype(np.float32))
             pos_dist = np.repeat(pos_dist, 2)
+            full_g_num = g_max * 2
+            for prob_index, prob in enumerate(pos_dist):
+                if prob != 0:
+                    if prob_index % 2 == 0:
+                        row_index = prob_index / (full_g_num)
+                        p_index = (prob_index % (full_g_num)) / 2
+                        b_val = 0
+                        for row_index_val in row_indices[row_index][::-1]:
+                            if row_index_val > 0:
+                                b_val = row_index_val
+                                break
+                        if b_val != p_index:
+                            pos_dist[prob_index] = 0
+                        else:
+                            pos_dist[prob_index] = 1
             model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, pos_dist), self.depth)
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
             logging.info("Saving GPU models for use")
