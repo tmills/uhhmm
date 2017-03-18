@@ -27,7 +27,9 @@ argparser.add_argument('-p', '--num_procs', dest='num_procs', action='store', de
 argparser.add_argument('-fin', '--finite', dest='finite', action='store_true', help='Use finite HHMM (defaults to infinite HMM)')
 argparser.add_argument('-d', '--depth', dest='depth', action='store', default=1, help='Maximum store depth')
 argparser.add_argument('-P', '--gpu', dest='gpu', action='store_true', help='Use GPU-ified learner (defaults to CPU only)')
+argparser.add_argument('-e', '--eos_fj', dest='eos_fj', action='store_true', help='Use model which samples backward from EOS and uses joint FJ model.')
 argparser.add_argument('-l', '--num_gold_sents', dest='num_gold_sents', action='store', help='Number of gold PoS-tagged sentences to use (requires gold tags in the input). If all, use "-l all".')
+argparser.add_argument('-N', '--inc', dest='inc', action='store', default='1', help='Amount by which to increment counts. Also supports "rand###", where "###" indicates an upper bound for randint.')
 argparser.add_argument('-S', '--split_merge_iters', dest='split_merge_iters', action='store', help='Iteration modulus at which to perform split-merge.')
 args, unknown = argparser.parse_known_args()
 
@@ -60,9 +62,11 @@ print('num_procs=' + str(args.num_procs))
 print('finite=' + str(int(args.finite)))
 print('depth=' + str(args.depth))
 print('gpu=' + str(int(args.gpu)))
+print('eos_fj=' + str(int(args.eos_fj)))
 if args.gpu:
     print('gpu_batch_size=32')
 if args.num_gold_sents:
     print('num_gold_sents=' + str(args.num_gold_sents))
 if args.split_merge_iters:
     print('split_merge_iters=' + str(args.split_merge_iters))
+print('inc=' + str(args.inc))

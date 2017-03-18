@@ -80,6 +80,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     finite = bool(int(params.get('finite', 0)))
     cluster_cmd = params.get('cluster_cmd', None)
     split_merge_iters = int(params.get('split_merge_iters', -1))
+    inc = params.get('inc', 1)
     infinite_sample_prob = float(params.get('infinite_prob', 0.0))
     batch_size = min(num_sents, int(params.get('batch_size', num_sents)))
     gpu = bool(int(params.get('gpu', 0)))
@@ -304,7 +305,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             if parse.success:
                 try:
 
-                    increment_counts(parse.state_list, ev_seqs[ parse.index ], models)
+                    increment_counts(parse.state_list, ev_seqs[ parse.index ], models, inc)
                     # logging.info('Good parse:')
                     # logging.info(' '.join([x.str() for x in parse.state_list]))
                     # logging.info('The index is %d' % parse.index)
@@ -530,7 +531,7 @@ def initialize_and_load_state(ev_seqs, models, max_depth, init_seqs):
 
             hid_seq.append(state)
         state_seqs.append(hid_seq)
-        increment_counts(hid_seq, sent, models)
+        increment_counts(hid_seq, sent, models, inc)
         models.increment_global_counts()
 
     return state_seqs
@@ -574,6 +575,15 @@ def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
 def increment_counts(hid_seq, sent, models, inc=1):
     depth = len(models.fj)
 
+    # Initialize incrementer
+    inc = str(inc)
+    rand_inc = False
+    if inc.startswith('rand'):
+        rand_inc = True
+        ceil = int(inc[4:])
+    else:
+        inc = int(inc)
+
     ## for every state transition in the sentence increment the count
     ## for the condition and for the output
 
@@ -608,6 +618,10 @@ def increment_counts(hid_seq, sent, models, inc=1):
     hid_seq = hid_seq[:] + [EOS]
 
     for index,word in enumerate(sent):
+        # Set incrementer
+        if rand_inc:
+            inc = np.random.randint(1,ceil+1)
+
         state = hid_seq[index]
 
         # Populate previous state conditional dependencies
