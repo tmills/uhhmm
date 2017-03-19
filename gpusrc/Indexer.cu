@@ -50,7 +50,7 @@ int Indexer::get_EOS_full(){
 //int Indexer::get_EOS_1wrd_full(){
 //    return 3*state_size / 4;
 //}
-tuple<int, int, vector<int>, vector<int>, int> Indexer::extractStacks(int index){
+tuple<int, vector<int>, vector<int>, int, int> Indexer::extractStacks(int index){
     int fj_ind, a_ind, b_ind, g, f, j; //max_d, f_val,j_val, 
     auto result = unravel_index(index, stack_dims);
     j = result[0];
@@ -72,12 +72,7 @@ tuple<int, int, vector<int>, vector<int>, int> Indexer::extractStacks(int index)
 State Indexer::extractState(int index){
     int f, j, g;
     vector<int> a, b;
-    auto t = extractStacks(index);
-    j = t[0];
-    a = t[1];
-    b = t[2];
-    f = t[3];
-    g = t[4];
+    std::tie(j, a, b, f, g) = extractStacks(index);
     State state = State(depth);
     state.f = f;
     state.j = j;
