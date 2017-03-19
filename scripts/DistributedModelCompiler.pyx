@@ -156,7 +156,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                             if row_index_val > 0:
                                 b_val = row_index_val
                                 break
-                        if b_val != p_index or b_val == b_max + 1:
+                        if b_val != p_index or b_val == b_max - 1:
                             pos_dist[prob_index] = 0
                         else:
                             pos_dist[prob_index] = 1
