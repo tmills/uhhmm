@@ -261,8 +261,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
-        a_max = models.act[0].dist.shape[-1]
-        b_max = models.cont[0].dist.shape[-1]
+        a_max = models.A[0].dist.shape[-1]
+        b_max = models.B_J0[0].dist.shape[-1]
         g_max = models.pos.dist.shape[-1]
 
         ## How many total states are there?
