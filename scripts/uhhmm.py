@@ -1138,13 +1138,13 @@ def resample_all(models, sample, params, depth):
         logging.error("Resampling the pos dist resulted in a nan")
 
     for d in range(depth-1, -1, -1):
-        models.start[d].sampleDirichlet(b_base if d == 0 else b_base + models.start[d-1].pairCounts * sample.alpha_b)
-        models.exp[d].sampleDirichlet(b_base if d == 0 else b_base + models.exp[d-1].pairCounts * sample.alpha_b)
+        models.B_J1[d].sampleDirichlet(b_base if d == 0 else b_base + models.B_J1[d-1].pairCounts * sample.alpha_b)
+        models.B_J0[d].sampleDirichlet(b_base if d == 0 else b_base + models.B_J0[d-1].pairCounts * sample.alpha_b)
         # models.cont[d].sampleDirichlet(b_base if d == 0 else b_base + models.cont[d-1].pairCounts * sample.alpha_b)
         # models.next[d].sampleDirichlet(b_base if d == 0 else b_base + models.next[d-1].pairCounts * sample.alpha_b)
-        models.act[d].sampleDirichlet(a_base if d == 0 else a_base + models.act[d-1].pairCounts * sample.alpha_a)
+        models.A[d].sampleDirichlet(a_base if d == 0 else a_base + models.A[d-1].pairCounts * sample.alpha_a)
         # models.root[d].sampleDirichlet(a_base if d == 0 else a_base + models.root[d-1].pairCounts * sample.alpha_a)
         # models.reduce[d].sampleDirichlet(j_base if d == 0 else j_base + models.reduce[d-1].pairCounts * sample.alpha_j)
-        models.trans[d].sampleDirichlet(j_base if d == 0 else j_base + models.trans[d-1].pairCounts * sample.alpha_j)
-        models.fork[d].sampleDirichlet(f_base if d == 0 else f_base + models.fork[d-1].pairCounts * sample.alpha_f)
+        models.J[d].sampleDirichlet(j_base if d == 0 else j_base + models.J[d-1].pairCounts * sample.alpha_j)
+        models.F[d].sampleDirichlet(f_base if d == 0 else f_base + models.F[d-1].pairCounts * sample.alpha_f)
 
