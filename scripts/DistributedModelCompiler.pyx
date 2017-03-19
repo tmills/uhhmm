@@ -120,6 +120,9 @@ class DistributedModelCompiler(FullDepthCompiler):
                 row_indices = list(itertools.product(range(b_max), repeat=self.depth))
                 original_num_rows = pos_dist.shape[0]
                 for index, row_index in enumerate(row_indices):
+                    if any([x == b_max - 1 for x in row_index]):
+                        corrected_pos_dist[index] = 0
+                        continue
                     row_index_bool = [bool(x) for x in row_index]
                     boundary = -1
                     prev_val = None
@@ -130,7 +133,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                             prev_val = val
                         else:
                             cur_val = val
-                            if (prev_val is False and cur_val is True) or row_index[val_index] == b_max - 1:
+                            if (prev_val is False and cur_val is True):
                                 corrected_pos_dist[index] = 0
                                 break
                         prev_val = cur_val
