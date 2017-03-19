@@ -128,7 +128,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
 
         next_state.j = j
         ## See note above where we set next_state.f
-        if prev.f == 0:
+        if prev_state.f == 0:
             cum_probs[0] = models.J[start_depth].dist[ prev_a, prev_b_above, j ]
         else:
             cum_probs[0] = models.J[start_depth].dist[ prev_b, prev_g, j ]
@@ -138,7 +138,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
             cum_probs[0] = 1
 
         ## Add probs for transition to EOS
-        if prev.f==0 and j==1 and start_depth == 0:
+        if prev_state.f==0 and j==1 and start_depth == 0:
             # FJ decision into EOS is observed, don't model. Just extract prob from awaited transition
             EOS_prob = models.J[start_depth].dist[ prev_a, prev_b_above, 0 ]
             if full_pi:
@@ -152,7 +152,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
             for b in range(1, b_max-1):
                 next_state.b[:] = 0
 
-                if prev.f == 1 and j == 1:
+                if prev_state.f == 1 and j == 1:
                     if a == prev_state.a[start_depth]:
                         next_state.a[0:start_depth] = prev_state.a[0:start_depth]
                         next_state.b[0:start_depth] = prev_state.b[0:start_depth]
@@ -161,7 +161,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     else:
                         continue
 
-                elif prev.f == 0 and j == 1:
+                elif prev_state.f == 0 and j == 1:
                     ## -/+ case, reducing a level unless already at minimum depth
                     if start_depth <= 0:
                         continue
@@ -175,7 +175,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     else:
                         continue
 
-                elif prev.f == 0 and j == 0:
+                elif prev_state.f == 0 and j == 0:
                     ## -/-, reduce in place
                     next_state.a[0:start_depth] = prev_state.a[0:start_depth]
                     next_state.b[0:start_depth] = prev_state.b[0:start_depth]
@@ -185,7 +185,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
 
                     next_state.b[start_depth] = b
 
-                elif prev.f == 1 and j == 0:
+                elif prev_state.f == 1 and j == 0:
                     ## +/-, create a new stack level unless we're at the limit
                     if start_depth+1 == depth:
                         continue
