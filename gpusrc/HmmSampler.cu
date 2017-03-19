@@ -516,8 +516,8 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
     int g_max =  p_model -> g_max;
     int b_max = p_model -> b_max;
     get_row(pi->get_view(), sample_t, *trans_slice, pos_full_array, g_max, b_max);
-    float trans_slice_sum = thrust::reduce(thrust::device, *trans_slice.begin(), *trans_slice.end());
-     cout << "trans_slice" << endl;
+    float trans_slice_sum_total = thrust::reduce(thrust::device, *trans_slice.begin(), *trans_slice.end());
+     cout << "trans_slice " << trans_slice_sum_total << endl;
     // print(*trans_slice); 
     // auto t12 = Clock::now();
     array2d<float, device_memory>::column_view dyn_prog_col = dyn_prog[t]->column(sent_ind);
@@ -530,7 +530,7 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
     // auto t13 = Clock::now();
 //    cusp::array1d<float, host_memory> un_normalized_sums(dyn_prog_col);
     normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
-     cout << "normalizer" << normalizer <<endl;
+     cout << "normalizer " << normalizer <<endl;
     blas::scal(dyn_prog_col, 1.0f/normalizer);
     // thrust::transform(dyn_prog_row.begin(), dyn_prog_row.end(), dyn_prog_row.begin(), multiplies_value<float>(1 / normalizer));
     // auto t14 = Clock::now();
