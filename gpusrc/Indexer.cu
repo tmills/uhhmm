@@ -72,7 +72,12 @@ tuple<int, int, vector<int>, vector<int>, int> Indexer::extractStacks(int index)
 State Indexer::extractState(int index){
     int f, j, g;
     vector<int> a, b;
-    std::tie(j, a, b, f, g) = extractStacks(index);
+    auto t = extractStacks(index);
+    j = t[0];
+    a = t[1];
+    b = t[2];
+    f = t[3];
+    g = t[4];
     State state = State(depth);
     state.f = f;
     state.j = j;
