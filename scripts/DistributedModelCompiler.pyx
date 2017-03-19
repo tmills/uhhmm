@@ -149,8 +149,8 @@ class DistributedModelCompiler(FullDepthCompiler):
             for prob_index, prob in enumerate(pos_dist):
                 if prob != 0:
                     if prob_index % 2 == 0:
-                        row_index = prob_index / (full_g_num)
-                        p_index = (prob_index % (full_g_num)) / 2
+                        row_index = prob_index // full_g_num
+                        p_index = (prob_index % (full_g_num)) // 2
                         b_val = 0
                         for row_index_val in row_indices[row_index][::-1]:
                             if row_index_val > 0:

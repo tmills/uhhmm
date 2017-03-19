@@ -100,7 +100,8 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
         state_a = np.zeros(self.depth)
         state_b = np.zeros(self.depth)
         state_g = 0
-        state_index = indexer.getStateIndex(state_j, state_a, state_b, state_f, state_g) / g_max
+        state_index_full = indexer.getStateIndex(state_j, state_a, state_b, state_f, state_g)
+        state_index = int(state_index_full / g_max)
         if full_pi:
             range_probs_full = models.pos.dist[0, :-1]
             for g in range(1,len(range_probs_full)):
