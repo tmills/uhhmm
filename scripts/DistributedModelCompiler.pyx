@@ -130,7 +130,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                             prev_val = val
                         else:
                             cur_val = val
-                            if prev_val is False and cur_val is True:
+                            if (prev_val is False and cur_val is True) or row_index[val_index] == b_max - 1:
                                 corrected_pos_dist[index] = 0
                                 break
                         prev_val = cur_val
@@ -156,7 +156,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                             if row_index_val > 0:
                                 b_val = row_index_val
                                 break
-                        if b_val != p_index or b_val == b_max - 1:
+                        if b_val != p_index:
                             pos_dist[prob_index] = 0
                         else:
                             pos_dist[prob_index] = 1
