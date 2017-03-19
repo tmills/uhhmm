@@ -111,13 +111,13 @@ class DistributedModelCompiler(FullDepthCompiler):
         logging.info("Transforming and writing csc model")
         # if gpu then dumping out two models, the one used by worker should be *.bin.gpu
         pi = pi.tocsc()
+        row_indices = list(itertools.product(range(b_max), repeat=self.depth))
         if self.gpu == True:
             lex_dist = 10**(models.lex.dist.astype(np.float32))
             pos_dist = models.pos.dist
             pos_dist[:, -1].fill(0)
             if self.depth > 1:
                 corrected_pos_dist = np.zeros((pos_dist.shape[0]**self.depth, pos_dist.shape[1]))
-                row_indices = list(itertools.product(range(b_max), repeat=self.depth))
                 original_num_rows = pos_dist.shape[0]
                 for index, row_index in enumerate(row_indices):
                     if any([x == b_max - 1 for x in row_index]):
