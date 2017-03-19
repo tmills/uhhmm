@@ -63,7 +63,7 @@ cdef class State:
 
         string += ':POS' + str(self.g)
 
-    return string
+        return string
 
     def to_list(self):
         return (self.f, self.j, self.a, self.b, self.g)
