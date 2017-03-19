@@ -516,14 +516,13 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
     int g_max =  p_model -> g_max;
     int b_max = p_model -> b_max;
     get_row(pi->get_view(), sample_t, *trans_slice, pos_full_array, g_max, b_max);
-    float trans_slice_sum_total = thrust::reduce(thrust::device, *trans_slice.begin(), *trans_slice.end());
-     cout << "trans_slice " << trans_slice_sum_total << endl;
     // print(*trans_slice); 
     // auto t12 = Clock::now();
     array2d<float, device_memory>::column_view dyn_prog_col = dyn_prog[t]->column(sent_ind);
      cout << "Dyn_prog_row" << endl;
     // print(dyn_prog_row);
     float trans_slice_sum = thrust::reduce(thrust::device, (*trans_slice).begin(), (*trans_slice).end());
+    cout << "trans_slice " << trans_slice_sum << endl;
     //if (trans_slice_sum != 0.0f){
         cusp::blas::xmy(*trans_slice, dyn_prog_col, dyn_prog_col);
     //}
