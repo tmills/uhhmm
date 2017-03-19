@@ -10,12 +10,12 @@ cimport numpy as np
 cdef class Indexer:
     #cdef int depth, fj_size, a_max, b_max, g_max, state_size, a_size, b_size
     def __init__(self, models):
-        self.depth = len(models.fork)
+        self.depth = len(models.F)
         self.f_size = 2
         self.j_size = 2
         self.fj_size = 4
-        self.a_max = models.act[0].dist.shape[-1]
-        self.b_max = models.start[0].dist.shape[-1]
+        self.a_max = models.A[0].dist.shape[-1]
+        self.b_max = models.B_J0[0].dist.shape[-1]
         self.g_max = models.pos.dist.shape[-1]
         self.state_size = self.fj_size * ((self.a_max * self.b_max) ** self.depth) * self.g_max 
         self.a_size = self.a_max**self.depth
