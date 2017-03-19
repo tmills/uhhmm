@@ -21,8 +21,7 @@ cdef class Indexer:
         self.a_size = self.a_max**self.depth
         self.b_size = self.b_max**self.depth
         self.EOS_index = 0
-        self.EOS_1wrd_index = 0
-    
+
     def getVariableMaxes(self):
         return (self.a_max, self.b_max, self.g_max)
 
