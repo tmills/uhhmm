@@ -58,11 +58,9 @@ cdef class State:
                     string += ";"
                 string += "ACT" + str(self.a[d]) + '/AWA' + str(self.b[d])
 
+        string += ':POS' + str(self.g)
         f_str = '+/' if self.f == 1 else '-/'
         string += f_str
-
-        string += ':POS' + str(self.g)
-
         return string
 
     def to_list(self):

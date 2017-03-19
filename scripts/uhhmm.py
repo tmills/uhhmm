@@ -304,8 +304,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             # logging.info(parse.success)
             if parse.success:
                 try:
-                    logging.INFO('The state sequence is ' + ' '.join(
-                        [str(indexer.getStateIndex(x.j, x.a, x.b, x.f, x.g)) for x in parse.state_list]))
+                    logging.INFO('The state sequence is ' + ' '.join([str(indexer.getStateIndex(x.j, x.a, x.b, x.f, x.g)) for x in parse.state_list]))
                     increment_counts(parse.state_list, ev_seqs[ parse.index ], models)
 
                     # logging.info('Good parse:')
