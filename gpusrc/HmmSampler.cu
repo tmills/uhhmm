@@ -516,6 +516,7 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
     int g_max =  p_model -> g_max;
     int b_max = p_model -> b_max;
     get_row(pi->get_view(), sample_t, *trans_slice, pos_full_array, g_max, b_max);
+    float trans_slice_sum = thrust::reduce(thrust::device, *trans_slice.begin(), *trans_slice.end());
      cout << "trans_slice" << endl;
     // print(*trans_slice); 
     // auto t12 = Clock::now();
