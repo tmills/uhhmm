@@ -97,7 +97,7 @@ cdef class Indexer:
     ## would happen and we don't want to blow up the state space.
     cpdef int getStateIndex(self, int j, np.ndarray a, np.ndarray b, int f, int g):
         cdef int d, index
-        print(type(j), j, type(a), a, type(b), b, type(f), f, type(g), g)
+        # print(type(j), j, type(a), a, type(b), b, type(f), f, type(g), g)
         a_stack  = np.ravel_multi_index(a, [self.a_max] * self.depth)
         b_stack = np.ravel_multi_index(b, [self.b_max] * self.depth)
         
