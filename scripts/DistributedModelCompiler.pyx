@@ -137,7 +137,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                         if cur_val is True:
                             boundary = val_index
                     else:
-                        if any(val_index) is False:
+                        if any(row_index_bool) is False:
                             corrected_pos_dist[index] = pos_dist[0]
                         else:
                             corrected_pos_dist[index] = pos_dist[row_index[boundary]]
