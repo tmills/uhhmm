@@ -620,7 +620,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
     for index,word in enumerate(sent):
         # Set incrementer
         if rand_inc:
-            inc = np.random.randint(1,ceil+1)
+            inc = np.random.randint(0,ceil) + 1
 
         state = hid_seq[index]
 
