@@ -285,6 +285,7 @@ Array* HmmSampler::make_pos_full_array(Array* pos_matrix ,int g_max, int b_max, 
 }
 
 void HmmSampler::initialize_dynprog(int batch_size, int max_len){
+    try{
     sampler_batch_size = batch_size;
     max_sent_len = max_len;
     dyn_prog = new Dense*[max_len];
@@ -300,6 +301,10 @@ void HmmSampler::initialize_dynprog(int batch_size, int max_len){
     std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();
     int state_size_no_g = p_indexer->get_state_size() / g_max;
     dyn_prog_part = new Dense(state_size_no_g, batch_size, 0.0f);
+    } catch (...) {
+        cout << "init dynprog error!" << endl;
+        throw;
+    }
 }
 
 void HmmSampler::g_factored_multiply(Dense* prev_dyn_prog_slice, Dense* this_dyn_prog_slice){
@@ -567,13 +572,13 @@ std::tuple<std::vector<std::vector<State> >, std::vector<float>> HmmSampler::sam
         log_probs = forward_pass(sents, sent_index);
     }catch(thrust::system_error &e){
         cerr << "Error in forward pass: " << e.what() << endl;
-        exit(-1);
+        throw e;
     }
     try{
         states = reverse_sample(sents, sent_index);
     }catch(thrust::system_error &e){
         cerr << "Error in reverse sample: " << e.what() << endl;
-        exit(-1);
+        throw e;
     }
     
     
