@@ -48,6 +48,10 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
         return indices, data, indices_full, data_full
     
     ## Skip invalid start states
+    ## never have b_max or a_max or p_max in the state for the time being
+    if any([x == a_max -1 for x in prev_state.a]) or any([x == b_max -1 for x in prev_state.b]) or prev_state.g == g_max - 1:
+        return indices, data, indices_full, data_full
+
     if depth > 1:
         ## One that should not be allowed by our indexing scheme:
         for d in range(0, depth):
