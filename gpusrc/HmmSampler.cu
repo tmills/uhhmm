@@ -161,7 +161,7 @@ Sparse * tile(int g_len, int state_size){
     return temp_mat;
 }
 
-// this gives a TRANSPOSED version of a tile matrix for computation convenience
+// this gives a TRANSPOSED version of matrix repetition for computation convenience
 Sparse * expand(int g_len, int state_size){
 
 //     cout << "expand5.1" << endl;

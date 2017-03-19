@@ -92,7 +92,7 @@ def read_serialized_models(pickle_filename):
 def write_output(sample, stats, config, gold_pos=None):
 #    last_sample = samples[-1]
     models = sample.models
-    depth = len(models.fork)
+    depth = len(models.F)
 
     #print("Default encoding is %s" % sys.getdefaultencoding() )
 
@@ -127,15 +127,15 @@ def write_output(sample, stats, config, gold_pos=None):
     write_model(models.pos.dist, output_dir + "/p_pos_%d.txt" % sample.iter, condPrefix="B", outcomePrefix="POS")
 
     for d in range(0, depth):
-        write_model(models.cont[d].dist, output_dir + "/p_awa_cont_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="AWA", depth=d)
-        write_model(models.start[d].dist, output_dir + "/p_awa_start_%d.txt" % sample.iter, condPrefix="AA", outcomePrefix="AWA", depth=d)
-        write_model(models.exp[d].dist, output_dir + "/p_awa_exp_%d.txt" % sample.iter, condPrefix="GA", outcomePrefix="AWA", depth=d)
-        write_model(models.next[d].dist, output_dir + "/p_awa_next_%d.txt" % sample.iter, condPrefix="BA", outcomePrefix="AWA", depth=d)
-        write_model(models.act[d].dist, output_dir + "/p_act_act_%d.txt" % sample.iter, condPrefix="AB", outcomePrefix="ACT", depth=d)
-        write_model(models.root[d].dist, output_dir + "/p_act_root_%d.txt" %sample.iter, condPrefix="BG", outcomePrefix="ACT", depth=d)
-        write_model(models.fork[d].dist, output_dir + "/p_fork_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="F", depth=d)
-        write_model(models.reduce[d].dist, output_dir + "/p_j_reduce_%d.txt" % sample.iter, condPrefix="AB", outcomePrefix="J", depth=d)
-        write_model(models.trans[d].dist, output_dir + "/p_j_trans_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="J", depth=d)
+        write_model(models.B_J0[d].dist, output_dir + "/p_awa_j0_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="AWA", depth=d)
+        write_model(models.B_J1[d].dist, output_dir + "/p_awa_j1_%d.txt" % sample.iter, condPrefix="AA", outcomePrefix="AWA", depth=d)
+        # write_model(models.exp[d].dist, output_dir + "/p_awa_exp_%d.txt" % sample.iter, condPrefix="GA", outcomePrefix="AWA", depth=d)
+        # write_model(models.next[d].dist, output_dir + "/p_awa_next_%d.txt" % sample.iter, condPrefix="BA", outcomePrefix="AWA", depth=d)
+        write_model(models.A[d].dist, output_dir + "/p_act_%d.txt" % sample.iter, condPrefix="AB", outcomePrefix="ACT", depth=d)
+        # write_model(models.root[d].dist, output_dir + "/p_act_root_%d.txt" %sample.iter, condPrefix="BG", outcomePrefix="ACT", depth=d)
+        write_model(models.F[d].dist, output_dir + "/p_fork_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="F", depth=d)
+        write_model(models.J[d].dist, output_dir + "/p_j_%d.txt" % sample.iter, condPrefix="AB", outcomePrefix="J", depth=d)
+        # write_model(models.trans[d].dist, output_dir + "/p_j_trans_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="J", depth=d)
 
     write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter, word_dict)
 
