@@ -519,7 +519,8 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
     // print(*trans_slice); 
     // auto t12 = Clock::now();
     array2d<float, device_memory>::column_view dyn_prog_col = dyn_prog[t]->column(sent_ind);
-     cout << "Dyn_prog_row" << endl;
+    float dyn_prog_col_sum = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
+     cout << "Dyn_prog_row " << dyn_prog_col_sum << endl;
     // print(dyn_prog_row);
     float trans_slice_sum = thrust::reduce(thrust::device, (*trans_slice).begin(), (*trans_slice).end());
     cout << "trans_slice " << trans_slice_sum << endl;
