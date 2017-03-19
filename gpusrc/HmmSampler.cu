@@ -222,6 +222,7 @@ Dense* get_sentence_array(std::vector<std::vector<int> > sents, int max_len){
 }
 
 void HmmSampler::set_models(Model * models){
+
     // cout << '1' << endl;
     p_model = models;
     // cout << '2' << endl;
@@ -338,7 +339,7 @@ void HmmSampler::g_factored_multiply(Dense* prev_dyn_prog_slice, Dense* this_dyn
 
 std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents, int sent_index){
     // auto t1 = Clock::now();
-//     cout << "Forward" << endl;
+     cout << "Forward" << endl;
     float normalizer;
     int a_max, b_max, g_max; // index, token, g_len;
     std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();
@@ -359,7 +360,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
     
     
     for(int ind = 0; ind < batch_max_len; ind++){
-//        cout << "Processing token index " << ind << " for " << batch_size << " sentences." << endl;
+        cout << "Processing token index " << ind << " for " << batch_size << " sentences." << endl;
         Dense *cur_mat = dyn_prog[ind];
         Dense *prev_mat;
         
@@ -375,10 +376,10 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
         // pi_view is |states| x |states| transition matrix with time t on rows and t-1 on columns (i.e. transposed)
         // so after this multiply cur_mat is |states| x |batches| incorporating transition probabilities
         // but not evidence
-//        cout << "Performing transition multiplication" << endl;
+        cout << "Performing transition multiplication" << endl;
         g_factored_multiply(prev_mat, cur_mat);
 //        print(cur_mat[0]);
-//        cout << "Done with transition" << endl;
+        cout << "Done with transition" << endl;
         //cout << "performing observation multiplications" << endl;
 
         auto trans_done = Clock::now();
@@ -389,7 +390,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             if(sents[sent_ind].size() <= ind){
                 continue;
             }
-//            cout << "Processing sentence index " << sent_ind << endl;
+            cout << "Processing sentence index " << sent_ind << endl;
             int token = sents[sent_ind][ind];
                 
             // lex_column is |g| x 1 
@@ -399,7 +400,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
 //             cout << '6' << endl;
             // lexMultiplier is state_size x |g|, expanded_lex is state_size x 1
 //             cout << "Multiplying lex multiplier by lex column" << endl;
-//            cout << "lex column" << endl;
+            cout << "lex column" << endl;
 //            print(lex_column);
             multiply(* lexMultiplier, lex_column, * expanded_lex);
             // print(expanded_lex);
@@ -408,15 +409,15 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             // dyn_prog_column is state_size x 1
             array2d<float, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
 //             cout << "Multiplying expanded_lex by dyn prog row" << endl;
-//            cout << "column view" << endl;
+            cout << "column view" << endl;
 //            print(dyn_prog_col);
             blas::xmy(*expanded_lex, dyn_prog_col, dyn_prog_col);
 //             cout << "Computing normalizer" << endl;
             normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
-            // cout << "Normalizing over col with result: " << normalizer << endl;
+             cout << "Normalizing over col with result: " << normalizer << endl;
 //            cout << "Scaling by normalizer" << endl;
             blas::scal(dyn_prog_col, 1.0f/normalizer);
-//            cout << "normed column" << endl;
+            cout << "normed column" << endl;
 //            print(dyn_prog_col);
 //                cout << "Adding logged normalizer to sentence logprobs" << endl;
             log_probs[sent_ind] += log10f(normalizer);
