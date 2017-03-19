@@ -36,8 +36,8 @@ cdef class Indexer:
         if not self.EOS_index:
             EOS_f = 0
             EOS_j = 1
-            EOS_a = np.zeros(self.depth)
-            EOS_b = np.zeros(self.depth)
+            EOS_a = np.zeros(self.depth, dtype=int)
+            EOS_b = np.zeros(self.depth, dtype=int)
             EOS_g = 0
             self.EOS_index = self.getStateIndex(EOS_j, EOS_a, EOS_b, EOS_f, EOS_g)
         return self.EOS_index
