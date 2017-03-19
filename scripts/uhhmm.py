@@ -312,7 +312,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 except:
                     logging.error('This parse is bad:')
                     logging.error('The sentence is ' + ' '.join([str(x) for x in ev_seqs[parse.index]]))
-                    logging.error('The state sequence is ' + ' '.join([str(indexer.getStateIndex(x.f, x.j, x.a, x.b, x.g)) for x in parse.state_list]))
+                    logging.error('The state sequence is ' + ' '.join([str(indexer.getStateIndex(x.j, x.a, x.b, x.f, x.g)) for x in parse.state_list]))
                     logging.error(' '.join([x.str() for x in parse.state_list]))
                     logging.error('The index is %d' % parse.index)
                     raise(ValueError)
@@ -963,7 +963,7 @@ def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
             prev_state = state
 
 def increment_counts(hid_seq, sent, models, inc=1):
-    depth = len(models.fork)
+    depth = len(models.F)
 
     ## for every state transition in the sentence increment the count
     ## for the condition and for the output
