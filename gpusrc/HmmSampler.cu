@@ -461,11 +461,11 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         cout << endl;
        
         // Start with EOS
-        if (sent.size() == 1) {
+//        if (sent.size() == 1) {
 //            sample_t = p_indexer->get_EOS_1wrd_full();
 //        } else {
             sample_t = p_indexer->get_EOS_full(); 
-        }
+//        }
 
         for (int t = sent.size() - 1; t > -1; t --){
             cout << 't' << t << " prev sample t is " << sample_t <<endl;
