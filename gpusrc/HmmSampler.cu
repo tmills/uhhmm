@@ -468,10 +468,10 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         }
 
         for (int t = sent.size() - 1; t > -1; t --){
-            //cout << 't' << t << endl;
+            cout << 't' << t << endl;
             // auto t11 = Clock::now();
             std::tie(sample_state, sample_t) = _reverse_sample_inner(sample_t, t, sent_ind);
-//             cout << "Sample t is " << sample_t << endl;
+             cout << "Sample t is " << sample_t << endl;
              cout << sample_state.f << " " << sample_state.j << " " << sample_state.a[0] << " " << sample_state.a[1] << " " << sample_state.b[0] << " " << sample_state.b[1] << " " << sample_state.g << endl;
             if(!sample_state.depth_check()){
               cout << "Depth error in state assigned at index" << t << endl;
