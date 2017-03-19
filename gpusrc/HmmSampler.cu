@@ -468,7 +468,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         }
 
         for (int t = sent.size() - 1; t > -1; t --){
-            cout << 't' << t << ' prev sample t is '<<sample_t<<endl;
+            cout << 't' << t << " prev sample t is " << sample_t <<endl;
             // auto t11 = Clock::now();
             std::tie(sample_state, sample_t) = _reverse_sample_inner(sample_t, t, sent_ind);
              cout << "Sample t is " << sample_t << endl;
