@@ -214,6 +214,8 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     ## Now multiply in the pos tag probability:
                     state_index_full = indexer.getStateIndex(next_state.j, next_state.a, next_state.b, next_state.f, 0)
                     state_index = state_index_full / g_max
+                    if any([x == b_max - 1] for x in next_state.b):
+                        print state_index_full, next_state.j, next_state.a, next_state.b, next_state.f, 0
 
                     # the g is factored out
                     range_probs = cum_probs[2] #* (models.pos.dist[b,:-1])
