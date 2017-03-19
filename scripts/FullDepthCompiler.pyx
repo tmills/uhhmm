@@ -97,8 +97,8 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
 
         state_f = 1
         state_j = 0
-        state_a = np.zeros(self.depth, dtype=np.int64)
-        state_b = np.zeros(self.depth, dtype=np.int64)
+        state_a = np.zeros(depth, dtype=np.int64)
+        state_b = np.zeros(depth, dtype=np.int64)
         state_g = 0
         state_index_full = indexer.getStateIndex(state_j, state_a, state_b, state_f, state_g)
         state_index = int(state_index_full / g_max)
