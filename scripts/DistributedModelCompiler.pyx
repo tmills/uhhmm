@@ -116,6 +116,7 @@ class DistributedModelCompiler(FullDepthCompiler):
             lex_dist = 10**(models.lex.dist.astype(np.float32))
             pos_dist = models.pos.dist
             pos_dist[:, -1].fill(0)
+            pos_dist[-1, :].fill(0)
             if self.depth > 1:
                 corrected_pos_dist = np.zeros((pos_dist.shape[0]**self.depth, pos_dist.shape[1]))
                 original_num_rows = pos_dist.shape[0]
@@ -159,7 +160,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                             if row_index_val > 0:
                                 b_val = row_index_val
                                 break
-                        if b_val != p_index or b_val == b_max - 1:
+                        if b_val != p_index:
                             pos_dist[prob_index] = 0
                         else:
                             pos_dist[prob_index] = 1
