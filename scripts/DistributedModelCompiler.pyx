@@ -117,7 +117,7 @@ class DistributedModelCompiler(FullDepthCompiler):
             pos_dist[:, -1].fill(0)
             if self.depth > 1:
                 corrected_pos_dist = np.zeros((pos_dist.shape[0]**self.depth, pos_dist.shape[1]))
-                row_indices = list(itertools.product(range(b_max), repeat=3))
+                row_indices = list(itertools.product(range(b_max), repeat=self.depth))
                 original_num_rows = pos_dist.shape[0]
                 for index, row_index in enumerate(row_indices):
                     row_index_bool = [bool(x) for x in row_index]
@@ -137,7 +137,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                         if cur_val is True:
                             boundary = val_index
                     else:
-                        if prev_val is False:
+                        if any(val_index) is False:
                             corrected_pos_dist[index] = pos_dist[0]
                         else:
                             corrected_pos_dist[index] = pos_dist[row_index[boundary]]
