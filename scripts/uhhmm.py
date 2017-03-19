@@ -1078,7 +1078,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
             print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
         ## Final state is deterministic, don't include counts from final decisions:
         if word != 0:
-            models.fork[max(0,depth)].count((prev_b, prev_g), state.f, inc)
+            models.F[max(0,depth)].count((prev_b, prev_g), state.f, inc)
 
         ## Count G
         models.pos.count(cur_b, cur_g, inc)
