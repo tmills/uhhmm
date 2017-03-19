@@ -64,8 +64,8 @@ tuple<int, int, vector<int>, vector<int>, int> Indexer::extractStacks(int index)
     std::fill(a_dims.begin(), a_dims.end(), a_max);
     vector<int> b_dims(depth);
     std::fill(b_dims.begin(), b_dims.end(), b_max);
-    auto a = unravel_index(a_ind, a_dims);
-    auto b = unravel_index(b_ind, b_dims);
+    vector<int> a = unravel_index(a_ind, a_dims);
+    vector<int> b = unravel_index(b_ind, b_dims);
     return std::make_tuple(j, a, b, f, g);
 }
 
