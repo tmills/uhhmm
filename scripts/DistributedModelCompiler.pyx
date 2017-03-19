@@ -160,6 +160,8 @@ class DistributedModelCompiler(FullDepthCompiler):
                             pos_dist[prob_index] = 0
                         else:
                             pos_dist[prob_index] = 1
+            for index_, val in enumerate(pos_dist):
+                print index_, val
             model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, pos_dist,
                                                         indexer.get_EOS_full()), self.depth)
             logging.info("EOS index is "+str(indexer.get_EOS_full()))
