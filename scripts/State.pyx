@@ -20,26 +20,50 @@ cdef class State:
         else:
             (self.f, self.j, self.a, self.b, self.g) = state.f, state.j, state.a, state.b, state.g
 
+    # def str(self):
+    #     string = ''
+    #
+    #     f_str = '+/' if self.f==1 else '-/'
+    #     string += f_str
+    #     j_str = '+' if self.j==1 else '-'
+    #     string += j_str
+    #
+    #     string += "::"
+    #
+    #     for d in range(0, self.depth):
+    #
+    #         if self.a[d] > 0 or d == 0:
+    #             if d > 0:
+    #                 string += ";"
+    #             string += "ACT" + str(self.a[d]) + '/AWA' + str(self.b[d])
+    #
+    #     string += ':POS' + str(self.g)
+    #
+    #     return string
+
+
     def str(self):
         string = ''
 
-        f_str = '+/' if self.f==1 else '-/'        
-        string += f_str
-        j_str = '+' if self.j==1 else '-'
+
+        j_str = '+' if self.j == 1 else '-'
         string += j_str
 
         string += "::"
-        
+
         for d in range(0, self.depth):
 
             if self.a[d] > 0 or d == 0:
                 if d > 0:
                     string += ";"
                 string += "ACT" + str(self.a[d]) + '/AWA' + str(self.b[d])
-        
+
+        f_str = '+/' if self.f == 1 else '-/'
+        string += f_str
+
         string += ':POS' + str(self.g)
-        
-        return string
+
+    return string
 
     def to_list(self):
         return (self.f, self.j, self.a, self.b, self.g)
