@@ -455,10 +455,10 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
         sample_seq = std::vector<State>();
         cout << "Processing sentence " << sent_ind << " of the batch" << endl;
         std::vector<int> sent = sents[sent_ind];
-        //for(int token_ind = 0; token_ind < sent.size(); token_ind++){
+        for(int token_ind = 0; token_ind < sent.size(); token_ind++){
           cout << sent[token_ind] << " ";
-       // }
-        //cout << endl;
+        }
+        cout << endl;
        
         // Start with EOS
         if (sent.size() == 1) {
