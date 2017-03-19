@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
 import logging
+import os.path
 import pickle
 import socket
 import time
 import zmq
 from queue import Queue
-from PyzmqMessage import SentenceJob, CompileJob, PyzmqJob, SentenceRequest, RowRequest, get_file_signature, resource_current
+from PyzmqMessage import SentenceJob, CompileJob, PyzmqJob, SentenceRequest, RowRequest, get_file_signature, resource_current, ModelLocation
 from threading import Thread, Lock
 
 class ResetSignal():
@@ -223,7 +224,7 @@ class ModelDistributer(Thread):
         self.quit_socket.connect("tcp://%s:%s" % (self.host, self.port))
         
         logging.debug("Model server successfully bound to REP socket")
-        self.working_dir = working_dir
+        self.working_dir = os.path.abspath(working_dir)
         self.model_sig = None
         self.model_lock = VerboseLock("Model")
         self.quit = False
@@ -231,8 +232,8 @@ class ModelDistributer(Thread):
     ## All this method does is wait for requests for the model and send them,
     ## with a quick check to make sure that the model isn't currently being written
     def run(self):
-        model_loc = self.working_dir + '/models.bin'
-        
+        model_loc = ModelLocation(self.host, self.working_dir + '/models.bin')
+
         ## Wait until we're actually given a model to start sending them out...
         while self.model_sig == None:
             time.sleep(1)
