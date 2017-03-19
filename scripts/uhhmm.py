@@ -123,17 +123,17 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             max_state_check(hid_seqs, models, "initialization")
 
         sample = Sample()
-        sample.alpha_f = models.fork[0].alpha
-        sample.alpha_j = models.trans[0].alpha
-        sample.alpha_a = models.act[0].alpha
-        sample.alpha_b = models.cont[0].alpha
+        sample.alpha_f = models.F[0].alpha
+        sample.alpha_j = models.J[0].alpha
+        sample.alpha_a = models.A[0].alpha
+        sample.alpha_b = models.B_J0[0].alpha
         sample.alpha_g = models.pos.alpha
         sample.alpha_h = models.lex.alpha
         
-        sample.beta_f = models.fork[0].beta 
-        sample.beta_j = models.trans[0].beta
-        sample.beta_a = models.act[0].beta
-        sample.beta_b = models.cont[0].beta
+        sample.beta_f = models.F[0].beta
+        sample.beta_j = models.J[0].beta
+        sample.beta_a = models.A[0].beta
+        sample.beta_b = models.B_J0[0].beta
         sample.beta_g = models.pos.beta
         sample.beta_h = models.lex.beta
         sample.gamma = float(params.get('gamma'))
@@ -156,8 +156,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         pos_counts = models.pos.pairCounts[:].sum()
         lex_counts = models.lex.pairCounts[:].sum()
 
-        a_max = models.act[0].dist.shape[-1]
-        b_max = models.cont[0].dist.shape[-1]
+        a_max = models.A[0].dist.shape[-1]
+        b_max = models.B_J0[0].dist.shape[-1]
         g_max = models.pos.dist.shape[-1]
 
         models.resetAll()
