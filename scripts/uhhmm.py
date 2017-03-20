@@ -992,7 +992,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
 
     for index,word in enumerate(sent):
         state = hid_seq[index]
-
+        print(index)
         # Populate previous state conditional dependencies
         prev_g = prev_state.g
         if depth == -1:
