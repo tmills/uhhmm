@@ -59,7 +59,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
         return indices, data, indices_full, data_full
 
     ## if fork is 1 and j is 0 and a b stacks are empty, g must be of some valid value (first init state)
-    if prev_state.f == 1 and prev_state.j == 0 and not any(prev_state.a) and not any(prev_state.b) and prev_g == 0:
+    if prev_state.f == 1 and prev_state.j == 0 and not any(prev_state.a) and not any(prev_state.b) and prev_state.g == 0:
         return indices, data, indices_full, data_full
 
     if depth > 1:
