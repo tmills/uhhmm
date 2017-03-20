@@ -1024,12 +1024,9 @@ def increment_counts(hid_seq, sent, models, inc=1):
                 raise Exception("Unallowed value (%s) of the fork variable!" %state.f)
 
         # Populate current state conditional dependencies
-        if depth == -1:
-            cur_depth = 0
-        else:
-            cur_depth = depth + prev_f - state.j - 1
+        cur_depth = depth + prev_f - state.j
         cur_g = state.g
-        if cur_depth == 0:
+        if cur_depth == -1:
             cur_a = 0
             cur_b = 0
             cur_b_above = 0
@@ -1090,10 +1087,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
         if word != 0:
             models.lex.count(cur_g, word, inc)
 
-        if depth == -1:
-            depth = 0
-        else:
-            depth = state.max_awa_depth()
+        depth = state.max_awa_depth()
         prev_state = state
 
 def decrement_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
