@@ -125,7 +125,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                 data_full.append(range_probs_full[g])
         indices.append(state_index)
         data.append(1)
-        print(prev_state.str(), '->', state_index.str(), 1)
+        print(prev_state.str(), '->', indexer.extractState(state_index_full).str(), 1)
         return indices, data, indices_full, data_full
         
     # for f in (0,1):
