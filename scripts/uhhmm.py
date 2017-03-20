@@ -965,8 +965,6 @@ def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
             prev_state = state
 
 def increment_counts(hid_seq, sent, models, inc=1):
-    depth = len(models.F)
-
     ## for every state transition in the sentence increment the count
     ## for the condition and for the output
 
@@ -1029,7 +1027,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
         if depth == -1:
             cur_depth = 0
         else:
-            cur_depth = depth + prev_f - state.j
+            cur_depth = depth + prev_f - state.j - 1
         cur_g = state.g
         if cur_depth == 0:
             cur_a = 0
