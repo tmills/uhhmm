@@ -26,7 +26,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     cdef np.ndarray range_probs_full
 
     prev_state = indexer.extractState(prev_index)
-    print 'index',prev_index,'state',prev_state.str()
+    logging.debug(' '.join(map(str, ['index',prev_index,'state',prev_state.str()])))
     start_depth = get_cur_awa_depth(prev_state.b)
     nominal_depth = start_depth + prev_state.f
     (a_max, b_max, g_max) = indexer.getVariableMaxes()
