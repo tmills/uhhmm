@@ -164,7 +164,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                 data_full.append(EOS_prob)
             indices.append(EOS)
             data.append(EOS_prob)
-            print(prev_state.str(), '->', EOS.str(), EOS_prob)
+            print(prev_state.str(), '->', indexer.extractState(EOS_full).str(), EOS_prob)
 
         for a in range(1, a_max-1):
             next_state.a[:] = 0
