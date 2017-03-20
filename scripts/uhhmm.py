@@ -1092,7 +1092,9 @@ def increment_counts(hid_seq, sent, models, inc=1):
         if word != 0:
             models.lex.count(cur_g, word, inc)
 
-        if depth != 0:
+        if depth == -1:
+            depth = 0
+        else:
             depth = state.max_awa_depth()
         prev_state = state
 
