@@ -58,8 +58,8 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     if prev_state.f == 0 and prev_state.j == 0 and not any(prev_state.a) and not any(prev_state.b) and prev_index != 0:
         return indices, data, indices_full, data_full
 
-    ## if fork is 1 and j is 0 and a b stacks are empty, g must be of some valid value (first init state)
-    if prev_state.f == 1 and prev_state.j == 0 and not any(prev_state.a) and not any(prev_state.b) and prev_state.g == 0:
+    ## g must be always of some valid value (first init state) except when it is at the depth -1
+    if prev_state.g == 0 and prev_index != 0:
         return indices, data, indices_full, data_full
 
     if depth >= 1:
@@ -117,6 +117,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                 data_full.append(range_probs_full[g])
         indices.append(state_index)
         data.append(1)
+        print(prev_state.str(), '->', next_state.str(), cum_probs[2])
         return indices, data, indices_full, data_full
         
     # for f in (0,1):
@@ -166,6 +167,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                         next_state.a[0:start_depth] = prev_state.a[0:start_depth]
                         next_state.b[0:start_depth] = prev_state.b[0:start_depth]
                         next_state.b[start_depth] = b
+                        next_state.a[start_depth] = prev_state.a[start_depth]
                         cum_probs[1] = cum_probs[0] * models.B_J1[start_depth].dist[ prev_b, prev_g, b ]
                     else:
                         continue
