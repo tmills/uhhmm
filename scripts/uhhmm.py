@@ -374,15 +374,15 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             ## stick-breaking. Without that, the values will stay what they were
             next_sample.alpha_f = sample.alpha_f
             next_sample.alpha_j = sample.alpha_j
-            next_sample.alpha_a = models.root[0].alpha
-            next_sample.alpha_b = models.cont[0].alpha
+            next_sample.alpha_a = models.A[0].alpha
+            next_sample.alpha_b = models.B_J1[0].alpha
             next_sample.alpha_g = models.pos.alpha
             next_sample.alpha_h = models.lex.alpha
             
             next_sample.beta_f = sample.beta_f
             next_sample.beta_j = sample.beta_j
-            next_sample.beta_a = models.root[0].beta
-            next_sample.beta_b = models.cont[0].beta
+            next_sample.beta_a = models.A[0].beta
+            next_sample.beta_b = models.B_J1[0].beta
             next_sample.beta_g = models.pos.beta
             next_sample.beta_h = models.lex.beta
             next_sample.gamma = sample.gamma
@@ -1074,9 +1074,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
             raise Exception("Unallowed value of f=%d and j=%d, index=%d" % (state.f, state.j, index) )
 
         # Count fork decision
-        if depth >= 0 and (cur_b == 0 and cur_g == 0):
-            print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
-        if depth >= 0 and (cur_b == 0 and cur_g == 0):
+        if depth >= 0 and (cur_b == 0 and cur_g == 0) and index != 0:
             print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
         ## Final state is deterministic, don't include counts from final decisions:
         if word != 0:
