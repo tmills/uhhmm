@@ -26,6 +26,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     cdef np.ndarray range_probs_full
 
     prev_state = indexer.extractState(prev_index)
+    print 'index',prev_index,'state',prev_state.str()
     start_depth = get_cur_awa_depth(prev_state.b)
     nominal_depth = start_depth + prev_state.f
     (a_max, b_max, g_max) = indexer.getVariableMaxes()
@@ -52,13 +53,16 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     if any([x == a_max -1 for x in prev_state.a]) or any([x == b_max -1 for x in prev_state.b]) or prev_state.g == g_max - 1:
         return indices, data, indices_full, data_full
 
-    if depth > 1:
-        ## One that should not be allowed by our indexing scheme:
-        for d in range(0, depth):
-            if len(np.where(prevF >= 0)[0]) > 1 or len(np.where(prevJ >= 0)[0]) > 1:                      
-                logging.error("Two values in F stack with nonnegative value: this should not be allowed")
-                raise Exception
+    ## if fork and join are both 0 and a and b stacks are empty
+    ## then it is impossible. F or J should be 1 if a and b stacks are empty
+    if prev_state.f == 0 and prev_state.j == 0 and not any(prev_state.a) and not any(prev_state.b):
+        return indices, data, indices_full, data_full
 
+    ## if fork is 1 and j is 0 and a b stacks are empty, g must be of some valid value (first init state)
+    if prev_state.f == 1 and prev_state.j == 0 and not any(prev_state.a) and not any(prev_state.b) and prev_g == 0:
+        return indices, data, indices_full, data_full
+
+    if depth > 1:
         ## Others that are allowed but not really possible:
         ## 1) where lower depths have real values but higher depths have
         ## placeholder 0 values
@@ -218,8 +222,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     ## Now multiply in the pos tag probability:
                     state_index_full = indexer.getStateIndex(next_state.j, next_state.a, next_state.b, next_state.f, 0)
                     state_index = state_index_full / g_max
-                    if any([x == b_max - 1 for x in next_state.b]):
-                        print state_index_full, next_state.j, next_state.a, next_state.b, next_state.f, 0
+
                     print(prev_state.str(), '->', next_state.str(), cum_probs[2])
                     # the g is factored out
                     range_probs = cum_probs[2] #* (models.pos.dist[b,:-1])
