@@ -55,14 +55,14 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
 
     ## if fork and join are both 0 and a and b stacks are empty
     ## then it is impossible. F or J should be 1 if a and b stacks are empty
-    if prev_state.f == 0 and prev_state.j == 0 and not any(prev_state.a) and not any(prev_state.b):
+    if prev_state.f == 0 and prev_state.j == 0 and not any(prev_state.a) and not any(prev_state.b) and prev_index != 0:
         return indices, data, indices_full, data_full
 
     ## if fork is 1 and j is 0 and a b stacks are empty, g must be of some valid value (first init state)
     if prev_state.f == 1 and prev_state.j == 0 and not any(prev_state.a) and not any(prev_state.b) and prev_state.g == 0:
         return indices, data, indices_full, data_full
 
-    if depth > 1:
+    if depth >= 1:
         ## Others that are allowed but not really possible:
         ## 1) where lower depths have real values but higher depths have
         ## placeholder 0 values
@@ -210,7 +210,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
 
                     ## when t=0, start_depth will be -1, which in the d> 1 case will wraparound.
                     ## we want in the t=0 case for f_{t=1} to be [-/-]*d
-                    if start_depth - j >= 0:
+                    if nominal_depth - j >= 0:
                         cum_probs[2] = cum_probs[1] * models.F[start_depth].dist[b, prev_g, f]
                     else:
                         ## if start depth is -1 we're only allowed to fork:
