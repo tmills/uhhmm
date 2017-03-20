@@ -53,14 +53,22 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     if any([x == a_max -1 for x in prev_state.a]) or any([x == b_max -1 for x in prev_state.b]) or prev_state.g == g_max - 1:
         return indices, data, indices_full, data_full
 
-    ## if fork and join are both 0 and a and b stacks are empty
+    ## if fork and join are both 0 or 1 and a and b stacks are empty
     ## then it is impossible. F or J should be 1 if a and b stacks are empty
-    if prev_state.f == 0 and prev_state.j == 0 and not any(prev_state.a) and not any(prev_state.b) and prev_index != 0:
+    if prev_state.j == 1 and not any(prev_state.a) and not any(prev_state.b) and prev_index != 0:
         return indices, data, indices_full, data_full
 
     ## g must be always of some valid value (first init state) except when it is at the depth -1
     if prev_state.g == 0 and prev_index != 0:
         return indices, data, indices_full, data_full
+
+    ## if no fork, prev.b must agree with prev.g
+    if prev_state.f == 0:
+        for b in prev_state.b[::-1]:
+            if b != 0 and prev_state.g != b:
+                return indices, data, indices_full, data_full
+            elif b != 0 and prev_state.g == b:
+                break
 
     if depth >= 1:
         ## Others that are allowed but not really possible:
@@ -117,7 +125,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                 data_full.append(range_probs_full[g])
         indices.append(state_index)
         data.append(1)
-        print(prev_state.str(), '->', next_state.str(), cum_probs[2])
+        print(prev_state.str(), '->', state_index.str(), 1)
         return indices, data, indices_full, data_full
         
     # for f in (0,1):
@@ -156,6 +164,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                 data_full.append(EOS_prob)
             indices.append(EOS)
             data.append(EOS_prob)
+            print(prev_state.str(), '->', EOS.str(), EOS_prob)
 
         for a in range(1, a_max-1):
             next_state.a[:] = 0

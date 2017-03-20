@@ -468,7 +468,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
 //        }
 
         for (int t = sent.size() - 1; t > -1; t --){
-            cout << 't' << t << " prev sample t is " << sample_t <<endl;
+//            cout << 't' << t << " prev sample t is " << sample_t <<endl;
             // auto t11 = Clock::now();
             std::tie(sample_state, sample_t) = _reverse_sample_inner(sample_t, t, sent_ind);
 //             cout << "Sample t is " << sample_t << endl;
@@ -520,17 +520,17 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
     // auto t12 = Clock::now();
     array2d<float, device_memory>::column_view dyn_prog_col = dyn_prog[t]->column(sent_ind);
     float dyn_prog_col_sum = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
-     cout << "Dyn_prog_row " << dyn_prog_col_sum << endl;
+//     cout << "Dyn_prog_row " << dyn_prog_col_sum << endl;
     // print(dyn_prog_row);
     float trans_slice_sum = thrust::reduce(thrust::device, (*trans_slice).begin(), (*trans_slice).end());
-    cout << "trans_slice " << trans_slice_sum << endl;
+//    cout << "trans_slice " << trans_slice_sum << endl;
     //if (trans_slice_sum != 0.0f){
         cusp::blas::xmy(*trans_slice, dyn_prog_col, dyn_prog_col);
     //}
     // auto t13 = Clock::now();
 //    cusp::array1d<float, host_memory> un_normalized_sums(dyn_prog_col);
     normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
-     cout << "normalizer " << normalizer <<endl;
+//     cout << "normalizer " << normalizer <<endl;
     blas::scal(dyn_prog_col, 1.0f/normalizer);
     // thrust::transform(dyn_prog_row.begin(), dyn_prog_row.end(), dyn_prog_row.begin(), multiplies_value<float>(1 / normalizer));
     // auto t14 = Clock::now();
