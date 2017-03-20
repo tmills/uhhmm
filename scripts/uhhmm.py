@@ -65,7 +65,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     maxLen = max(map(len, ev_seqs))
     max_output = max(map(max, ev_seqs))
     num_sents = len(ev_seqs)
-    num_tokens = np.sum(sent_lens) - num_sents
+    num_tokens = np.sum(sent_lens)
 
     num_samples = 0
     depth = int(params.get('depth', 1))
@@ -1074,7 +1074,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
                 raise Exception("Unallowed value of f=%d and j=%d, index=%d" % (state.f, state.j, index) )
 
         # Count fork decision
-        if depth >= 0 and (cur_b == 0 and cur_g == 0) and index != 0:
+        if cur_depth >= 0 and (cur_b == 0 and cur_g == 0) and index != 0:
             print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
         ## Final state is deterministic, don't include counts from final decisions:
         if word != 0:
