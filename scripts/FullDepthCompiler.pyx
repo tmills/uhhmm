@@ -220,7 +220,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     state_index = state_index_full / g_max
                     if any([x == b_max - 1 for x in next_state.b]):
                         print state_index_full, next_state.j, next_state.a, next_state.b, next_state.f, 0
-
+                    print(prev_state.str(), '->', next_state.str(), cum_probs[2])
                     # the g is factored out
                     range_probs = cum_probs[2] #* (models.pos.dist[b,:-1])
                     if full_pi:
