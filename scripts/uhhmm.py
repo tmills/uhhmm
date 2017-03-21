@@ -65,7 +65,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     maxLen = max(map(len, ev_seqs))
     max_output = max(map(max, ev_seqs))
     num_sents = len(ev_seqs)
-    num_tokens = np.sum(sent_lens) - num_sents
+    num_tokens = np.sum(sent_lens)
 
     num_samples = 0
 
