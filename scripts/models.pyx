@@ -11,7 +11,7 @@ from scipy.sparse import lil_matrix
 # and automatically adjusting sizes for infinite version.
 cdef class Model:
 
-    def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, corpus_shape=(0,0), name="Unspecified"):
+    def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, corpus_shape=(1,1), name="Unspecified"):
         ## Initialize with ones to prevent underflow during distribution sampling
         ## at iteration 0
         self.shape = shape
@@ -20,7 +20,6 @@ cdef class Model:
         self.dist = np.random.random(shape)
         self.dist /= self.dist.sum(1, keepdims=True)
         self.dist = np.log10(self.dist)
-        self.u = np.array([])
         self.trans_prob = lil_matrix(corpus_shape)
         self.alpha = alpha
         if beta != None:
@@ -59,7 +58,7 @@ cdef class Model:
         self.pairCounts[:] = 0
 
     def copy(self):
-        m_copy = Model( self.shape, self.alpha, None if self.beta == None else self.beta.copy(), (self.trans_prob.shape[0], self.trans_prob.shape[1]))
+        m_copy = Model( self.shape, self.alpha, None if self.beta == None else self.beta.copy(), self.corpus_shape, self.name)
         m_copy.pairCounts = self.pairCounts.copy()
         m_copy.globalPairCounts = self.globalPairCounts.copy()
         m_copy.dist = self.dist.copy()
@@ -72,7 +71,6 @@ cdef class Model:
         d['pairCounts'] = self.pairCounts
         d['globalPairCounts'] = self.globalPairCounts
         d['dist'] = self.dist
-        d['u'] = self.u
         d['trans_prob'] = self.trans_prob
         d['beta'] = self.beta
         d['corpus_shape'] = self.corpus_shape
@@ -87,7 +85,6 @@ cdef class Model:
         self.pairCounts = d['pairCounts']
         self.globalPairCounts = d['globalPairCounts']
         self.dist = d['dist']
-        self.u = d['u']
         self.trans_prob = d['trans_prob']
         self.beta = d['beta']
         self.corpus_shape = d['corpus_shape']
