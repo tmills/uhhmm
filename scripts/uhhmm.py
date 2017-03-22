@@ -1068,8 +1068,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
                 assert depth > 0 or index == len(sent) - 1, "Found a -/+ decision at depth 0 prior to sentence end."
                 if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
                     print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
-                models.B_J1[max(0,depth-1)].count(( prev_b_above, cur_a, cur_b, inc)
-
+                models.B_J1[max(0,depth-1)].count(( prev_b_above, cur_a), cur_b, inc)
             else:
                 raise Exception("Unallowed value of f=%d and j=%d, index=%d" % (state.f, state.j, index) )
 
