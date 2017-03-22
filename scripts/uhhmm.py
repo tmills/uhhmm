@@ -329,7 +329,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         pos_counts = models.pos.pairCounts[:].sum()
         lex_counts = models.lex.pairCounts[:].sum()
-        assert pos_counts == lex_counts
+        if not pos_counts == lex_counts:
+            logging.warn("This iteration has %d pos counts for %d lex counts" % (pos_counts, lex_counts))
 
         if not pos_counts == num_tokens:
             logging.warn("This iteration has %d pos counts for %d tokens" % (pos_counts, num_tokens) )
