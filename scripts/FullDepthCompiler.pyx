@@ -103,8 +103,10 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
         prev_b = prev_state.b[start_depth]
         if start_depth == 0:
             prev_b_above = 0
+            prev_a_above = 0
         else:
             prev_b_above = prev_state.b[start_depth-1]
+            prev_a_above = prev_state.a[start_depth - 1]
 
     t00 = time.time()
     
@@ -149,7 +151,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
         if prev_state.f == 0:
             cum_probs[0] = models.J[start_depth].dist[ prev_a, prev_b_above, j ]
         else:
-            cum_probs[0] = models.J[start_depth].dist[ prev_b, prev_g, j ]
+            cum_probs[0] = models.J[start_depth].dist[ prev_g, prev_b, j ]
 
         if nominal_depth == depth:
             next_state.j = 1
@@ -191,7 +193,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     if a == prev_state.a[start_depth-1]:
                         next_state.a[start_depth-1] = a
                         next_state.b[start_depth-1] = b
-                        cum_probs[1] = cum_probs[0] * models.B_J0[start_depth-1].dist[ prev_b_above, prev_a, b ]
+                        cum_probs[1] = cum_probs[0] * models.B_J0[start_depth-1].dist[ prev_b_above, a, b ]
                     else:
                         continue
 
@@ -222,7 +224,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     ## when t=0, start_depth will be -1, which in the d> 1 case will wraparound.
                     ## we want in the t=0 case for f_{t=1} to be [-/-]*d
                     if nominal_depth - j >= 0:
-                        cum_probs[2] = cum_probs[1] * models.F[start_depth].dist[b, prev_g, f]
+                        cum_probs[2] = cum_probs[1] * models.F[start_depth].dist[b, f]
                     else:
                         ## if start depth is -1 we're only allowed to fork:
                         if next_state.f == 1:

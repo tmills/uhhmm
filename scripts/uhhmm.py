@@ -740,7 +740,7 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
 
     for d in range(0, depth):
         ## One fork model:
-        models.F[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaf')), name="Fork"+str(d))
+        models.F[d] = Model((b_max, 2), alpha=float(params.get('alphaf')), name="Fork"+str(d))
         models.F[d].beta = np.ones(2) / 2
 
         ## Two join models:
@@ -1068,7 +1068,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
                 assert depth > 0 or index == len(sent) - 1, "Found a -/+ decision at depth 0 prior to sentence end."
                 if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
                     print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
-                models.B_J1[max(0,depth-1)].count(( prev_b_above, prev_a), cur_b, inc)
+                models.B_J1[max(0,depth-1)].count(( prev_b_above, cur_a, cur_b, inc)
 
             else:
                 raise Exception("Unallowed value of f=%d and j=%d, index=%d" % (state.f, state.j, index) )
@@ -1078,7 +1078,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
             print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
         ## Final state is deterministic, don't include counts from final decisions:
         if word != 0:
-            models.F[max(0,depth)].count((prev_b, prev_g), state.f, inc)
+            models.F[max(0,depth)].count(prev_b, state.f, inc)
 
         ## Count G
         if word != 0 and state.f != 0:
