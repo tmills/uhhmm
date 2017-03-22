@@ -1080,7 +1080,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
             models.F[max(0,depth)].count((prev_b, prev_g), state.f, inc)
 
         ## Count G
-        if word != 0:
+        if word != 0 and state.f != 0:
             models.pos.count(cur_b, cur_g, inc)
         ## Count w
         if word != 0:
