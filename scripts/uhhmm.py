@@ -140,7 +140,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         sample.discount = float(params.get('discount'))
         sample.ev_seqs = ev_seqs
 
-        resample_all(models, sample, params, depth)
+        resample_all(models, sample, params, depth, init=True)
         models.resetAll()
 
         sample.models = models
@@ -1119,15 +1119,24 @@ def getBmax():
     global b_max
     return b_max
 
-def resample_all(models, sample, params, depth):
+def resample_all(models, sample, params, depth, init=False):
     ## Sample distributions for all the model params and emissions params
     ## TODO -- make the Models class do this in a resample_all() method
-    a_base =  sample.alpha_a * sample.beta_a
-    b_base = sample.alpha_b * sample.beta_b
-    f_base = sample.alpha_f * sample.beta_f
-    j_base = sample.alpha_j * sample.beta_j
-    g_base = sample.alpha_g * sample.beta_g
-    h_base = sample.alpha_h * sample.beta_h
+    if init:
+        num_sents = len(sample.ev_seqs) * 5
+        a_base = sample.alpha_a * sample.beta_a * num_sents
+        b_base = sample.alpha_b * sample.beta_b * num_sents
+        f_base = sample.alpha_f * sample.beta_f * num_sents
+        j_base = sample.alpha_j * sample.beta_j * num_sents
+        g_base = sample.alpha_g * sample.beta_g * num_sents
+        h_base = sample.alpha_h * sample.beta_h * num_sents
+    else:
+        a_base =  sample.alpha_a * sample.beta_a
+        b_base = sample.alpha_b * sample.beta_b
+        f_base = sample.alpha_f * sample.beta_f
+        j_base = sample.alpha_j * sample.beta_j
+        g_base = sample.alpha_g * sample.beta_g
+        h_base = sample.alpha_h * sample.beta_h
     
     # Resample lex and make sure the null tag can only generate the null word
     models.lex.sampleDirichlet(h_base)
