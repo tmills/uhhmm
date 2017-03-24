@@ -164,6 +164,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                             pos_dist[prob_index] = 0
                         else:
                             pos_dist[prob_index] = 1
+            print pos_dist.shape
             for index_, val in enumerate(pos_dist):
                 print index_, row_indices[index_//2],val
                 logging.debug(' '.join(map(str, [index_, row_indices[index_//2],val])))
