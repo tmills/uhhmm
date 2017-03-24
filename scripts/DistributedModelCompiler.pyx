@@ -147,7 +147,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                             corrected_pos_dist[index] = pos_dist[row_index[boundary]]
             else:
                 corrected_pos_dist = pos_dist
-            pos_dist = np.repeat(pos_dist, [2]*pos_dist.shape[0], axis=0)
+            corrected_pos_dist = np.repeat(corrected_pos_dist, [2]*pos_dist.shape[0], axis=0)
             # pos_dist = np.repeat(pos_dist, 2)
             full_g_num = g_max * 2
             for bf_index, g_probs in enumerate(pos_dist):
@@ -166,9 +166,11 @@ class DistributedModelCompiler(FullDepthCompiler):
                                 pos_dist[bf_index, g_index] = 0
             pos_dist = np.ravel(corrected_pos_dist.astype(np.float32))
 
-            logging.info("Size of POS array {} should be analytically equal to {}".format(pos_dist.shape[0], g_max*(b_max**self.depth)*2))
+            assert pos_dist.shape[0]== g_max*(b_max**self.depth)*2, "Size of POS array {} should be analytically equal to {}".format
+            (pos_dist.shape[0], g_max*(b_max**self.depth)*2)
+
             for index_, val in enumerate(pos_dist):
-                logging.info(' '.join(map(str, ['P', index_ % (g_max*2), 'B',row_indices[index_//(g_max*2)],'F', index_%2, val])))
+                logging.info(' '.join(map(str, ['P', index_ % (g_max*2), 'B',row_indices[index_//(g_max*2)],'F', (index_//g_max)%2, val])))
             # for index_t_1 in pi.shape[0]:
             #     state_t_1 = indexer.extractState(index_t_1)
             #     if np.sum(pi[index_t_1]) == 0:
