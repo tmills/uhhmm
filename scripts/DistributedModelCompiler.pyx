@@ -164,10 +164,9 @@ class DistributedModelCompiler(FullDepthCompiler):
                             pos_dist[prob_index] = 0
                         else:
                             pos_dist[prob_index] = 1
-            print pos_dist.shape
+            logging.info("{} should be equal to {}".format(pos_dist.shape[0], g_max*(b_max**self.depth)*2))
             for index_, val in enumerate(pos_dist):
-                print index_, row_indices[index_//2],val
-                logging.debug(' '.join(map(str, [index_, row_indices[index_//2],val])))
+                logging.debug(' '.join(map(str, [index_ % g_max, row_indices[index_//g_max],val])))
             model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, pos_dist,
                                                         indexer.get_EOS_full()), self.depth)
             logging.info("EOS index is "+str(indexer.get_EOS_full()))
