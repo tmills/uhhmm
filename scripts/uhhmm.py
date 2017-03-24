@@ -1014,8 +1014,8 @@ def increment_counts(hid_seq, sent, models, inc=1):
                 if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
                     print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
                 ## Final state is deterministic, don't include counts from final decisions:
-                if word != 0:
-                    models.J[max(0,depth)].count((prev_a, prev_b_above), state.j, inc)
+                # if word != 0:
+                models.J[max(0,depth)].count((prev_a, prev_b_above), state.j, inc)
             elif prev_f == 1:
                 if depth >= 0 and (prev_b == 0 and prev_g == 0):
                     print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
