@@ -147,26 +147,39 @@ class DistributedModelCompiler(FullDepthCompiler):
                             corrected_pos_dist[index] = pos_dist[row_index[boundary]]
             else:
                 corrected_pos_dist = pos_dist
-            pos_dist = np.ravel(corrected_pos_dist.astype(np.float32))
-            pos_dist = np.repeat(pos_dist, 2)
+            pos_dist = np.repeat(pos_dist, [2]*pos_dist.shape[0], axis=0)
+            # pos_dist = np.repeat(pos_dist, 2)
             full_g_num = g_max * 2
-            for prob_index, prob in enumerate(pos_dist):
-                if prob != 0:
-                    if prob_index % 2 == 0:
-                        row_index = prob_index // full_g_num
-                        p_index = (prob_index % (full_g_num)) // 2
-                        b_val = 0
+            for bf_index, g_probs in enumerate(pos_dist):
+                if np.sum(g_probs) != 0:
+                    if bf_index % 2 == 0:
+                        row_index = bf_index // 2
+                        b_index = 0
                         for row_index_val in row_indices[row_index][::-1]:
                             if row_index_val > 0:
-                                b_val = row_index_val
+                                b_index = row_index_val
                                 break
-                        if b_val != p_index:
-                            pos_dist[prob_index] = 0
-                        else:
-                            pos_dist[prob_index] = 1
+                        for g_index in enumerate(g_probs):
+                            if g_index == b_index:
+                                pos_dist[bf_index, g_index] = 1
+                            else:
+                                pos_dist[bf_index, g_index] = 0
+            pos_dist = np.ravel(corrected_pos_dist.astype(np.float32))
+
             logging.info("Size of POS array {} should be analytically equal to {}".format(pos_dist.shape[0], g_max*(b_max**self.depth)*2))
             for index_, val in enumerate(pos_dist):
-                logging.debug(' '.join(map(str, ['P', index_ % g_max, 'B',row_indices[index_//(g_max*2)],'F', index_%2, val])))
+                logging.info(' '.join(map(str, ['P', index_ % (g_max*2), 'B',row_indices[index_//(g_max*2)],'F', index_%2, val])))
+            # for index_t_1 in pi.shape[0]:
+            #     state_t_1 = indexer.extractState(index_t_1)
+            #     if np.sum(pi[index_t_1]) == 0:
+            #         logging.info(state_t_1.str() + ' is a invalid state.')
+            #         continue
+            #     for index_t in pi.shape[1]:
+            #         if pi[index_t_1, index_t]:
+            #             state_t = indexer.extractState(index_t)
+            #             logging.info(' '.join(map(str, [state_t_1.str(), '->', state_t.str(), pi[index_t_1, index_t],
+            #                                             'pos line:', pos_dist[]])))
+
             model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, pos_dist,
                                                         indexer.get_EOS_full()), self.depth)
             logging.info("EOS index is "+str(indexer.get_EOS_full()))
