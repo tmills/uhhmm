@@ -159,7 +159,6 @@ class DistributedModelCompiler(FullDepthCompiler):
                                 b_index = row_index_val
                                 break
                         for g_index, g_val in enumerate(g_probs):
-                            print g_index, b_index
                             if g_index == b_index:
                                 corrected_pos_dist[bf_index, g_index] = 1
                             else:
