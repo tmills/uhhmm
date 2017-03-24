@@ -149,7 +149,6 @@ class DistributedModelCompiler(FullDepthCompiler):
                 corrected_pos_dist = pos_dist
             corrected_pos_dist = np.repeat(corrected_pos_dist, [2]*pos_dist.shape[0], axis=0)
             # pos_dist = np.repeat(pos_dist, 2)
-            full_g_num = g_max * 2
             for bf_index, g_probs in enumerate(pos_dist):
                 if np.sum(g_probs) != 0:
                     if bf_index % 2 == 0:
@@ -159,7 +158,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                             if row_index_val > 0:
                                 b_index = row_index_val
                                 break
-                        for g_index in enumerate(g_probs):
+                        for g_index, g_val in enumerate(g_probs):
                             if g_index == b_index:
                                 pos_dist[bf_index, g_index] = 1
                             else:
