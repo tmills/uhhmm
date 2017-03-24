@@ -166,7 +166,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                             pos_dist[prob_index] = 1
             logging.info("Size of POS array {} should be analytically equal to {}".format(pos_dist.shape[0], g_max*(b_max**self.depth)*2))
             for index_, val in enumerate(pos_dist):
-                logging.info(' '.join(map(str, ['P', index_ % g_max, 'B',row_indices[index_//(g_max*2)],'F', index_%2, val])))
+                logging.debug(' '.join(map(str, ['P', index_ % g_max, 'B',row_indices[index_//(g_max*2)],'F', index_%2, val])))
             model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, pos_dist,
                                                         indexer.get_EOS_full()), self.depth)
             logging.info("EOS index is "+str(indexer.get_EOS_full()))
