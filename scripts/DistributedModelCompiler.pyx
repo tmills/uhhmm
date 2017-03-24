@@ -149,7 +149,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                 corrected_pos_dist = pos_dist
             corrected_pos_dist = np.repeat(corrected_pos_dist, [2]*pos_dist.shape[0], axis=0)
             # pos_dist = np.repeat(pos_dist, 2)
-            for bf_index, g_probs in enumerate(pos_dist):
+            for bf_index, g_probs in enumerate(corrected_pos_dist):
                 if np.sum(g_probs) != 0:
                     if bf_index % 2 == 0:
                         row_index = bf_index // 2
@@ -161,18 +161,18 @@ class DistributedModelCompiler(FullDepthCompiler):
                         for g_index, g_val in enumerate(g_probs):
                             print g_index, b_index
                             if g_index == b_index:
-                                pos_dist[bf_index, g_index] = 1
+                                corrected_pos_dist[bf_index, g_index] = 1
                             else:
-                                pos_dist[bf_index, g_index] = 0
-            pos_dist = np.ravel(corrected_pos_dist.astype(np.float32))
+                                corrected_pos_dist[bf_index, g_index] = 0
+            corrected_pos_dist = np.ravel(corrected_pos_dist.astype(np.float32))
 
-            assert pos_dist.shape[0]== g_max*(b_max**self.depth)*2, "Size of POS array {} should be analytically equal to {}".format
+            assert corrected_pos_dist.shape[0]== g_max*(b_max**self.depth)*2, "Size of POS array {} should be analytically equal to {}".format
             (pos_dist.shape[0], g_max*(b_max**self.depth)*2)
 
             for b_index, b_cats in enumerate(row_indices):
                 for f_index in (0, 1):
                     for g_index in range(0, g_max):
-                        logging.info(' '.join(map(str, ['P', g_index, 'B',b_cats,'F', f_index, pos_dist[b_index*2+f_index*g_max+g_index]])))
+                        logging.info(' '.join(map(str, ['P', g_index, 'B',b_cats,'F', f_index, corrected_pos_dist[b_index*2+f_index*g_max+g_index]])))
             # for index_t_1 in pi.shape[0]:
             #     state_t_1 = indexer.extractState(index_t_1)
             #     if np.sum(pi[index_t_1]) == 0:
@@ -184,7 +184,7 @@ class DistributedModelCompiler(FullDepthCompiler):
             #             logging.info(' '.join(map(str, [state_t_1.str(), '->', state_t.str(), pi[index_t_1, index_t],
             #                                             'pos line:', pos_dist[]])))
 
-            model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, pos_dist,
+            model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, corrected_pos_dist,
                                                         indexer.get_EOS_full()), self.depth)
             logging.info("EOS index is "+str(indexer.get_EOS_full()))
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
