@@ -169,8 +169,10 @@ class DistributedModelCompiler(FullDepthCompiler):
             assert pos_dist.shape[0]== g_max*(b_max**self.depth)*2, "Size of POS array {} should be analytically equal to {}".format
             (pos_dist.shape[0], g_max*(b_max**self.depth)*2)
 
-            for index_, val in enumerate(pos_dist):
-                logging.info(' '.join(map(str, ['P', index_ % (g_max*2), 'B',row_indices[index_//(g_max*2)],'F', (index_//g_max)%2, val])))
+            for b_index, b_cats in enumerate(row_indices):
+                for f_index in (0, 1):
+                    for g_index in (0, g_max):
+                        logging.info(' '.join(map(str, ['P', g_index, 'B',b_cats,'F', f_index, pos_dist[b_index*2+f_index*g_max+g_index]])))
             # for index_t_1 in pi.shape[0]:
             #     state_t_1 = indexer.extractState(index_t_1)
             #     if np.sum(pi[index_t_1]) == 0:
