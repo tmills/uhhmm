@@ -193,7 +193,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     if a == prev_state.a[start_depth-1]:
                         next_state.a[start_depth-1] = a
                         next_state.b[start_depth-1] = b
-                        cum_probs[1] = cum_probs[0] * models.B_J0[start_depth-1].dist[ prev_b_above, a, b ]
+                        cum_probs[1] = cum_probs[0] * models.B_J0[start_depth-1].dist[ prev_b_above, prev_a, b ]
                     else:
                         continue
 
@@ -226,11 +226,12 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     if nominal_depth - j >= 0:
                         cum_probs[2] = cum_probs[1] * models.F[start_depth].dist[b, f]
                     else:
-                        ## if start depth is -1 we're only allowed to fork:
-                        if next_state.f == 1:
-                            cum_probs[2] = cum_probs[1]
-                        else:
-                            continue
+                        continue
+                        # ## if start depth is -1 we're only allowed to fork:
+                        # if next_state.f == 1:
+                        #     cum_probs[2] = cum_probs[1]
+                        # else:
+                        #     continue
 
                     ## Now multiply in the pos tag probability:
                     state_index_full = indexer.getStateIndex(next_state.j, next_state.a, next_state.b, next_state.f, 0)

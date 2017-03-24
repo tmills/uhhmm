@@ -141,7 +141,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                         if cur_val is True:
                             boundary = val_index
                     else:
-                        if any(row_index_bool) is False:
+                        if all(row_index_bool) is False:
                             corrected_pos_dist[index] = pos_dist[0]
                         else:
                             corrected_pos_dist[index] = pos_dist[row_index[boundary]]
@@ -164,7 +164,6 @@ class DistributedModelCompiler(FullDepthCompiler):
                             pos_dist[prob_index] = 0
                         else:
                             pos_dist[prob_index] = 1
-            row_indices = list(itertools.product(range(b_max), repeat=self.depth + 1))
             for index_, val in enumerate(pos_dist):
                 logging.debug(' '.join(map(str, [index_, row_indices[index_//2],val])))
             model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, pos_dist,
