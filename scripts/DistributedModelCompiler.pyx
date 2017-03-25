@@ -147,7 +147,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                             corrected_pos_dist[index] = pos_dist[row_index[boundary]]
             else:
                 corrected_pos_dist = pos_dist
-            corrected_pos_dist = np.repeat(corrected_pos_dist, [2]*pos_dist.shape[0], axis=0)
+            corrected_pos_dist = np.repeat(corrected_pos_dist, [2]*corrected_pos_dist.shape[0], axis=0)
             # pos_dist = np.repeat(pos_dist, 2)
             for bf_index, g_probs in enumerate(corrected_pos_dist):
                 if np.sum(g_probs) != 0:
