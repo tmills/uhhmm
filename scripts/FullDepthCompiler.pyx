@@ -151,11 +151,11 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
         if prev_state.f == 0:
             cum_probs[0] = models.J[start_depth].dist[ prev_a, prev_b_above, j ]
         else:
-            cum_probs[0] = models.J[start_depth].dist[ prev_g, prev_b, j ]
-
-        if nominal_depth == depth:
-            next_state.j = 1
-            cum_probs[0] = 1
+            if nominal_depth == depth:
+                next_state.j = 1
+                cum_probs[0] = 1
+            else:
+                cum_probs[0] = models.J[start_depth+1].dist[ prev_g, prev_b, j ]
 
         ## Add probs for transition to EOS
         if prev_state.f==0 and j==1 and start_depth == 0:

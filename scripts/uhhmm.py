@@ -1019,7 +1019,8 @@ def increment_counts(hid_seq, sent, models, inc=1):
             elif prev_f == 1:
                 if depth >= 0 and (prev_b == 0 and prev_g == 0):
                     print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
-                models.J[max(0,depth)].count((prev_g, prev_b), state.j, inc)
+                if depth + prev_f < max_depth:
+                    models.J[max(0, depth+1)].count((prev_g, prev_b), state.j, inc)
             else:
                 raise Exception("Unallowed value (%s) of the fork variable!" %state.f)
 
@@ -1068,7 +1069,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
                 assert depth > 0 or index == len(sent) - 1, "Found a -/+ decision at depth 0 prior to sentence end."
                 if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
                     print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
-                models.B_J1[max(0,depth-1)].count(( prev_b_above, cur_a), cur_b, inc)
+                models.B_J1[max(0,depth-1)].count(( prev_b_above, prev_a), cur_b, inc)
             else:
                 raise Exception("Unallowed value of f=%d and j=%d, index=%d" % (state.f, state.j, index) )
 
@@ -1077,10 +1078,10 @@ def increment_counts(hid_seq, sent, models, inc=1):
             print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
         ## Final state is deterministic, don't include counts from final decisions:
         if word != 0:
-            models.F[max(0,depth)].count(prev_b, state.f, inc)
+            models.F[max(0,depth)].count(cur_b, state.f, inc)
 
         ## Count G
-        if word != 0 and prev_f != 0 and index != 0:
+        if word != 0 and cur_f != 0 and index != 0:
             models.pos.count(cur_b, cur_g, inc)
         ## Count w
         if word != 0:
