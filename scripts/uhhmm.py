@@ -421,9 +421,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             finite = True
             return_to_finite = False
 
-        pos_counts = models.pos.pairCounts[:].sum() - num_sents
-        lex_counts = models.lex.pairCounts[:].sum() - num_sents
-        logging.info("Have %d pos counts, %d lex counts after sample - should equal number of tokens %d" % (pos_counts, lex_counts, num_tokens) )
+        pos_counts = models.pos.pairCounts[:].sum()
+        lex_counts = models.lex.pairCounts[:].sum()
+        logging.info("Have %d pos counts, %d lex counts after sample " % (pos_counts, lex_counts) )
 
         ## remove the counts from these sentences
         if batch_size < num_sents:
