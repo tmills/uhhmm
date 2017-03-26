@@ -183,7 +183,7 @@ def write_model(counts, out_file, word_dict=None, condPrefix="", outcomePrefix="
         if val < 0.000001:
             continue
 
-        if word_dict == None:
+        if word_dict is None:
             f.write("P( %s%d | %s%s, %d ) = %f \n" % (outcomePrefix, rhs, condPrefix, str(lhs), depth, val))
         elif rhs != 0:
             f.write("P( %s | %s, %d ) = %f \n" % (word_dict[rhs], str(lhs), depth, val))
@@ -200,7 +200,7 @@ def write_lex_model(dist, out_file, word_dict=None):
         if (out_dim > 2 and rhs == 0) or val < 0.000001:
             continue
 
-        if word_dict == None:
+        if word_dict is None:
             f.write("X %s : %s = %f \n" % (str(lhs), str(rhs), val))
         else:
             f.write("X %s : %s = %f \n" % (str(lhs), word_dict[rhs], val))

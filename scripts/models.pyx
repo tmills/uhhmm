@@ -56,7 +56,7 @@ cdef class Model:
         self.pairCounts[:] = 0
 
     def copy(self):
-        m_copy = Model( self.shape, self.alpha, None if self.beta == None else self.beta.copy(), self.corpus_shape, self.name)
+        m_copy = Model( self.shape, self.alpha, None if self.beta is None else self.beta.copy(), self.corpus_shape, self.name)
         m_copy.pairCounts = self.pairCounts.copy()
         m_copy.globalPairCounts = self.globalPairCounts.copy()
         m_copy.dist = self.dist.copy()

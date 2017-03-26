@@ -11,7 +11,7 @@ cdef class State:
     def __init__(self, int depth, state=None):
         self.depth = depth
         
-        if state == None:
+        if state is None:
             self.f = -1
             self.j = -1
             self.a = np.zeros(depth, dtype=int)

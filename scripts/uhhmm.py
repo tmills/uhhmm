@@ -125,7 +125,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
     logging.info("Initializing state")
 
-    if pickle_file == None:
+    if pickle_file is None:
         ## Add 1 to every start value for "Null/start" state
         a_max = start_a+2
         b_max = start_b+2
@@ -556,7 +556,7 @@ def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
 
     for sent_index in range(start_ind, end_ind):
         hid_seq = hid_seqs[sent_index]
-        if hid_seq == None:
+        if hid_seq is None:
             logging.warning("collect_trans_probs() found a missing parse %d - skipping sentence." % (sent_index) )
             continue
 
