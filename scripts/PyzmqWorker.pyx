@@ -81,9 +81,9 @@ cdef class PyzmqWorker:
             #  Socket to talk to server
             logging.debug("Worker %d sending request for new model" % self.tid)
             models_socket.send(b'0')
-            logging.info("Waiting for new model location from server.")
+            logging.debug("Waiting for new model location from server.")
             msg = models_socket.recv_pyobj()
-            logging.info("Received new model location from server.")
+            logging.debug("Received new model location from server.")
             # if self.gpu:
             #     msg = msg + '.gpu' # use gpu model for model
 
@@ -97,10 +97,12 @@ cdef class PyzmqWorker:
             logging.debug("Worker %d preparing to process new model" % self.tid)
 
             if model_wrapper.model_type == ModelWrapper.HMM and not self.gpu:
-                sampler = HmmSampler.HmmSampler(self.seed)
-                sampler.set_models(model_wrapper.model)
-                self.processSentences(sampler, model_wrapper.model[1], jobs_socket, results_socket)
-
+                if self.batch_size > 0:
+                    sampler = HmmSampler.HmmSampler(self.seed)
+                    sampler.set_models(model_wrapper.model)
+                    self.processSentences(sampler, model_wrapper.model[1], jobs_socket, results_socket)
+                else:
+                    time.sleep(1)
             elif model_wrapper.model_type == ModelWrapper.INFINITE:
                 sampler = DepthOneInfiniteSampler.InfiniteSampler(self.seed)
                 sampler.set_models(model_wrapper.model)
@@ -309,7 +311,8 @@ cdef class PyzmqWorker:
             file_sig = get_file_signature(model_loc.file_path)
         else:
             dir = tempfile.mkdtemp()
-            local_path = os.path.join(dir, 'model.bin')
+            local_path = os.path.join(dir, os.path.basename(model_loc.file_path))
+            logging.info("Model location is remote... ssh-ing into server to get model file %s and saving to %s" % (model_loc.file_path, local_path))
             os.system("scp -p %s:%s %s" % (model_loc.ip_addr, model_loc.file_path, local_path))
             in_file = open(local_path, 'rb')
             file_sig = get_file_signature(local_path)
