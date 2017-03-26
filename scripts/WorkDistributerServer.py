@@ -228,14 +228,15 @@ class ModelDistributer(Thread):
         self.model_sig = None
         self.model_lock = VerboseLock("Model")
         self.quit = False
+        self.model_loc = ModelLocation(self.host, os.path.join(self.working_dir, '/models.bin'))
         
     ## All this method does is wait for requests for the model and send them,
     ## with a quick check to make sure that the model isn't currently being written
     def run(self):
-        model_loc = ModelLocation(self.host, self.working_dir + '/models.bin')
 
+        
         ## Wait until we're actually given a model to start sending them out...
-        while self.model_sig == None:
+        while self.model_sig is None:
             time.sleep(1)
 
         while True:
@@ -247,7 +248,7 @@ class ModelDistributer(Thread):
                     logging.info("Model server received quit signal")
                     break
                 logging.log(logging.DEBUG, 'Sending worker a model in response to signal %s' % str(sync))
-                self.socket.send_pyobj(model_loc)
+                self.socket.send_pyobj(self.model_loc)
                 ## Don't need to do anything -- this happens when there is a timeout,
                 ## and just need to check the quit value regularly. Don't know when
                 ## to quit otherwise because we can't be sure of how many workers there
@@ -258,9 +259,9 @@ class ModelDistributer(Thread):
 
         self.socket.close()
 
-    def reset_models(self):
-        fn = self.working_dir+'/models.bin'
-        self.model_sig = get_file_signature(fn)
+    def reset_models(self, fn='models.bin'):
+        self.model_loc.file_path = os.path.join(self.working_dir, fn) 
+        self.model_sig = get_file_signature(self.model_loc.file_path)
 
     def send_quit(self):
         self.quit_socket.send(b'-1')
@@ -317,7 +318,7 @@ class WorkDistributerServer():
             time.sleep(2)
         
     def submitBuildModelJobs(self, num_rows, full_pi=False):
-        self.model_server.reset_models()
+        self.model_server.reset_models('raw_models.bin')
         for i in range(0, num_rows):
             compile_job = CompileJob(i, full_pi)
             job = PyzmqJob(PyzmqJob.COMPILE, compile_job)

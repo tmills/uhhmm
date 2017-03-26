@@ -3,6 +3,7 @@
 import logging
 import time
 import numpy as np
+import os.path
 import sys
 from PyzmqMessage import ModelWrapper
 import scipy.sparse
@@ -50,7 +51,7 @@ class DistributedModelCompiler(FullDepthCompiler):
         ## Write out raw models for workers to use to build from:
         ## First unlog them so they are in form workers expect:
         unlog_models(models, self.depth)
-        fn = working_dir+"/models.bin"
+        fn = os.path.join(working_dir,'raw_models.bin')
         model_wrapper = ModelWrapper(ModelWrapper.COMPILE, models, self.depth)
         out_file = open(fn, 'wb')
         pickle.dump(model_wrapper, out_file)
