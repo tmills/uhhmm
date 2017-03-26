@@ -49,6 +49,9 @@ def main(argv):
         with open(out_dir + "/config.ini", 'w') as configfile:
             config.write(configfile)
 
+    ## Write git hash of current branch to out directory
+    os.system('git rev-parse HEAD > %s/git-rev.txt' % (out_dir))
+
     input_file = config.get('io', 'input_file')
     working_dir = config.get('io', 'working_dir', fallback=out_dir)
 
