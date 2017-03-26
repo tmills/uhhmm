@@ -18,20 +18,24 @@ def start_cluster_workers(work_distributer, cluster_cmd, maxLen, gpu):
     logging.info("Making cluster submit call with the following command: %s" % str(submit_cmd))
     subprocess.call(submit_cmd)
 
-def start_local_workers_with_distributer(work_distributer, maxLen, num_workers, gpu, batch_size=1):
-    logging.info("Starting workers with maxLen=%d and num_workers=%d" % (maxLen, num_workers) )
-    return start_local_workers(work_distributer.host, work_distributer.jobs_port, work_distributer.results_port, work_distributer.models_port, maxLen, num_workers, gpu, batch_size)
+def start_local_workers_with_distributer(work_distributer, maxLen, cpu_workers, gpu_workers=0, gpu=False, batch_size=1):
+    logging.info("Starting workers with maxLen=%d and num_cpu_workers=%d and num_gpu_workers=%d" % (maxLen, cpu_workers, gpu_workers) )
+    return start_local_workers(work_distributer.host, work_distributer.jobs_port, work_distributer.results_port, work_distributer.models_port, maxLen, cpu_workers, gpu_workers, gpu, batch_size)
 
-def start_local_workers(host, jobs_port, results_port, models_port, maxLen, num_workers, gpu, batch_size=1):
-    logging.info("Starting %d workers at host %s with jobs_port=%d, results_port=%d, models_port=%d, maxLen=%d" % (num_workers, host, jobs_port, results_port, models_port, maxLen) )
+def start_local_workers(host, jobs_port, results_port, models_port, maxLen, cpu_workers, gpu_workers=0, gpu=False, batch_size=1):
+    logging.info("Starting %d cpu workers and %d gpu workers at host %s with jobs_port=%d, results_port=%d, models_port=%d, maxLen=%d" % (cpu_workers, gpu_workers, host, jobs_port, results_port, models_port, maxLen) )
     multiprocessing.set_start_method('spawn')
     processes = []
     logging.info("Worker intializing GPU status: %s" % gpu)
-    for i in range(0, num_workers):
-        if i > 0:
+    for i in range(0, cpu_workers+gpu_workers):
+        if i >= gpu_workers:
             gpu = False
-            batch_size = 1
-        fs = PyzmqWorker.PyzmqWorker(host, jobs_port, results_port, models_port, maxLen, tid=i, gpu=gpu, batch_size=batch_size, level=logging.getLogger().getEffectiveLevel())
+            gpu_batch_size = 0 if gpu_workers > 0 else 1 
+        else:
+            gpu = True 
+            gpu_batch_size = batch_size
+
+        fs = PyzmqWorker.PyzmqWorker(host, jobs_port, results_port, models_port, maxLen, tid=i, gpu=gpu, batch_size=gpu_batch_size, level=logging.getLogger().getEffectiveLevel())
         signal.signal(signal.SIGTERM, fs.handle_sigterm)
         signal.signal(signal.SIGINT, fs.handle_sigint)
         signal.signal(signal.SIGALRM, fs.handle_sigalarm)
@@ -44,8 +48,8 @@ def start_local_workers(host, jobs_port, results_port, models_port, maxLen, num_
 def main(args):
     logging.basicConfig(level=logging.INFO)
 
-    if len(args) != 1 and len(args) != 6 and len(args) != 7 and len(args) != 8:
-        print("ERROR: Wrong number of arguments! Two run modes -- One argument of a file with properties or 6-8 arguments with properties.")
+    if len(args) != 1 and len(args) != 7 and len(args) != 8:
+        print("ERROR: Wrong number of arguments! Two run modes -- One argument of a file with properties or 7-8 arguments: <host (string)> <jobs port (int)> <results port (int)> <models port (int)> <max sentence length (int)> <gpu ([0|1])> <gpu batch size (int)> [num replicates (int)]")
         sys.exit(-1)
 
     if len(args) == 1:
@@ -59,27 +63,19 @@ def main(args):
                     break
             else:
                 time.sleep(10)
+    else:
+        num_workers = 1
+        if len(args) >= 8:
+            num_workers = int(args[7])
 
-    num_workers = 1
-    if len(args) >= 8:
-        num_workers = int(args[7])
+        gpu = bool(int(args[5]))
+        gpu_workers = int(gpu) * num_workers
+        cpu_workers = (1 - int(gpu)) * num_workers
 
-        processes = start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), num_workers, bool(int(args[5])), int(args[6]))
-
-#         for i in range(0, num_workers):
-#             fs = PyzmqWorker.PyzmqWorker(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), tid=i)
-#             signal.signal(signal.SIGINT, fs.handle_sigint)
-#             signal.signal(signal.SIGALRM, fs.handle_sigalarm)
-#             p = Process(target=fs.run)
-#             processes.append(p)
-#             ## Call run directly instead of start otherwise we'll have 2n workers
-#             p.start()
+        processes = start_local_workers(host=args[0], jobs_port=int(args[1]), results_port=int(args[2]), models_port=int(args[3]), maxLen=int(args[4]), cpu_workers=cpu_workers, gpu_workers=gpu_workers, gpu=gpu, batch_size=int(args[6]))
 
         for i in range(0, num_workers):
             processes[i].join()
-
-    else:
-        start_local_workers(args[0], int(args[1]), int(args[2]), int(args[3]), int(args[4]), 1, bool(int(args[5])), int(args[6]))
 
 if __name__ == "__main__":
     main(sys.argv[1:])

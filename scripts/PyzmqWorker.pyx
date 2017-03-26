@@ -14,6 +14,8 @@ import sys
 import time
 import pdb, traceback
 #import pyximport; pyximport.install()
+import tempfile
+import socket
 import DepthOneInfiniteSampler
 import HmmSampler
 cimport HmmSampler
@@ -25,6 +27,12 @@ import Indexer
 import FullDepthCompiler
 from uhhmm_io import printException, ParsingError
 
+## This function was required because of some funkiness on ubuntu systems where reverse dns lookup was returning a loopback ip
+## This will try the easy way and if it returns something with 127. will make an outside connectino to known DNS (8.8.8.8) and
+## grab the external IP from that socket.
+## Solution from here: http://stackoverflow.com/a/1267524
+def get_local_ip():
+    return [l for l in ([ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")][:1], [[(s.connect(('8.8.8.8', 53)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]]) if l][0][0]
 
 cdef class PyzmqWorker:
     def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, gpu=False, batch_size=8, seed=0, level=logging.INFO):
@@ -43,6 +51,7 @@ cdef class PyzmqWorker:
         self.indexer = None
         self.gpu = gpu
         self.batch_size = batch_size
+        self.my_ip = get_local_ip()
 
     def __reduce__(self):
         return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.gpu, self.batch_size, self.seed, self.debug_level), None)
@@ -72,30 +81,28 @@ cdef class PyzmqWorker:
             #  Socket to talk to server
             logging.debug("Worker %d sending request for new model" % self.tid)
             models_socket.send(b'0')
-            logging.debug("Worker %d waiting for new models..." % self.tid)
+            logging.debug("Waiting for new model location from server.")
             msg = models_socket.recv_pyobj()
-
+            logging.debug("Received new model location from server.")
             # if self.gpu:
             #     msg = msg + '.gpu' # use gpu model for model
-            if not msg.endswith('bin'):
-                msg = '../output/wsj20first1000/models.bin'
-            in_file = open(msg, 'rb')
+
             try:
-                model_wrapper = pickle.load(in_file)
+                model_wrapper, self.model_file_sig = self.get_model(msg)
             except Exception as e:
 
                 printException()
                 raise e
-            in_file.close()
-            self.model_file_sig = get_file_signature(msg)
 
             logging.debug("Worker %d preparing to process new model" % self.tid)
 
             if model_wrapper.model_type == ModelWrapper.HMM and not self.gpu:
-                sampler = HmmSampler.HmmSampler(self.seed)
-                sampler.set_models(model_wrapper.model)
-                self.processSentences(sampler, model_wrapper.model[1], jobs_socket, results_socket)
-
+                if self.batch_size > 0:
+                    sampler = HmmSampler.HmmSampler(self.seed)
+                    sampler.set_models(model_wrapper.model)
+                    self.processSentences(sampler, model_wrapper.model[1], jobs_socket, results_socket)
+                else:
+                    time.sleep(1)
             elif model_wrapper.model_type == ModelWrapper.INFINITE:
                 sampler = DepthOneInfiniteSampler.InfiniteSampler(self.seed)
                 sampler.set_models(model_wrapper.model)
@@ -107,9 +114,9 @@ cdef class PyzmqWorker:
 
             elif model_wrapper.model_type == ModelWrapper.HMM and self.gpu:
                 import CHmmSampler
-                msg = msg + '.gpu'
-                in_file = open(msg, 'rb') # loading a specific gpu model and trick the system to believe it is the normal model
-                model_wrapper = pickle.load(in_file)
+                msg.file_path = msg.file_path + '.gpu'
+                model_wrapper = self.get_model(msg)[0]
+
                 # print('1 worker loading file.')
                 sampler = CHmmSampler.GPUHmmSampler(self.seed)
                 # print('2 init sampler on GPU')
@@ -118,7 +125,6 @@ cdef class PyzmqWorker:
                 # print('3 loading in models')
                 sampler.set_models(gpu_model)
                 # print('4 setting in models')
-                in_file.close()
                 # self.model_file_sig = get_file_signature(msg)
                 pi = 0 # placeholder
                 self.processSentences(sampler, pi, jobs_socket, results_socket)
@@ -241,7 +247,6 @@ cdef class PyzmqWorker:
                         if len(sent_batch) in [1,2,4,8,16,32,64,128,256]:
                             #logging.info("Batch has acceptable length of %d" % (len(sent_batch)))
                             # print('6 sampling now')
-                            # print sent_index
                             (sent_samples, log_probs) = sampler.sample(pi, sent_batch, sent_index)
                         else:
                             logging.info("Batch size %d doesn't match power of 2 -- breaking into sub-batches" % (len(sent_batch) ) )
@@ -298,6 +303,23 @@ cdef class PyzmqWorker:
                 logging.error('Sentence %d had positive log probability %f' % (sent_index, log_prob))
 
         logging.debug("Worker %d processed %d sentences this iteration" % (self.tid, sents_processed))
+
+    def get_model(self, model_loc):
+        ip = model_loc.ip_addr
+        if ip == self.my_ip:
+            in_file = open(model_loc.file_path, 'rb')
+            file_sig = get_file_signature(model_loc.file_path)
+        else:
+            dir = tempfile.mkdtemp()
+            local_path = os.path.join(dir, os.path.basename(model_loc.file_path))
+            logging.info("Model location is remote... ssh-ing into server to get model file %s and saving to %s" % (model_loc.file_path, local_path))
+            os.system("scp -p %s:%s %s" % (model_loc.ip_addr, model_loc.file_path, local_path))
+            in_file = open(local_path, 'rb')
+            file_sig = get_file_signature(local_path)
+
+        model = pickle.load(in_file)
+        in_file.close()
+        return model, file_sig
 
     def handle_sigint(self, signum, frame):
         logging.info("Worker received quit signal... will terminate after cleaning up.")
