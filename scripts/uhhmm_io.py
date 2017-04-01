@@ -202,7 +202,7 @@ def write_last_sample(sample, out_file, word_dict):
         state_str = ""
         for token_num,token_state in enumerate(sent_state):
             token_str = word_dict[ sample.ev_seqs[sent_num][token_num] ]
-            state_str += token_state.str() + ';' + token_str + ' '
+            state_str += token_state.str() + '::' + token_str + ' '
         f.write(state_str.rstrip())
         f.write('\n')
 
