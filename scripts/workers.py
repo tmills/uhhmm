@@ -24,7 +24,6 @@ def start_local_workers_with_distributer(work_distributer, maxLen, cpu_workers, 
 
 def start_local_workers(host, jobs_port, results_port, models_port, maxLen, cpu_workers, gpu_workers=0, gpu=False, batch_size=1):
     logging.info("Starting %d cpu workers and %d gpu workers at host %s with jobs_port=%d, results_port=%d, models_port=%d, maxLen=%d" % (cpu_workers, gpu_workers, host, jobs_port, results_port, models_port, maxLen) )
-    multiprocessing.set_start_method('spawn')
     processes = []
     logging.info("Worker intializing GPU status: %s" % gpu)
     for i in range(0, cpu_workers+gpu_workers):
