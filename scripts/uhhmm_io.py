@@ -213,8 +213,10 @@ def write_last_sample(sample, out_file, word_dict):
         state_str = convert_states_into_tree(normed_sent_state, word_seq=token_strs)
         state_str = str(state_str).replace('\n', '')
         state_str = re.sub('\s+', ' ', state_str)
-        f.write(state_str.rstrip())
-        f.write('\n')
+        bracketed_f.write(state_str.rstrip())
+        bracketed_f.write('\n')
+    f.close()
+    bracketed_f.close()
 
 def extract_pos(sample):
     pos_seqs = list()
