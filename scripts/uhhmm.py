@@ -68,7 +68,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     num_tokens = np.sum(sent_lens)
 
     num_samples = 0
-    mp.set_start_method('spawn')
     ## Set debug first so we can use it during config setting:
     debug = params.get('debug', 'INFO')
     logfile = params.get('logfile','')
