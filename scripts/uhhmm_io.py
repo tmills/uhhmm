@@ -197,22 +197,22 @@ def write_lex_model(dist, out_file, word_dict=None):
 ## Here we add the word to the end separated by a semi-colon.
 ## One sentence per line, with tokens separated by spaces.
 ## The translate parameter controls whether the state sequences or bracketed parses are printed out
-def write_last_sample(sample, out_file, word_dict, translate=True):
+def write_last_sample(sample, out_file, word_dict):
     f = open(out_file, 'w', encoding='utf-8')
+    bracketed_f = open(out_file.replace('.txt', '')+'.linetrees', 'w', encoding='utf-8')
     #pdb.set_trace()
     for sent_num,sent_state in enumerate(sample.hid_seqs):
-        if translate:
-            sent_state = normalize_dateline(sent_state)
+        normed_sent_state = normalize_dateline(sent_state)
         state_str = ""
         token_strs = [word_dict[sample.ev_seqs[sent_num][x]] for x in range(len(sent_state))]
-        if not translate:
-            for token_num,token_state in enumerate(sent_state):
-                token_str = token_strs[token_num]
-                state_str += token_state.str() + '::' + token_str + ' '
-        else:
-            state_str = convert_states_into_tree(sent_state, word_seq=token_strs)
-            state_str = str(state_str).replace('\n', '')
-            state_str = re.sub('\s+', ' ', state_str)
+        for token_num,token_state in enumerate(sent_state):
+            token_str = token_strs[token_num]
+            state_str += token_state.str() + '::' + token_str + ' '
+        f.write(state_str.rstrip())
+        f.write('\n')
+        state_str = convert_states_into_tree(normed_sent_state, word_seq=token_strs)
+        state_str = str(state_str).replace('\n', '')
+        state_str = re.sub('\s+', ' ', state_str)
         f.write(state_str.rstrip())
         f.write('\n')
 
