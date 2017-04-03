@@ -307,12 +307,11 @@ cdef class PyzmqWorker:
 
     def get_model(self, model_loc):
         ip = model_loc.ip_addr
-        if ip == self.my_ip:
+        if ip == self.my_ip or '10.25' in ip:
             in_file = open(model_loc.file_path, 'rb')
             file_sig = get_file_signature(model_loc.file_path)
         else:
-            # dir = tempfile.mkdtemp()
-            dir = os.environ.get('TMPDIR')
+            dir = tempfile.mkdtemp()
             local_path = os.path.join(dir, os.path.basename(model_loc.file_path))
             logging.info("Model location is remote... ssh-ing into server to get model file %s and saving to %s" % (model_loc.file_path, local_path))
             os.system("scp -p %s:%s %s" % (model_loc.ip_addr, model_loc.file_path, local_path))
