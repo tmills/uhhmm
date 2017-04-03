@@ -25,6 +25,7 @@ cimport Sampler
 #from Sampler import *
 import Indexer
 import FullDepthCompiler
+import os
 from uhhmm_io import printException, ParsingError
 
 ## This function was required because of some funkiness on ubuntu systems where reverse dns lookup was returning a loopback ip
@@ -310,7 +311,8 @@ cdef class PyzmqWorker:
             in_file = open(model_loc.file_path, 'rb')
             file_sig = get_file_signature(model_loc.file_path)
         else:
-            dir = tempfile.mkdtemp()
+            # dir = tempfile.mkdtemp()
+            dir = os.environ.get('TMPDIR')
             local_path = os.path.join(dir, os.path.basename(model_loc.file_path))
             logging.info("Model location is remote... ssh-ing into server to get model file %s and saving to %s" % (model_loc.file_path, local_path))
             os.system("scp -p %s:%s %s" % (model_loc.ip_addr, model_loc.file_path, local_path))
