@@ -307,7 +307,7 @@ cdef class PyzmqWorker:
 
     def get_model(self, model_loc):
         ip = model_loc.ip_addr
-        if ip == self.my_ip or '10.25' in ip:
+        if ip == self.my_ip or ip.startswith('10.'):
             in_file = open(model_loc.file_path, 'rb')
             file_sig = get_file_signature(model_loc.file_path)
         else:
