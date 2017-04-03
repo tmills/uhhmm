@@ -63,19 +63,19 @@ def main(args):
                     break
             else:
                 time.sleep(10)
-    else:
-        num_workers = 1
-        if len(args) >= 8:
-            num_workers = int(args[7])
 
-        gpu = bool(int(args[5]))
-        gpu_workers = int(gpu) * num_workers
-        cpu_workers = (1 - int(gpu)) * num_workers
+    num_workers = 1
+    if len(args) >= 8:
+        num_workers = int(args[7])
 
-        processes = start_local_workers(host=args[0], jobs_port=int(args[1]), results_port=int(args[2]), models_port=int(args[3]), maxLen=int(args[4]), cpu_workers=cpu_workers, gpu_workers=gpu_workers, gpu=gpu, batch_size=int(args[6]))
+    gpu = bool(int(args[5]))
+    gpu_workers = int(gpu) * num_workers
+    cpu_workers = (1 - int(gpu)) * num_workers
 
-        for i in range(0, num_workers):
-            processes[i].join()
+    processes = start_local_workers(host=args[0], jobs_port=int(args[1]), results_port=int(args[2]), models_port=int(args[3]), maxLen=int(args[4]), cpu_workers=cpu_workers, gpu_workers=gpu_workers, gpu=gpu, batch_size=int(args[6]))
+
+    for i in range(0, num_workers):
+        processes[i].join()
 
 if __name__ == "__main__":
     main(sys.argv[1:])

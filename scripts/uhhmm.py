@@ -95,7 +95,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     batch_size = min(num_sents, int(params.get('batch_size', num_sents)))
     gpu = bool(int(params.get('gpu', 0)))
     gpu_batch_size = min(num_sents, int(params.get('gpu_batch_size', 32 if gpu == 1 else 1)))
-    if gpu and num_gpu_workers < 1:
+    if gpu and num_gpu_workers < 1 and num_cpu_workers > 0:
         logging.warn("Inconsistent config: gpu flag set with %d gpu workers; setting gpu=False" % (num_gpu_workers))
         gpu=False
 
