@@ -202,7 +202,6 @@ def write_last_sample(sample, out_file, word_dict):
     bracketed_f = open(out_file.replace('.txt', '')+'.linetrees', 'w', encoding='utf-8')
     #pdb.set_trace()
     for sent_num,sent_state in enumerate(sample.hid_seqs):
-        normed_sent_state = normalize_dateline(sent_state)
         state_str = ""
         token_strs = [word_dict[sample.ev_seqs[sent_num][x]] for x in range(len(sent_state))]
         for token_num,token_state in enumerate(sent_state):
@@ -210,7 +209,8 @@ def write_last_sample(sample, out_file, word_dict):
             state_str += token_state.str() + '::' + token_str + ' '
         f.write(state_str.rstrip())
         f.write('\n')
-        state_str = convert_states_into_tree(normed_sent_state, word_seq=token_strs)
+        normalize_dateline(sent_state)
+        state_str = convert_states_into_tree(sent_state, word_seq=token_strs)
         state_str = str(state_str).replace('\n', '')
         state_str = re.sub('\s+', ' ', state_str)
         bracketed_f.write(state_str.rstrip())

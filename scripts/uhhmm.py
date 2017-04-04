@@ -71,7 +71,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     ## Set debug first so we can use it during config setting:
     debug = params.get('debug', 'INFO')
     logfile = params.get('logfile','')
-    logging.basicConfig(level=getattr(logging, debug),filename=logfile)
+    logging.basicConfig(level=getattr(logging, debug),filename=logfile, stream=sys.stdout)
 
     depth = int(params.get('depth', 1))
     init_depth = int(params.get('init_depth', depth))
