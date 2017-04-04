@@ -206,7 +206,7 @@ def write_last_sample(sample, out_file, word_dict):
         token_strs = [word_dict[sample.ev_seqs[sent_num][x]] for x in range(len(sent_state))]
         for token_num,token_state in enumerate(sent_state):
             token_str = token_strs[token_num]
-            state_str += token_state.str() + '::' + token_str + ' '
+            state_str += token_state.raw_str() + '::' + token_str + ' '
         f.write(state_str.rstrip())
         f.write('\n')
         normed_states = normalize_dateline(sent_state)
