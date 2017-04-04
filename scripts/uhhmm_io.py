@@ -209,8 +209,8 @@ def write_last_sample(sample, out_file, word_dict):
             state_str += token_state.str() + '::' + token_str + ' '
         f.write(state_str.rstrip())
         f.write('\n')
-        normalize_dateline(sent_state)
-        state_str = convert_states_into_tree(sent_state, word_seq=token_strs)
+        normed_states = normalize_dateline(sent_state)
+        state_str = convert_states_into_tree(normed_states, word_seq=token_strs)
         state_str = str(state_str).replace('\n', '')
         state_str = re.sub('\s+', ' ', state_str)
         bracketed_f.write(state_str.rstrip())
