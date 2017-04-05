@@ -26,6 +26,7 @@ def start_local_workers(host, jobs_port, results_port, models_port, maxLen, cpu_
     logging.info("Starting %d cpu workers and %d gpu workers at host %s with jobs_port=%d, results_port=%d, models_port=%d, maxLen=%d" % (cpu_workers, gpu_workers, host, jobs_port, results_port, models_port, maxLen) )
     processes = []
     logging.info("Worker intializing GPU status: %s" % gpu)
+    multiprocessing.set_start_method("spawn")
     for i in range(0, cpu_workers+gpu_workers):
         if i >= gpu_workers:
             gpu = False
