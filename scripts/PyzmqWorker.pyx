@@ -317,8 +317,12 @@ cdef class PyzmqWorker:
             os.system("scp -p %s:%s %s" % (model_loc.ip_addr, model_loc.file_path, local_path))
             in_file = open(local_path, 'rb')
             file_sig = get_file_signature(local_path)
-
-        model = pickle.load(in_file)
+        while True:
+            try:
+                model = pickle.load(in_file)
+                break
+            except EOFError:
+                logging.warning("EOF error encounter at model loading")
         in_file.close()
         return model, file_sig
 
