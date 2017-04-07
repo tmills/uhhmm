@@ -145,7 +145,8 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     #             continue
 
     for j in (0,1):
-
+        if j == 0 and nominal_depth == depth:
+            continue
         next_state.j = j
         ## See note above where we set next_state.f
         if prev_state.f == 0:
@@ -158,7 +159,8 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                 cum_probs[0] = models.J[start_depth+1].dist[ prev_g, prev_b, j ]
 
         ## Add probs for transition to EOS
-        if (prev_state.f==0 and j==1 and start_depth == 0) or (prev_state.f==1 and j==1 and start_depth == -1):
+        if (prev_state.f==0 and j==1 and start_depth == 0) or (prev_state.f==1 and j==1 and start_depth == -1
+                                                               and prev_state.max_awa_depth() == -1):
             # FJ decision into EOS is observed, don't model. Just extract prob from awaited transition
             if start_depth == -1:
                 start_depth_tmp = 0
@@ -174,6 +176,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
             indices.append(EOS)
             data.append(EOS_prob)
             logging.debug(' '.join(map(str, [prev_state.str(), '->', indexer.extractState(EOS_full).str(), EOS_prob])))
+            continue
 
         for a in range(1, a_max-1):
             next_state.a[:] = 0
