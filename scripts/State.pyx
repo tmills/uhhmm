@@ -82,19 +82,16 @@ cdef class State:
         return string
 
     def unfiltered_str(self):  # ordering J A B F P, but showing the whole stack
-        string = ''
+        string = []
 
         j_str = 'J+' if self.j == 1 else 'J-'
-        string += j_str
-
-        string += "::"
+        string.append(j_str)
 
         for d in range(0, self.depth):
-            string += "ACT" + str(self.a[d]) + '/AWA' + str(self.b[d])
-        f_str = '::F+' if self.f == 1 else '::F-'
-        string += f_str
-        string += '::POS' + str(self.g)
-        return string
+            string.append("ACT" + str(self.a[d]) + '/AWA' + str(self.b[d]))
+        string.append('F+') if self.f == 1 else string.append('F-')
+        string.append('POS' + str(self.g))
+        return '::'.join(string)
 
 
     def to_list(self):
