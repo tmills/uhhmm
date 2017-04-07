@@ -390,7 +390,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             if(sents[sent_ind].size() < ind){
                 continue;
             } else if (sents[sent_ind].size == ind){
-                int EOS = p_indexer -> get_EOS()
+                int EOS = p_indexer -> get_EOS();
                 array2d<float, device_memory>::column_view dyn_prog_col = dyn_prog[ind - 1]->column(sent_ind);
                 get_row(pi->get_view(), EOS, *trans_slice, pos_full_array, g_max, b_max);
                 float final_normalizer = cusp::blas::dot(*trans_slice, column_view);
