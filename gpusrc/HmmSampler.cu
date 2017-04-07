@@ -393,7 +393,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
                 int EOS = p_indexer -> get_EOS();
                 cout << EOS << endl;
                 array2d<float, device_memory>::column_view final_dyn_col = dyn_prog[ind - 1]->column(sent_ind);
-                cout << cusp::blas::asum(final_dyn_col)) << endl;
+                cout << cusp::blas::asum(final_dyn_col) << endl;
                 get_row(pi->get_view(), EOS, *trans_slice, pos_full_array, g_max, b_max);
                 cout << cusp::blas::asum(*trans_slice) << endl;
                 float final_normalizer = cusp::blas::dot(*trans_slice, final_dyn_col);
