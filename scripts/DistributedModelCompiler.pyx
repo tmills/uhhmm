@@ -69,14 +69,14 @@ class DistributedModelCompiler(FullDepthCompiler):
             (local_indices, local_data, local_indices_full, local_data_full) = self.work_server.get_model_row(prevIndex)
             assert len(local_indices) == len(local_data), 'Bad length match at %d' % prevIndex
 
-            # normalization
-            normalizer = sum(local_data)
-            if normalizer > 0:
-                local_data = [x/normalizer for x in local_data]
-            if full_pi:
-                normalizer = sum(local_data_full)
-                if normalizer > 0:
-                    local_data_full = [x/normalizer for x in local_data_full]
+            # # normalization
+            # normalizer = sum(local_data)
+            # if normalizer > 0:
+            #     local_data = [x/normalizer for x in local_data]
+            # if full_pi:
+            #     normalizer = sum(local_data_full)
+            #     if normalizer > 0:
+            #         local_data_full = [x/normalizer for x in local_data_full]
 
             indptr[prevIndex+1] += len(local_indices)
             for local_indices_index, local_indices_item in enumerate(local_indices):
