@@ -41,7 +41,7 @@ cdef class State:
     #
     #     return string
 
-    def str(self):
+    def str(self):  # ordering F J A B P
         string = ''
 
         f_str = '+::' if self.f == 1 else '-::'
@@ -61,7 +61,7 @@ cdef class State:
         string += '::POS' + str(self.g)
         return string
 
-    def raw_str(self):
+    def raw_str(self):  # ordering J A B F P
         string = ''
 
 
@@ -80,6 +80,22 @@ cdef class State:
         string += f_str
         string += '::POS' + str(self.g)
         return string
+
+    def unfiltered_str(self):  # ordering J A B F P, but showing the whole stack
+        string = ''
+
+        j_str = 'J+' if self.j == 1 else 'J-'
+        string += j_str
+
+        string += "::"
+
+        for d in range(0, self.depth):
+            string += "ACT" + str(self.a[d]) + '/AWA' + str(self.b[d])
+        f_str = '::F+' if self.f == 1 else '::F-'
+        string += f_str
+        string += '::POS' + str(self.g)
+        return string
+
 
     def to_list(self):
         return (self.f, self.j, self.a, self.b, self.g)
