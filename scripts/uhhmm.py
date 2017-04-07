@@ -1005,9 +1005,10 @@ def increment_counts(hid_seq, sent, models, inc=1):
     # Append end state
     sent = sent[:] + [0]
     hid_seq = hid_seq[:] + [EOS]
-
+    logging.debug('now working on state sequence: '+'  '.join(some_state.unfiltered_str() for some_state in hid_seq))
     for index,word in enumerate(sent):
         state = hid_seq[index]
+        logging.debug("state {}: {}; word {}; prev_state {}".format(index, state.unfiltered_str(), word, prev_state.unfiltered.str()))
         # Populate previous state conditional dependencies
         prev_g = prev_state.g
         if depth == -1:
@@ -1031,11 +1032,13 @@ def increment_counts(hid_seq, sent, models, inc=1):
                 ## Final state is deterministic, don't include counts from final decisions:
                 # if word != 0:
                 models.J[max(0,depth)].count((prev_a, prev_b_above), state.j, inc)
+                logging.debug("J model inc count: {} {} -> {} at {}".format(prev_a, prev_b_above, state.j, max(0,depth)))
             elif prev_f == 1:
                 if depth >= 0 and (prev_b == 0 and prev_g == 0):
                     print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
                 if depth + prev_f < max_depth:
                     models.J[max(0, depth+1)].count((prev_g, prev_b), state.j, inc)
+                    logging.debug("J model inc count: {} {} -> {} at {}".format(prev_g, prev_b, state.j, max(0, depth+1)))
             else:
                 raise Exception("Unallowed value (%s) of the fork variable!" %state.f)
 
@@ -1061,30 +1064,36 @@ def increment_counts(hid_seq, sent, models, inc=1):
                 if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
                     print('Collision check -- A model at depth >=0 has same conditions as at depth -1.')
                 models.A[max(0,depth)].count((prev_b_above, prev_a), cur_a, inc)
+                logging.debug("A model inc count: {} {} -> {} at {}".format(prev_b_above, prev_a, cur_a, max(0,depth)))
                 if depth >= 0 and (prev_a == 0 and cur_a == 0):
                     print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
                 models.B_J0[max(0,depth)].count((cur_a, prev_a), cur_b, inc)
+                logging.debug("B_J0 model inc count: {} {} -> {} at {}".format(cur_a, prev_a, cur_b, max(0,depth)))
 
             elif prev_f == 1 and state.j == 1:
                 assert depth >= 0 or (len(sent) == 2 and index == 1), "Found an illegal +/+ transition at depth -1. %s %s" %(sent, index)
                 if depth >= 0 and (prev_b == 0 and prev_g == 0):
                     print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
                 models.B_J1[max(0,depth)].count((prev_b, prev_g), cur_b, inc)
+                logging.debug("B_J1 model inc count: {} {} -> {} at {}".format(prev_b, prev_g, cur_b, max(0, depth)))
 
             elif prev_f == 1 and state.j == 0:
                 assert depth <= max_depth, "Found a +/- decision at the maximum depth level."
                 if depth >= 0 and (prev_b == 0 and prev_g == 0):
                     print('Collision check -- A model at depth >=0 has same conditions as at depth -1.')
                 models.A[depth+1].count((prev_b, prev_g), cur_a, inc)
+                logging.debug("A model inc count: {} {} -> {} at {}".format(prev_b, prev_g, cur_a, depth+1))
                 if depth >= 0 and (prev_g == 0 and cur_a == 0):
                     print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
                 models.B_J0[depth+1].count((cur_a, prev_g), cur_b, inc)
+                logging.debug("B_J0 model inc count: {} {} -> {} at {}".format(cur_a, prev_g, cur_b, depth+1))
 
             elif prev_f == 0 and state.j == 1:
                 assert depth > 0 or index == len(sent) - 1, "Found a -/+ decision at depth 0 prior to sentence end."
                 if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
                     print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
                 models.B_J1[max(0,depth-1)].count(( prev_b_above, prev_a), cur_b, inc)
+                logging.debug("B_J1 model inc count: {} {} -> {} at {}".format(prev_b_above, prev_a, cur_b, max(0, depth-1)))
             else:
                 raise Exception("Unallowed value of f=%d and j=%d, index=%d" % (state.f, state.j, index) )
 
@@ -1094,13 +1103,16 @@ def increment_counts(hid_seq, sent, models, inc=1):
         ## Final state is deterministic, don't include counts from final decisions:
         if word != 0 or index != 0:
             models.F[max(0,depth)].count(cur_b, state.f, inc)
+            logging.debug("F model inc count: {} -> {} at {}".format(cur_b, state.f, max(0, depth)))
 
         ## Count G
         if word != 0 and state.f != 0:
             models.pos.count(cur_b, cur_g, inc)
+            logging.debug("G model inc count: {} -> {}".format(cur_b, cur_g))
         ## Count w
         if word != 0:
             models.lex.count(cur_g, word, inc)
+            logging.debug("W model inc count: {} -> {}".format(cur_g, word))
 
         depth = state.max_awa_depth()
         prev_state = state

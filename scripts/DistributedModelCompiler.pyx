@@ -115,6 +115,7 @@ class DistributedModelCompiler(FullDepthCompiler):
             pos_dist = models.pos.dist
             pos_dist[:, -1].fill(0)
             pos_dist[-1, :].fill(0)
+            pos_dist[:, 0].fill(0)
             if self.depth > 1:
                 corrected_pos_dist = np.zeros((pos_dist.shape[0]**self.depth, pos_dist.shape[1]))
                 original_num_rows = pos_dist.shape[0]
