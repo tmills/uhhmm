@@ -395,6 +395,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
                 get_row(pi->get_view(), EOS, *trans_slice, pos_full_array, g_max, b_max);
                 float final_normalizer = cusp::blas::dot(*trans_slice, final_dyn_col);
                 log_probs[sent_ind] += log10f(final_normalizer);
+                continue;
             }
 //            cout << "Processing sentence index " << sent_ind << endl;
             int token = sents[sent_ind][ind];
