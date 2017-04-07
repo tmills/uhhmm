@@ -332,7 +332,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     logging.error('The state sequence is ' + ' '.join([str(indexer.getStateIndex(x.j, x.a, x.b, x.f, x.g)) for x in parse.state_list]))
                     logging.error(' '.join([x.str() for x in parse.state_list]))
                     logging.error('The index is %d' % parse.index)
-                    raise(ValueError)
+                    raise
                 sample.log_prob += parse.log_prob
             hid_seqs[parse.index] = parse.state_list
 
@@ -1008,7 +1008,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
     logging.debug('now working on state sequence: '+'  '.join(some_state.unfiltered_str() for some_state in hid_seq))
     for index,word in enumerate(sent):
         state = hid_seq[index]
-        logging.debug("state {}: {}; word {}; prev_state {}".format(index, state.unfiltered_str(), word, prev_state.unfiltered.str()))
+        logging.debug("state {}: {}; word {}; prev_state {}".format(index, state.unfiltered_str(), word, prev_state.unfiltered_str()))
         # Populate previous state conditional dependencies
         prev_g = prev_state.g
         if depth == -1:
