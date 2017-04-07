@@ -1171,6 +1171,7 @@ def resample_all(models, sample, params, depth, init=False):
     models.lex.dist[0,1:].fill(-np.inf)
 
     # Resample pos
+    print("model P: P|B")
     print(models.pos.pairCounts)
     models.pos.sampleDirichlet(g_base)
     if np.argwhere(np.isnan(models.pos.dist)).size > 0:
@@ -1178,18 +1179,23 @@ def resample_all(models, sample, params, depth, init=False):
 
     logging.debug('printing out the pair counts for the models')
     for d in range(depth-1, -1, -1):
+        print('depth {} model B J1: B| (B A) or (B P)'.format(d))
         print(models.B_J1[d].pairCounts)
         models.B_J1[d].sampleDirichlet(b_base if d == 0 else b_base + models.B_J1[d-1].pairCounts * sample.alpha_b)
+        print('depth {} model B J0: B| (A A) or (A P)'.format(d))
         print(models.B_J0[d].pairCounts)
         models.B_J0[d].sampleDirichlet(b_base if d == 0 else b_base + models.B_J0[d-1].pairCounts * sample.alpha_b)
         # models.cont[d].sampleDirichlet(b_base if d == 0 else b_base + models.cont[d-1].pairCounts * sample.alpha_b)
         # models.next[d].sampleDirichlet(b_base if d == 0 else b_base + models.next[d-1].pairCounts * sample.alpha_b)
+        print("depth {} model A: A|(B A) or (B P)".format(d))
         print(models.A[d].pairCounts)
         models.A[d].sampleDirichlet(a_base if d == 0 else a_base + models.A[d-1].pairCounts * sample.alpha_a)
         # models.root[d].sampleDirichlet(a_base if d == 0 else a_base + models.root[d-1].pairCounts * sample.alpha_a)
         # models.reduce[d].sampleDirichlet(j_base if d == 0 else j_base + models.reduce[d-1].pairCounts * sample.alpha_j)
+        print("depth {} model J: J|(A B) or (P B)".format(d))
         print(models.J[d].pairCounts)
         models.J[d].sampleDirichlet(j_base if d == 0 else j_base + models.J[d-1].pairCounts * sample.alpha_j)
+        print("depth {} model F: F|B".format(d))
         print(models.F[d].pairCounts)
         models.F[d].sampleDirichlet(f_base if d == 0 else f_base + models.F[d-1].pairCounts * sample.alpha_f)
 
