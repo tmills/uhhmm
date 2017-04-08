@@ -390,7 +390,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             if(sents[sent_ind].size() < ind){
                 continue;
             } else if (sents[sent_ind].size() == ind){
-                int EOS = p_indexer -> get_EOS();
+                int EOS = p_indexer -> get_EOS_full();
                 cout << EOS << endl;
                 array2d<float, device_memory>::column_view final_dyn_col = dyn_prog[ind - 1]->column(sent_ind);
                 cout << cusp::blas::asum(final_dyn_col) << endl;
