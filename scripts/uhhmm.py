@@ -1025,7 +1025,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
         prev_f = prev_state.f
 
         # Count join decision
-        if index != 0 and index != len(sent) - 1:
+        if index != 0:#  and index != len(sent) - 1:
             if prev_f == 0:
                 if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
                     print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
@@ -1101,7 +1101,7 @@ def increment_counts(hid_seq, sent, models, inc=1):
         if cur_depth >= 0 and (cur_b == 0 and cur_g == 0) and index != 0:
             print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
         ## Final state is deterministic, don't include counts from final decisions:
-        if word != 0 and index != 0 and index != len(sent) - 2:
+        if word != 0 and index != 0:# and index != len(sent) - 2:
             models.F[max(0,depth)].count(cur_b, state.f, inc)
             logging.debug("F model inc count: {} -> {} at {}".format(cur_b, state.f, max(0, depth)))
 
