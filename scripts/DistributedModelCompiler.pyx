@@ -205,7 +205,7 @@ class DistributedModelCompiler(FullDepthCompiler):
             model = ModelWrapper(ModelWrapper.HMM, (models, pi_full), self.depth)
         else:
             model = ModelWrapper(ModelWrapper.HMM, (models, pi), self.depth)
-        EOS = indexer.get_EOS()
+        # EOS = indexer.get_EOS()
         # EOS_full = indexer.get_EOS_full()
         # EOS_1wrd = indexer.get_EOS_1wrd()
         # EOS_1wrd_full = indexer.get_EOS_1wrd_full()
