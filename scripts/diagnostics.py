@@ -7,7 +7,7 @@ import pandas as pd
 import os
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-from left_corner2normal_tree_converter import parse_state_seq, normalize_dateline
+from left_corner2normal_tree_converter import parse_state_seq_string, normalize_dateline
 
 """
 this is the diagnostics generation script which plots trace plots for all models, logprobs,
@@ -133,7 +133,7 @@ def plot_depth2_branching(dir, depth=2):
             lb_rb_odds = [0, 0]
             for line in f:
                 line = line.strip()
-                states, words = parse_state_seq(line, depth)
+                states, words = parse_state_seq_string(line, depth)
                 states = normalize_dateline(states)
                 for index, state in enumerate(states):
                     if state.f == 1 and state.j == 1:
