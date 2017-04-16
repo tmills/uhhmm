@@ -167,7 +167,7 @@ def _calc_j_model(gamma_counts, gamma_stars, d, abp_domain_size, normalize=False
 def _calc_a_model(gamma_counts, gamma_stars, d, abp_domain_size, normalize=False):
     gamma_star_plus, preterm_marginal_distr = gamma_stars
     gamma_A_counts, gamma_B_counts = gamma_counts
-    a_model = np.zeros((d, abp_domain_size+2, abp_domain_size+2, abp_domain_size+1))
+    a_model = np.zeros((d, abp_domain_size+2, abp_domain_size+2, abp_domain_size+2))
     for depth in range(d):
         for lhs in gamma_A_counts[depth]:
             lhs_index = int(lhs.symbol())
