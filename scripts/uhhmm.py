@@ -27,6 +27,7 @@ import HmmSampler
 from dahl_split_merge import perform_split_merge_operation
 from models import Model, Models
 from workers import start_local_workers_with_distributer, start_cluster_workers
+from pcfg_translator import pcfg_increment_counts
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -321,7 +322,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 try:
                     # logging.info('The state sequence is ' + ' '.join([str(indexer.getStateIndex(x.j, x.a, x.b, x.f, x.g)) for x in parse.state_list]))
                     # logging.info(' '.join([x.str() for x in parse.state_list]))
-                    increment_counts(parse.state_list, ev_seqs[ parse.index ], models)
+                    pcfg_increment_counts(parse.state_list, ev_seqs[ parse.index ], models)
 
                     # logging.info('Good parse:')
                     # logging.info(' '.join([x.str() for x in parse.state_list]))
@@ -841,7 +842,7 @@ def initialize_and_load_state(ev_seqs, models, max_depth, init_seqs):
 
             hid_seq.append(state)
         state_seqs.append(hid_seq)
-        increment_counts(hid_seq, sent, models)
+        pcfg_increment_counts(hid_seq, sent, models)
 
     return state_seqs
 
@@ -939,7 +940,7 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None, strategy=RANDOM
 
             hid_seq.append(state)
 
-        increment_counts(hid_seq, sent, models)
+        pcfg_increment_counts(hid_seq, sent, models)
         state_seqs.append(hid_seq)
 
     return state_seqs
@@ -1119,11 +1120,11 @@ def increment_counts(hid_seq, sent, models, inc=1):
 
 def decrement_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
     for ind in range(start_ind, end_ind):
-        increment_counts(hid_seqs[ind], sents[ind], models, -1)
+        pcfg_increment_counts(hid_seqs[ind], sents[ind], models, -1)
 
 def increment_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
     for ind in range(start_ind, end_ind):
-        increment_counts(hid_seqs[ind], sents[ind], models, 1)
+        pcfg_increment_counts(hid_seqs[ind], sents[ind], models, 1)
 
 def handle_sigint(signum, frame, workers):
     logging.info("Master received quit signal... will terminate after cleaning up.")
