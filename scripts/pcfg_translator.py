@@ -132,7 +132,7 @@ def _calc_expected_counts(gammas, pcfg_counts, J, d, abp_domain_size):
 
 def _calc_f_model(gamma_stars, d, abp_domain_size, normalize=False):
     gamma_star_plus, preterm_marginal_distr = gamma_stars
-    f_model = np.zeros((d, abp_domain_size+1, 2))
+    f_model = np.zeros((d, abp_domain_size+2, 2))
     for depth in range(d):
         for lhs in range(0, abp_domain_size+1):
             for rhs in range(0, abp_domain_size+1):
@@ -150,14 +150,14 @@ def _calc_f_model(gamma_stars, d, abp_domain_size, normalize=False):
 def _calc_j_model(gamma_counts, gamma_stars, d, abp_domain_size, normalize=False):
     gamma_star_plus, preterm_marginal_distr = gamma_stars
     gamma_A_counts, gamma_B_counts = gamma_counts
-    j_model = np.zeros((d, abp_domain_size+1, abp_domain_size+1, 2))
+    j_model = np.zeros((d, abp_domain_size+2, abp_domain_size+2, 2))
     for depth in range(d):
         for lhs in gamma_B_counts[depth]:
             lhs_index = int(lhs.symbol())
             for rhs in gamma_B_counts[depth][lhs]:
                 rhs_left_index = int(rhs[0].symbol())
                 j_model[depth, lhs_index, rhs_left_index, 1] += gamma_B_counts[depth][lhs][rhs]
-                j_model[depth, :, rhs_left_index, 0] += gamma_A_counts[depth][lhs][rhs] * \
+                j_model[depth, :-1, rhs_left_index, 0] += gamma_A_counts[depth][lhs][rhs] * \
                                                          gamma_star_plus[depth, :, lhs_index]
     if normalize:
         return _normalize_a_tensor(j_model)
@@ -166,13 +166,13 @@ def _calc_j_model(gamma_counts, gamma_stars, d, abp_domain_size, normalize=False
 def _calc_a_model(gamma_counts, gamma_stars, d, abp_domain_size, normalize=False):
     gamma_star_plus, preterm_marginal_distr = gamma_stars
     gamma_A_counts, gamma_B_counts = gamma_counts
-    a_model = np.zeros((d, abp_domain_size+1, abp_domain_size+1, abp_domain_size+1))
+    a_model = np.zeros((d, abp_domain_size+2, abp_domain_size+2, abp_domain_size+1))
     for depth in range(d):
         for lhs in gamma_A_counts[depth]:
             lhs_index = int(lhs.symbol())
             for rhs in gamma_A_counts[depth][lhs]:
                 rhs_left_index = int(rhs[0].symbol())
-                a_model[depth, :, rhs_left_index, lhs_index] += gamma_star_plus[depth, :, lhs_index] * \
+                a_model[depth, :-1, rhs_left_index, lhs_index] += gamma_star_plus[depth, :, lhs_index] * \
                                                                  gamma_A_counts[depth][lhs][rhs]
     if normalize:
         return _normalize_a_tensor(a_model)
@@ -180,8 +180,8 @@ def _calc_a_model(gamma_counts, gamma_stars, d, abp_domain_size, normalize=False
 
 def _calc_b_models(gamma_counts, d, abp_domain_size, normalize=False):
     gamma_A_counts, gamma_B_counts = gamma_counts
-    b_j0_model = np.zeros((d, abp_domain_size+1, abp_domain_size+1, abp_domain_size+1))
-    b_j1_model = np.zeros((d, abp_domain_size + 1, abp_domain_size + 1, abp_domain_size + 1))
+    b_j0_model = np.zeros((d, abp_domain_size+2, abp_domain_size+2, abp_domain_size+2))
+    b_j1_model = np.zeros((d, abp_domain_size+2, abp_domain_size+2, abp_domain_size+2))
     for depth in range(d):
         for lhs in gamma_A_counts[depth]:
             lhs_index = int(lhs.symbol())
@@ -197,17 +197,19 @@ def _calc_b_models(gamma_counts, d, abp_domain_size, normalize=False):
 
 def _calc_p_model(gamma_stars, d, abp_domain_size, normalize=False):
     gamma_star_plus, preterm_marginal_distr = gamma_stars
-    p_model = np.zeros((d, abp_domain_size+1, abp_domain_size+1))
+    # p_model = np.zeros((d, abp_domain_size+1, abp_domain_size+1))
+    p_model = np.zeros((abp_domain_size + 2, abp_domain_size + 2))  # no depth
     for depth in range(d):
         for lhs in range(0,abp_domain_size+1):
             for rhs in range(0,abp_domain_size+1):
-                p_model[depth, lhs, rhs] = (gamma_star_plus[depth][lhs][rhs]) * preterm_marginal_distr[rhs]
+                # p_model[depth, lhs, rhs] = (gamma_star_plus[depth][lhs][rhs]) * preterm_marginal_distr[rhs]
+                p_model[lhs, rhs] += (gamma_star_plus[depth][lhs][rhs]) * preterm_marginal_distr[rhs]
     if normalize:
         return _normalize_a_tensor(p_model)
     return p_model
 
 def _calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize=False):
-    w_model = np.zeros((abp_domain_size+1, lex_size + 1))
+    w_model = np.zeros((abp_domain_size+2, lex_size))
     for lhs in pcfg_counts:
         lhs_index = int(lhs.symbol())
         for rhs in pcfg_counts[lhs]:
@@ -227,13 +229,13 @@ def _inc_counts(model, ref_model, inc=1):
         for depth in range(len(model)):
             model[depth].pairCounts += ref_model[depth] * inc
     else:
-        model.pairCounts += ref_model[depth] * inc
+        model.pairCounts += ref_model * inc
 
 def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False):
     d = len(models.A)
-    abp_domain_size = models.A[0].dist.shape[0] - 1
-    lex_size = models.lex.dist.shape[-1] - 2
-    pcfg, pcfg_counts = translate_through_pcfg((hid_seq, sent),depth, abp_domain_size)
+    abp_domain_size = models.A[0].dist.shape[0] - 2
+    lex_size = models.lex.dist.shape[-1]
+    pcfg, pcfg_counts = translate_through_pcfg((hid_seq, sent),d, abp_domain_size)
     nonterms = _build_nonterminals(abp_domain_size)
     delta_A, delta_B = _calc_delta(pcfg, J, abp_domain_size, d, nonterms)
     # print(delta_A, delta_B)
@@ -275,7 +277,7 @@ def main():
     J = 50
     normalize = False
     nonterms = _build_nonterminals(abp_domain_size)
-    lex_size = 2
+    lex_size = 4
     print(tree_processed)
     print(tree_processed.productions())
 
