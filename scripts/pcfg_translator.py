@@ -57,17 +57,18 @@ def _calc_delta(pcfg, J, abp_domain_size, d, nonterminals):
             for depth in range(d):
                 nonterm_sum_a = 0
                 nonterm_sum_b = 0
-                for rhs in pcfg[a]:
-                    if len(rhs) == 1:
-                        continue
-                    prob = pcfg[a][rhs]
-                    a_prime = int(rhs[0].symbol())
-                    b_prime = int(rhs[1].symbol())
-                    nonterm_sum_a += prob * delta[0, i_index-1, a_prime, depth] * delta[1, i_index-1, b_prime, depth]
-                    if depth + 1 < d:
-                        nonterm_sum_b += prob * delta[0, i_index-1, a_prime, depth + 1] * delta[1, i_index-1, b_prime, depth]
-                delta[0, i_index, a_index, depth] += nonterm_sum_a
-                delta[1, i_index, a_index, depth] += nonterm_sum_b
+                if a in pcfg:
+                    for rhs in pcfg[a]:
+                        if len(rhs) == 1:
+                            continue
+                        prob = pcfg[a][rhs]
+                        a_prime = int(rhs[0].symbol())
+                        b_prime = int(rhs[1].symbol())
+                        nonterm_sum_a += prob * delta[0, i_index-1, a_prime, depth] * delta[1, i_index-1, b_prime, depth]
+                        if depth + 1 < d:
+                            nonterm_sum_b += prob * delta[0, i_index-1, a_prime, depth + 1] * delta[1, i_index-1, b_prime, depth]
+                    delta[0, i_index, a_index, depth] += nonterm_sum_a
+                    delta[1, i_index, a_index, depth] += nonterm_sum_b
     # for i in range(2):
     #     for j in range(J):
     #          print(i, j, delta[i, j])
