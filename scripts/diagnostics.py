@@ -144,7 +144,7 @@ def plot_depth2_branching(dir, depth=2):
                         num_d2_percent += 1
                     total += 1
             num_d2_percent = num_d2_percent / total
-            lb_rb_odds = lb_rb_odds[0] / lb_rb_odds[1]
+            lb_rb_odds = lb_rb_odds[0] / (lb_rb_odds[0] + lb_rb_odds[1]) # left_branching / total
         d2.append(num_d2_percent)
         lr_odds.append(lb_rb_odds)
     pp = PdfPages(dir + 'd2_lr.pdf')
@@ -156,8 +156,8 @@ def plot_depth2_branching(dir, depth=2):
     plt.subplot(122)
     plt.plot(lr_odds)
     plt.xlabel('iters')
-    plt.ylabel('left/right branching ratio')
-    plt.title('l/r ratio')
+    plt.ylabel('left/total branching ratio')
+    plt.title('l/all ratio')
     plt.savefig(pp, format='pdf')
     pp.close()
 
