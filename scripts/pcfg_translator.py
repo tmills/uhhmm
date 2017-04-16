@@ -44,10 +44,11 @@ def _calc_delta(pcfg, J, abp_domain_size, d, nonterminals):
         # if a_index == 0:
         #     continue
         a = nonterminals[a_index]
-        lexical_sum = sum([items[1] for items in pcfg[a].items() if len(items[0]) == 1 and
+        if a in pcfg:
+            lexical_sum = sum([items[1] for items in pcfg[a].items() if len(items[0]) == 1 and
                            nltk.grammar.is_terminal(items[0][0])])
-        delta[0, 1:, a_index, :] = lexical_sum
-        delta[1, 1:, a_index, :] = lexical_sum
+            delta[0, 1:, a_index, :] = lexical_sum
+            delta[1, 1:, a_index, :] = lexical_sum
     for i_index in range(2, J):
         for a_index in range(abp_domain_size+1):  # the category labels correspond to their true labels. there is no 0
             if a_index == 0:
