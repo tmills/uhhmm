@@ -126,11 +126,28 @@ def _calc_expected_counts(gammas, pcfg_counts, J, d, abp_domain_size):
                     if j == 0:
                         gamma_star_plus[j, depth, lhs_index, a_prime] += gamma_Bs[depth][lhs][rhs]
                     else:
-                        gamma_star_plus[j, depth, 1:, a_prime] += gamma_star_plus[j-1, depth, 1:, lhs_index] \
+                        gamma_star_plus[j, depth, :-1, a_prime] += gamma_star_plus[j-1, depth, :-1, lhs_index] \
                                                                  * gamma_As[depth][lhs][rhs]
     # print(gamma_star_plus)
     gamma_star_plus_final = np.sum(gamma_star_plus, axis=0)
     return gamma_star_plus_final, preterm_marginal_distr
+
+def _calc_f_model_bp(gamma_stars, d, abp_domain_size, normalize=False):
+    gamma_star_plus, preterm_marginal_distr = gamma_stars
+    f_model = np.zeros((d, abp_domain_size+2, abp_domain_size+2, 2))
+    for depth in range(d):
+        for lhs in range(0, abp_domain_size+1):
+            for rhs in range(0, abp_domain_size+1):
+                if lhs != rhs:
+                    f_model[depth, lhs, rhs,1] = gamma_star_plus[depth, lhs, rhs] * preterm_marginal_distr[lhs]
+                else:
+                    f_model[depth, lhs, rhs, 0] = preterm_marginal_distr[lhs]
+                    f_model[depth, lhs, rhs, 1] = gamma_star_plus[depth, lhs, rhs] * preterm_marginal_distr[lhs]
+        if depth == 0:
+            f_model[0, 0, 0, 0] = 0
+    if normalize:
+        return _normalize_a_tensor(f_model)
+    return f_model
 
 def _calc_f_model(gamma_stars, d, abp_domain_size, normalize=False):
     gamma_star_plus, preterm_marginal_distr = gamma_stars
@@ -235,6 +252,7 @@ def _inc_counts(model, ref_model, inc=1):
 
 def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False):
     d = len(models.A)
+    d = d + 1  # calculate d+1 depth models for all pseudo count models, but not using them in _inc_counts
     abp_domain_size = models.A[0].dist.shape[0] - 2
     lex_size = models.lex.dist.shape[-1]
     pcfg, pcfg_counts = translate_through_pcfg([(hid_seq, sent)],d, abp_domain_size)
@@ -271,8 +289,8 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False):
     # print(_calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize))
 
 def main():
-    tree = "-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2"
-    tree_2 = "-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::-::POS2::2 -::ACT2/AWA2::-::POS2::2"
+    tree = "-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2"
+    tree_2 = "-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::-::POS2::2"
     tree_processed = full_chain_convert(tree, depth=2)
     abp_domain_size = 2
     d = 2
@@ -283,7 +301,7 @@ def main():
     print(tree_processed)
     print(tree_processed.productions())
 
-    pcfg, pcfg_counts= translate_through_pcfg([tree]*1, d, abp_domain_size)
+    pcfg, pcfg_counts= translate_through_pcfg([tree, tree_2]*1000, d, abp_domain_size)
     print("PCFG")
     print(pcfg)
     print(pcfg_counts)
@@ -298,8 +316,8 @@ def main():
     print(gamma_A_counts)
     print(gamma_B_counts)
     print("GAMMA stars")
-    print(_calc_expected_counts((gamma_A, gamma_B), pcfg, J, d, abp_domain_size))
     gamma_star, preterm_marginal_distr = _calc_expected_counts((gamma_A, gamma_B), pcfg_counts, J, d, abp_domain_size)
+    print(gamma_star,preterm_marginal_distr)
     print("F")
     print(_calc_f_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize))
     print("J")
