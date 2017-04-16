@@ -235,7 +235,7 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False):
     d = len(models.A)
     abp_domain_size = models.A[0].dist.shape[0] - 2
     lex_size = models.lex.dist.shape[-1]
-    pcfg, pcfg_counts = translate_through_pcfg((hid_seq, sent),d, abp_domain_size)
+    pcfg, pcfg_counts = translate_through_pcfg([(hid_seq, sent)],d, abp_domain_size)
     nonterms = _build_nonterminals(abp_domain_size)
     delta_A, delta_B = _calc_delta(pcfg, J, abp_domain_size, d, nonterms)
     # print(delta_A, delta_B)
