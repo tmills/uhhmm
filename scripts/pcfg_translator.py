@@ -227,9 +227,9 @@ def _normalize_a_tensor(tensor):
 def _inc_counts(model, ref_model, inc=1):
     if isinstance(model, list):
         for depth in range(len(model)):
-            model[depth].pairCounts += ref_model[depth].astype(np.int64) * inc
+            model[depth].pairCounts += ref_model[depth] * inc
     else:
-        model.pairCounts += ref_model.astype(np.int64) * inc
+        model.pairCounts += ref_model * inc
 
 def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False):
     d = len(models.A)

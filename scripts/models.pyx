@@ -16,7 +16,7 @@ cdef class Model:
     def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, corpus_shape=(0,0), name="Unspecified"):
         ## Initialize with ones to prevent underflow during distribution sampling
         ## at iteration 0
-        self.pairCounts = np.ones(shape, dtype=np.int)
+        self.pairCounts = np.ones(shape, dtype=np.float)
         self.dist = np.random.random(shape)
         self.dist /= self.dist.sum(1, keepdims=True)
         self.dist = np.log10(self.dist)
