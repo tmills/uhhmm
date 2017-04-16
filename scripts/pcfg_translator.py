@@ -223,13 +223,16 @@ def _normalize_a_tensor(tensor):
     return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-10)  # to supress zero division warning
 
 def _inc_counts(model, ref_model, inc=1):
-    for depth in len(model):
-        model[depth] += ref_model[depth] * inc
+    if isinstance(model, list):
+        for depth in range(len(model)):
+            model[depth].pairCounts += ref_model[depth] * inc
+    else:
+        model.pairCounts += ref_model[depth] * inc
 
 def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False):
     d = len(models.A)
-    abp_domain_size = models.A[0].shape[0] - 1
-    lex_size = models.lex.shape[-1] - 2
+    abp_domain_size = models.A[0].dist.shape[0] - 1
+    lex_size = models.lex.dist.shape[-1] - 2
     pcfg, pcfg_counts = translate_through_pcfg((hid_seq, sent),depth, abp_domain_size)
     nonterms = _build_nonterminals(abp_domain_size)
     delta_A, delta_B = _calc_delta(pcfg, J, abp_domain_size, d, nonterms)
@@ -239,28 +242,28 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False):
     gamma_star, preterm_marginal_distr = _calc_expected_counts((gamma_A, gamma_B), pcfg_counts, J, d, abp_domain_size)
     print("F")
     pseudo_F = _calc_f_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize)
-    _inc_counts(models.F.pairCounts, pseudo_F, inc)
+    _inc_counts(models.F, pseudo_F, inc)
     # print(_calc_f_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize))
     print("J")
     pseudo_J = _calc_j_model((gamma_A_counts, gamma_B_counts),(gamma_star, preterm_marginal_distr),d,abp_domain_size,normalize)
-    _inc_counts(models.J.pairCounts, pseudo_J, inc)
+    _inc_counts(models.J, pseudo_J, inc)
     # print(_calc_j_model((gamma_A_counts, gamma_B_counts),(gamma_star, preterm_marginal_distr),d,abp_domain_size,normalize))
     print("A")
     pseudo_A = _calc_a_model((gamma_A_counts, gamma_B_counts), (gamma_star, preterm_marginal_distr), d, abp_domain_size,normalize)
-    _inc_counts(models.A.pairCounts, pseudo_A, inc)
+    _inc_counts(models.A, pseudo_A, inc)
     # print(_calc_a_model((gamma_A_counts, gamma_B_counts), (gamma_star, preterm_marginal_distr), d, abp_domain_size,normalize))
     print("B")
     pseudo_B = _calc_b_models((gamma_A_counts, gamma_B_counts), d, abp_domain_size,normalize)
-    _inc_counts(models.B_J0.pairCounts, pseudo_B[0], inc)
-    _inc_counts(models.B_J1.pairCounts, pseudo_B[1], inc)
+    _inc_counts(models.B_J0, pseudo_B[0], inc)
+    _inc_counts(models.B_J1, pseudo_B[1], inc)
     # print(_calc_b_models((gamma_A_counts, gamma_B_counts), d, abp_domain_size,normalize))
     print("P")
     pseudo_P = _calc_p_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize)
-    _inc_counts(models.pos.pairCounts, pseudo_P, inc)
+    _inc_counts(models.pos, pseudo_P, inc)
     # print(_calc_p_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize))
     print("W")
     pseudo_W = _calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize)
-    _inc_counts(models.lex.pairCounts, pseudo_W, inc)
+    _inc_counts(models.lex, pseudo_W, inc)
     # print(_calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize))
 
 def main():
