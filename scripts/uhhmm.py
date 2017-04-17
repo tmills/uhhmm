@@ -1159,13 +1159,12 @@ def resample_all(models, sample, params, depth, init=False):
     ## Sample distributions for all the model params and emissions params
     ## TODO -- make the Models class do this in a resample_all() method
     if init:
-        num_sents = len(sample.ev_seqs) * 5
-        a_base = sample.alpha_a * sample.beta_a * num_sents
-        b_base = sample.alpha_b * sample.beta_b * num_sents
-        f_base = sample.alpha_f * sample.beta_f * num_sents
-        j_base = sample.alpha_j * sample.beta_j * num_sents
-        g_base = sample.alpha_g * sample.beta_g * num_sents
-        h_base = sample.alpha_h * sample.beta_h * num_sents
+        a_base = sample.alpha_a * sample.beta_a
+        b_base = sample.alpha_b * sample.beta_b
+        f_base = sample.alpha_f * sample.beta_f
+        j_base = sample.alpha_j * sample.beta_j
+        g_base = sample.alpha_g * sample.beta_g
+        h_base = sample.alpha_h * sample.beta_h
     else:
         a_base =  sample.alpha_a * sample.beta_a
         b_base = sample.alpha_b * sample.beta_b
