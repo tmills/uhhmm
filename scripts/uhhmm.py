@@ -795,11 +795,11 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
 
     ## one pos model:
     models.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape, name="POS")
-    models.pos.beta = np.ones(g_max).fill(beta_base) / g_max
+    models.pos.beta = np.ones(g_max) / g_max * beta_base
 
     ## one lex model:
     models.lex = Model((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
-    models.lex.beta = np.ones(max_output+1).fill(beta_base) / (max_output + 1)
+    models.lex.beta = np.ones(max_output+1) / (max_output + 1) * beta_base
 
     models.append(models.F)
     models.append(models.J)
