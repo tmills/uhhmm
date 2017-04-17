@@ -6,6 +6,9 @@ from copy import deepcopy
 this file is for translating sequences of states to pcfg counts and back to uhhmm counts
 the main function is translate_through_pcfg
 """
+RB_TREES = ["-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2",
+            "-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::-::POS2::2"]
+
 def translate_through_pcfg(seqs_of_states, depth, abp_domain_size):
     trees = []
     for seq in seqs_of_states:
@@ -250,12 +253,15 @@ def _inc_counts(model, ref_model, inc=1):
     else:
         model.pairCounts += ref_model * inc
 
-def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False):
+def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, RB_init=False):
     d = len(models.A)
     d = d + 1  # calculate d+1 depth models for all pseudo count models, but not using them in _inc_counts
     abp_domain_size = models.A[0].dist.shape[0] - 2
     lex_size = models.lex.dist.shape[-1]
-    pcfg, pcfg_counts = translate_through_pcfg([(hid_seq, sent)],d, abp_domain_size)
+    if not RB_init:
+        pcfg, pcfg_counts = translate_through_pcfg([(hid_seq, sent)],d, abp_domain_size)
+    else:
+        pcfg, pcfg_counts = translate_through_pcfg(RB_TREES*1000, d, abp_domain_size)
     nonterms = _build_nonterminals(abp_domain_size)
     delta_A, delta_B = _calc_delta(pcfg, J, abp_domain_size, d, nonterms)
     # print(delta_A, delta_B)
@@ -289,19 +295,24 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False):
     # print(_calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize))
 
 def main():
-    tree = "-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2"
-    tree_2 = "-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::-::POS2::2"
-    tree_processed = full_chain_convert(tree, depth=2)
+    tree = ["-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2",
+            "-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::-::POS2::2"]
+    # tree = ['-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2',
+    # '-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::-::POS2::2',
+    # '-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA1::-::POS1::1 -::ACT1/AWA2::-::POS2::2',
+    # '-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::-::POS2::2',
+    # ]
+    # tree_processed = full_chain_convert(tree, depth=2)
     abp_domain_size = 2
     d = 2
     J = 50
     normalize = False
     nonterms = _build_nonterminals(abp_domain_size)
     lex_size = 4
-    print(tree_processed)
-    print(tree_processed.productions())
+    # print(tree_processed)
+    # print(tree_processed.productions())
 
-    pcfg, pcfg_counts= translate_through_pcfg([tree, tree_2]*1000, d, abp_domain_size)
+    pcfg, pcfg_counts= translate_through_pcfg(tree*1000, d, abp_domain_size)
     print("PCFG")
     print(pcfg)
     print(pcfg_counts)
