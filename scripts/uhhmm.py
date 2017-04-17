@@ -762,11 +762,11 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
     for d in range(0, depth):
         ## One fork model:
         models.F[d] = Model((b_max, 2), alpha=float(params.get('alphaf')), name="Fork"+str(d))
-        models.F[d].beta = np.ones(2).fill(beta_base) / 2
+        models.F[d].beta = np.ones(2) / 2 * beta_base
 
         ## Two join models:
         models.J[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaj')), name="Join"+str(d))
-        models.J[d].beta = np.ones(2).fill(beta_base) / 2
+        models.J[d].beta = np.ones(2) / 2 * beta_base
         
         # models.reduce[d] = Model((a_max, b_max, 2), alpha=float(params.get('alphaj')), name="J|F0_"+str(d))
         # models.reduce[d].beta = np.ones(2) / 2
@@ -774,14 +774,14 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
         ## TODO -- set d > 0 beta to the value of the model at d (can probably do this later)
         ## One active model:
         models.A[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="Act"+str(d))
-        models.A[d].beta = np.ones(a_max).fill(beta_base) / a_max
+        models.A[d].beta = np.ones(a_max) / a_max * beta_base
         
         # models.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
         # models.root[d].beta = np.ones(a_max) / a_max
 
         ## four awaited models:
         models.B_J1[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|J1_"+str(d))
-        models.B_J1[d].beta = np.ones(b_max).fill(beta_base/2) / b_max
+        models.B_J1[d].beta = np.ones(b_max) / b_max * beta_base / 2
         
         models.B_J0[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|J0_"+str(d))
         models.B_J0[d].beta = models.B_J1[d].beta
