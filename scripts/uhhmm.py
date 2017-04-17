@@ -326,8 +326,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 try:
                     # logging.info('The state sequence is ' + ' '.join([str(indexer.getStateIndex(x.j, x.a, x.b, x.f, x.g)) for x in parse.state_list]))
                     # logging.info(' '.join([x.str() for x in parse.state_list]))
-                    # ---pcfg_increment_counts(parse.state_list, ev_seqs[ parse.index ], models)
-                    increment_counts(parse.state_list, ev_seqs[parse.index], models)
+                    pcfg_increment_counts(parse.state_list, ev_seqs[ parse.index ], models)
+                    #increment_counts(parse.state_list, ev_seqs[parse.index], models)
 
                     # logging.info('Good parse:')
                     # logging.info(' '.join([x.str() for x in parse.state_list]))
@@ -744,7 +744,7 @@ def resample_beta_g(models, gamma):
     #logging.info("New beta value is %s" % model.pos.beta)
 
 def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_max, g_max):
-
+    beta_base = corpus_shape[1] * corpus_shape[0]/ 1000 # add 1/1000 corpus sized pseudo counts
     ## F model:
     models.F = [None] * depth
     ## J models:
@@ -762,11 +762,11 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
     for d in range(0, depth):
         ## One fork model:
         models.F[d] = Model((b_max, 2), alpha=float(params.get('alphaf')), name="Fork"+str(d))
-        models.F[d].beta = np.ones(2) / 2
+        models.F[d].beta = np.ones(2).fill(beta_base) / 2
 
         ## Two join models:
         models.J[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaj')), name="Join"+str(d))
-        models.J[d].beta = np.ones(2) / 2
+        models.J[d].beta = np.ones(2).fill(beta_base) / 2
         
         # models.reduce[d] = Model((a_max, b_max, 2), alpha=float(params.get('alphaj')), name="J|F0_"+str(d))
         # models.reduce[d].beta = np.ones(2) / 2
@@ -774,14 +774,14 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
         ## TODO -- set d > 0 beta to the value of the model at d (can probably do this later)
         ## One active model:
         models.A[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="Act"+str(d))
-        models.A[d].beta = np.ones(a_max) / a_max
+        models.A[d].beta = np.ones(a_max).fill(beta_base) / a_max
         
         # models.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
         # models.root[d].beta = np.ones(a_max) / a_max
 
         ## four awaited models:
         models.B_J1[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|J1_"+str(d))
-        models.B_J1[d].beta = np.ones(b_max) / b_max
+        models.B_J1[d].beta = np.ones(b_max).fill(beta_base/2) / b_max
         
         models.B_J0[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|J0_"+str(d))
         models.B_J0[d].beta = models.B_J1[d].beta
@@ -795,11 +795,11 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
 
     ## one pos model:
     models.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape, name="POS")
-    models.pos.beta = np.ones(g_max) / g_max
+    models.pos.beta = np.ones(g_max).fill(beta_base) / g_max
 
     ## one lex model:
     models.lex = Model((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
-    models.lex.beta = np.ones(max_output+1) / (max_output + 1)
+    models.lex.beta = np.ones(max_output+1).fill(beta_base) / (max_output + 1)
 
     models.append(models.F)
     models.append(models.J)
@@ -847,8 +847,8 @@ def initialize_and_load_state(ev_seqs, models, max_depth, init_seqs):
 
             hid_seq.append(state)
         state_seqs.append(hid_seq)
-        #----pcfg_increment_counts(hid_seq, sent, models)
-        increment_counts(hid_seq, sent, models)
+        pcfg_increment_counts(hid_seq, sent, models)
+        #increment_counts(hid_seq, sent, models)
     return state_seqs
 
 # Randomly initialize all the values for the hidden variables in the
@@ -945,8 +945,8 @@ def initialize_state(ev_seqs, models, max_depth, gold_seqs=None, strategy=RANDOM
 
             hid_seq.append(state)
 
-        # ---pcfg_increment_counts(hid_seq, sent, models)
-        increment_counts(hid_seq, sent, models)
+        pcfg_increment_counts(hid_seq, sent, models)
+        #increment_counts(hid_seq, sent, models)
         state_seqs.append(hid_seq)
 
     return state_seqs
@@ -1126,13 +1126,13 @@ def increment_counts(hid_seq, sent, models, inc=1):
 
 def decrement_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
     for ind in range(start_ind, end_ind):
-        # pcfg_increment_counts(hid_seqs[ind], sents[ind], models, -1)
-        increment_counts(hid_seqs[ind], sents[ind], models, -1)
+        pcfg_increment_counts(hid_seqs[ind], sents[ind], models, -1)
+        #increment_counts(hid_seqs[ind], sents[ind], models, -1)
 
 def increment_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
     for ind in range(start_ind, end_ind):
-        # pcfg_increment_counts(hid_seqs[ind], sents[ind], models, 1)
-        increment_counts(hid_seqs[ind], sents[ind], models, 1)
+        pcfg_increment_counts(hid_seqs[ind], sents[ind], models, 1)
+        #increment_counts(hid_seqs[ind], sents[ind], models, 1)
 
 def handle_sigint(signum, frame, workers):
     logging.info("Master received quit signal... will terminate after cleaning up.")
