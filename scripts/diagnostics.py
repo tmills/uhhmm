@@ -75,9 +75,9 @@ def plot_trace(timeseries, num_rvs):
     g = g.map_dataframe(dateplot, "timestep", "probs", linewidth=0.5)
     return g
 
-def list_files(dir, suffix, maximum=5000):
+def list_files(dir, suffix, maximum=5000, burn_in = 50):
     file_list = []
-    for i in range(0, maximum):
+    for i in range(burn_in, maximum):
         if os.path.exists(dir+suffix+str(i)+'.txt'):
             file_list.append(dir+suffix+str(i)+'.txt')
         else:

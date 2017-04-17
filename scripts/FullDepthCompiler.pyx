@@ -234,7 +234,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     ## when t=0, start_depth will be -1, which in the d> 1 case will wraparound.
                     ## we want in the t=0 case for f_{t=1} to be [-/-]*d
                     if nominal_depth - j >= 0:
-                        cum_probs[2] = cum_probs[1] * models.F[start_depth].dist[b, f]
+                        cum_probs[2] = cum_probs[1] * models.F[nominal_depth - j].dist[b, f]
                     else:
                         continue
                         # ## if start depth is -1 we're only allowed to fork:

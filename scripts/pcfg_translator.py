@@ -129,9 +129,10 @@ def _calc_expected_counts(gammas, pcfg_counts, J, d, abp_domain_size):
                     if j == 0:
                         gamma_star_plus[j, depth, lhs_index, a_prime] += gamma_Bs[depth][lhs][rhs]
                     else:
-                        gamma_star_plus[j, depth, :-1, a_prime] += gamma_star_plus[j-1, depth, :-1, lhs_index] \
+                        gamma_star_plus[j, depth, :, a_prime] += gamma_star_plus[j-1, depth, :, lhs_index] \
                                                                  * gamma_As[depth][lhs][rhs]
-    # print(gamma_star_plus)
+                    # print(lhs, rhs, lhs_index, a_prime)
+                    # print(j,'/',J, gamma_star_plus[j])
     gamma_star_plus_final = np.sum(gamma_star_plus, axis=0)
     return gamma_star_plus_final, preterm_marginal_distr
 
@@ -295,13 +296,15 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, R
     # print(_calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize))
 
 def main():
-    tree = ["-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2",
-            "-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::-::POS2::2"]
+    # tree = ["-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2",
+    #         "-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::-::POS2::2"]
     # tree = ['-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2',
     # '-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::-::POS2::2',
     # '-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA1::-::POS1::1 -::ACT1/AWA2::-::POS2::2',
     # '-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::-::POS2::2',
     # ]
+    tree = ['-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::-::POS2::2','-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::-::POS2::2']
+            # '-::ACT0/AWA0::+::POS2::1 -::ACT2/AWA2::-::POS1::2', '-::ACT0/AWA0::+::POS2::1 -::ACT1/AWA2::-::POS1::2']
     # tree_processed = full_chain_convert(tree, depth=2)
     abp_domain_size = 2
     d = 2
