@@ -100,15 +100,15 @@ def _calc_gamma(deltas, pcfg, pcfg_counts, d):
                     gamma_Bs[depth][lhs][rhs] = 0
                     gamma_A_counts[depth][lhs][rhs] = 0
                     gamma_B_counts[depth][lhs][rhs] = 0
-                gamma_As[depth][lhs][rhs] = pcfg[lhs][rhs] * delta_A[depth][int(rhs[0].symbol())] * \
-                                            delta_B[depth][int(rhs[1].symbol())] / delta_A[depth][int(lhs.symbol())]
-                gamma_A_counts[depth][lhs][rhs] = pcfg_counts[lhs][rhs] * delta_A[depth][int(rhs[0].symbol())] * \
-                                            delta_B[depth][int(rhs[1].symbol())] / delta_A[depth][int(lhs.symbol())]
+                gamma_As[depth][lhs][rhs] = np.nan_to_num(pcfg[lhs][rhs] * delta_A[depth][int(rhs[0].symbol())] * \
+                                            delta_B[depth][int(rhs[1].symbol())] / delta_A[depth][int(lhs.symbol())])
+                gamma_A_counts[depth][lhs][rhs] = np.nan_to_num(pcfg_counts[lhs][rhs] * delta_A[depth][int(rhs[0].symbol())] * \
+                                            delta_B[depth][int(rhs[1].symbol())] / delta_A[depth][int(lhs.symbol())])
                 if depth + 1 < d:
-                    gamma_Bs[depth][lhs][rhs] = pcfg[lhs][rhs] * delta_A[depth+1][int(rhs[0].symbol())] * \
-                                            delta_B[depth][int(rhs[1].symbol())]  / delta_B[depth][int(lhs.symbol())]
-                    gamma_B_counts[depth][lhs][rhs] = pcfg_counts[lhs][rhs] * delta_A[depth+1][int(rhs[0].symbol())] * \
-                                            delta_B[depth][int(rhs[1].symbol())]  / delta_B[depth][int(lhs.symbol())]
+                    gamma_Bs[depth][lhs][rhs] = np.nan_to_num(pcfg[lhs][rhs] * delta_A[depth+1][int(rhs[0].symbol())] * \
+                                            delta_B[depth][int(rhs[1].symbol())]  / delta_B[depth][int(lhs.symbol())])
+                    gamma_B_counts[depth][lhs][rhs] = np.nan_to_num(pcfg_counts[lhs][rhs] * delta_A[depth+1][int(rhs[0].symbol())] * \
+                                            delta_B[depth][int(rhs[1].symbol())]  / delta_B[depth][int(lhs.symbol())])
     return gamma_As, gamma_Bs, gamma_A_counts, gamma_B_counts
 
 def _calc_expected_counts(gammas, pcfg_counts, J, d, abp_domain_size):
@@ -129,7 +129,7 @@ def _calc_expected_counts(gammas, pcfg_counts, J, d, abp_domain_size):
                     if j == 0:
                         gamma_star_plus[j, depth, lhs_index, a_prime] += gamma_Bs[depth][lhs][rhs]
                     else:
-                        gamma_star_plus[j, depth, :, a_prime] += gamma_star_plus[j-1, depth, :, lhs_index] \
+                        gamma_star_plus[j, depth, 1:, a_prime] += gamma_star_plus[j-1, depth, 1:, lhs_index] \
                                                                  * gamma_As[depth][lhs][rhs]
                     # print(lhs, rhs, lhs_index, a_prime)
                     # print(j,'/',J, gamma_star_plus[j])
@@ -296,14 +296,14 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, R
     # print(_calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize))
 
 def main():
-    # tree = ["-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2",
-    #         "-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::-::POS2::2"]
+    tree = ["-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2",
+            "-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::-::POS2::2"]
     # tree = ['-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2',
     # '-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::-::POS2::2',
     # '-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA1::-::POS1::1 -::ACT1/AWA2::-::POS2::2',
     # '-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::-::POS2::2',
     # ]
-    tree = ['-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::-::POS2::2','-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::-::POS2::2']
+    # tree = ['-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::-::POS2::2','-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::-::POS2::2']
             # '-::ACT0/AWA0::+::POS2::1 -::ACT2/AWA2::-::POS1::2', '-::ACT0/AWA0::+::POS2::1 -::ACT1/AWA2::-::POS1::2']
     # tree_processed = full_chain_convert(tree, depth=2)
     abp_domain_size = 2
