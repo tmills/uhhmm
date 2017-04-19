@@ -432,7 +432,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
 //            print(dyn_prog_col);
 //                cout << "Adding logged normalizer to sentence logprobs" << endl;
             log_probs[sent_ind] += log10f(normalizer);
-            cout << "log prob " << log10f(normalizer) << endl;
+            cout << "ind "<< ind << "sent_ind" << sent_ind << "log prob " << log10f(normalizer) << endl;
         }
         
         auto norm_done = Clock::now();
