@@ -100,15 +100,15 @@ def _calc_gamma(deltas, pcfg, pcfg_counts, d):
                     gamma_Bs[depth][lhs][rhs] = 0
                     gamma_A_counts[depth][lhs][rhs] = 0
                     gamma_B_counts[depth][lhs][rhs] = 0
-                gamma_As[depth][lhs][rhs] = np.nan_to_num(pcfg[lhs][rhs] * delta_A[depth][int(rhs[0].symbol())] * \
-                                            delta_B[depth][int(rhs[1].symbol())] / delta_A[depth][int(lhs.symbol())])
-                gamma_A_counts[depth][lhs][rhs] = np.nan_to_num(pcfg_counts[lhs][rhs] * delta_A[depth][int(rhs[0].symbol())] * \
-                                            delta_B[depth][int(rhs[1].symbol())] / delta_A[depth][int(lhs.symbol())])
+                gamma_As[depth][lhs][rhs] = pcfg[lhs][rhs] * delta_A[depth][int(rhs[0].symbol())] * \
+                                            delta_B[depth][int(rhs[1].symbol())] / delta_A[depth][int(lhs.symbol())]
+                gamma_A_counts[depth][lhs][rhs] = pcfg_counts[lhs][rhs] * delta_A[depth][int(rhs[0].symbol())] * \
+                                            delta_B[depth][int(rhs[1].symbol())] / delta_A[depth][int(lhs.symbol())]
                 if depth + 1 < d:
-                    gamma_Bs[depth][lhs][rhs] = np.nan_to_num(pcfg[lhs][rhs] * delta_A[depth+1][int(rhs[0].symbol())] * \
-                                            delta_B[depth][int(rhs[1].symbol())]  / delta_B[depth][int(lhs.symbol())])
-                    gamma_B_counts[depth][lhs][rhs] = np.nan_to_num(pcfg_counts[lhs][rhs] * delta_A[depth+1][int(rhs[0].symbol())] * \
-                                            delta_B[depth][int(rhs[1].symbol())]  / delta_B[depth][int(lhs.symbol())])
+                    gamma_Bs[depth][lhs][rhs] = pcfg[lhs][rhs] * delta_A[depth+1][int(rhs[0].symbol())] * \
+                                            delta_B[depth][int(rhs[1].symbol())]  / delta_B[depth][int(lhs.symbol())]
+                    gamma_B_counts[depth][lhs][rhs] = pcfg_counts[lhs][rhs] * delta_A[depth+1][int(rhs[0].symbol())] * \
+                                            delta_B[depth][int(rhs[1].symbol())]  / delta_B[depth][int(lhs.symbol())]
     return gamma_As, gamma_Bs, gamma_A_counts, gamma_B_counts
 
 def _calc_expected_counts(gammas, pcfg_counts, J, d, abp_domain_size):
