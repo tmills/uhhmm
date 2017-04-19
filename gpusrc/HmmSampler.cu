@@ -387,18 +387,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
         // for now incorporate the evidence sentence-by-sentence:
         for(int sent_ind = 0; sent_ind < sents.size(); sent_ind++){
             // not every sentence in the batch will need the full batch size
-            if(sents[sent_ind].size() < ind){
-                continue;
-            } else if (sents[sent_ind].size() == ind){
-                int EOS = p_indexer -> get_EOS_full();
-//                cout << EOS << endl;
-                array2d<float, device_memory>::column_view final_dyn_col = dyn_prog[ind - 1]->column(sent_ind);
-//                cout << cusp::blas::asum(final_dyn_col) << endl;
-                get_row(pi->get_view(), EOS, *trans_slice, pos_full_array, g_max, b_max);
-//                cout << cusp::blas::asum(*trans_slice) << endl;
-                float final_normalizer = cusp::blas::dot(*trans_slice, final_dyn_col);
-                log_probs[sent_ind] += log10f(final_normalizer);
-                cout << "end log prob " << log10f(final_normalizer) << endl;
+            if(sents[sent_ind].size() <= ind){
                 continue;
             }
 //            cout << "Processing sentence index " << sent_ind << endl;
@@ -433,6 +422,18 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
 //                cout << "Adding logged normalizer to sentence logprobs" << endl;
             log_probs[sent_ind] += log10f(normalizer);
             cout << "ind "<< ind << "sent_ind" << sent_ind << "log prob " << log10f(normalizer) << endl;
+            if (sents[sent_ind].size() - 1 == ind){
+                int EOS = p_indexer -> get_EOS_full();
+//                cout << EOS << endl;
+                array2d<float, device_memory>::column_view final_dyn_col = dyn_prog[ind - 1]->column(sent_ind);
+//                cout << cusp::blas::asum(final_dyn_col) << endl;
+                get_row(pi->get_view(), EOS, *trans_slice, pos_full_array, g_max, b_max);
+//                cout << cusp::blas::asum(*trans_slice) << endl;
+                float final_normalizer = cusp::blas::dot(*trans_slice, final_dyn_col);
+                log_probs[sent_ind] += log10f(final_normalizer);
+                cout << "end log prob " << log10f(final_normalizer) << endl;
+                continue;
+            }
         }
         
         auto norm_done = Clock::now();
