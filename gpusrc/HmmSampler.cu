@@ -398,6 +398,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
 //                cout << cusp::blas::asum(*trans_slice) << endl;
                 float final_normalizer = cusp::blas::dot(*trans_slice, final_dyn_col);
                 log_probs[sent_ind] += log10f(final_normalizer);
+                cout << "end log prob " << log10f(final_normalizer) << endl;
                 continue;
             }
 //            cout << "Processing sentence index " << sent_ind << endl;
@@ -431,6 +432,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
 //            print(dyn_prog_col);
 //                cout << "Adding logged normalizer to sentence logprobs" << endl;
             log_probs[sent_ind] += log10f(normalizer);
+            cout << "log prob " << log10f(normalizer) << endl;
         }
         
         auto norm_done = Clock::now();
