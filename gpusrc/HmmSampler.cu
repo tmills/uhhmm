@@ -425,7 +425,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             if (sents[sent_ind].size() - 1 == ind){
                 int EOS = p_indexer -> get_EOS_full();
 //                cout << EOS << endl;
-                array2d<float, device_memory>::column_view final_dyn_col = dyn_prog[ind - 1]->column(sent_ind);
+                array2d<float, device_memory>::column_view final_dyn_col = cur_mat->column(sent_ind);
 //                cout << cusp::blas::asum(final_dyn_col) << endl;
                 get_row(pi->get_view(), EOS, *trans_slice, pos_full_array, g_max, b_max);
 //                cout << cusp::blas::asum(*trans_slice) << endl;
