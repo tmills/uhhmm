@@ -1172,12 +1172,14 @@ def resample_all(models, sample, params, depth, anneal_alphas=0):
         f_base = sample.alpha_f * sample.beta_f
         j_base = sample.alpha_j * sample.beta_j
         g_base = sample.alpha_g * sample.beta_g
+        h_base = sample.alpha_h * sample.beta_h
     elif isinstance(anneal_alphas, dict):
         a_base = (sample.alpha_a + anneal_alphas['A']) * sample.beta_a
         b_base = (sample.alpha_b + anneal_alphas['B_J0'])* sample.beta_b
         f_base = (sample.alpha_f + anneal_alphas['F'])* sample.beta_f
         j_base = (sample.alpha_j + anneal_alphas['J']) * sample.beta_j
-        g_base = (sample.alpha_g + anneal_alphas['G']) * sample.beta_g
+        g_base = (sample.alpha_g + anneal_alphas['pos']) * sample.beta_g
+        h_base = (sample.alpha_h + anneal_alphas['lex']) * sample.beta_h
     else:
         raise Exception("Anneal alphas are neither 0 nor a dictionary!")
 
