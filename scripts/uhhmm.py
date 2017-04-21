@@ -431,7 +431,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if split_merge:
             resample_beta_g(models, sample.gamma)
 
-        anneal_alphas = calc_anneal_alphas(models, iter, init_tempature, total_sent_lens)
+        anneal_alphas = calc_anneal_alphas(models, iter, burnin, init_tempature, total_sent_lens)
 
         resample_all(models, sample, params, depth, anneal_alphas)
 
