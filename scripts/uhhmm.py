@@ -27,7 +27,7 @@ import HmmSampler
 from dahl_split_merge import perform_split_merge_operation
 from models import Model, Models
 from workers import start_local_workers_with_distributer, start_cluster_workers
-from pcfg_translator import pcfg_increment_counts, calc_anneal_alpha
+from pcfg_translator import pcfg_increment_counts, calc_anneal_alphas
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
