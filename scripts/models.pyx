@@ -119,3 +119,6 @@ cdef class Models:
         self.lex = d['lex']
         self.models = [self.F, self.J, self.A, self.B_J1, self.B_J0, self.pos, self.lex]
 
+    def __iter__(self):
+        for index, model in enumerate(['F', 'J', 'A', 'B_J1', 'B_J0', 'pos', 'lex']):
+            yield model, getattr(self, model)

@@ -2,6 +2,7 @@ from left_corner2normal_tree_converter import full_chain_convert
 import nltk
 import numpy as np
 from copy import deepcopy
+from functools import reduce
 """
 this file is for translating sequences of states to pcfg counts and back to uhhmm counts
 the main function is translate_through_pcfg
@@ -294,6 +295,18 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, R
     pseudo_W = _calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize)
     _inc_counts(models.lex, pseudo_W, inc)
     # print(_calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize))
+
+def calc_anneal_alphas(models, iter, burnin, init_tempature, total_sent_lens):
+    anneal_alphas = {}
+    for model_name, model in models:
+        if isinstance(model, list):
+            model_shape = model[0].dist.shape
+        else:
+            model_shape = model.dist.shape
+        model_size = reduce(lambda x, y: x*y, model_shape)
+        anneal_alphas[model_name] = init_tempature * (total_sent_lens / model_size) * (burnin - min(iter, burnin)) / burnin
+    return anneal_alphas
+
 
 def main():
     tree = ["-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2",

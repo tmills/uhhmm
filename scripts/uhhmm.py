@@ -27,7 +27,7 @@ import HmmSampler
 from dahl_split_merge import perform_split_merge_operation
 from models import Model, Models
 from workers import start_local_workers_with_distributer, start_cluster_workers
-from pcfg_translator import pcfg_increment_counts
+from pcfg_translator import pcfg_increment_counts, calc_anneal_alpha
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -63,6 +63,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     start_g = int(params.get('startg'))
     assert start_a == start_b and start_b == start_g, "A, B and G must have the same domain size!"
     sent_lens = list(map(len, ev_seqs))
+    total_sent_lens = sum(sent_lens)
     maxLen = max(map(len, ev_seqs))
     max_output = max(map(max, ev_seqs))
     num_sents = len(ev_seqs)
@@ -101,6 +102,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     if gpu and num_gpu_workers < 1 and num_cpu_workers > 0:
         logging.warn("Inconsistent config: gpu flag set with %d gpu workers; setting gpu=False" % (num_gpu_workers))
         gpu=False
+    init_tempature = float(params.get('init_temperature', 0))
 
     return_to_finite = False
     ready_for_sample = False
@@ -160,7 +162,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if RB_INIT:
             pcfg_increment_counts(None, None, models, RB_init=RB_INIT)
 
-        resample_all(models, sample, params, depth, init=True)
+        resample_all(models, sample, params, depth)
         models.resetAll()
 
         sample.models = models
@@ -318,15 +320,19 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         parses = workDistributer.get_parses()
         sample_map = dict()
 
+        state_list = []
+        state_indices = []
         for parse in parses:
             num_processed += 1
             # logging.info(''.join([x.str() for x in parse.state_list]))
             # logging.info(parse.success)
             if parse.success:
                 try:
+                    state_list.append(parse.state_list)
+                    state_indices.append(ev_seqs[parse.index])
                     # logging.info('The state sequence is ' + ' '.join([str(indexer.getStateIndex(x.j, x.a, x.b, x.f, x.g)) for x in parse.state_list]))
                     # logging.info(' '.join([x.str() for x in parse.state_list]))
-                    pcfg_increment_counts(parse.state_list, ev_seqs[ parse.index ], models)
+
                     #increment_counts(parse.state_list, ev_seqs[parse.index], models)
 
                     # logging.info('Good parse:')
@@ -341,6 +347,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     raise
                 sample.log_prob += parse.log_prob
             hid_seqs[parse.index] = parse.state_list
+        pcfg_increment_counts(state_list, state_indices, models)
 
         if num_processed < (end_ind - start_ind):
             logging.warning("Didn't receive the correct number of parses at iteration %d" % iter)
@@ -424,7 +431,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if split_merge:
             resample_beta_g(models, sample.gamma)
 
-        resample_all(models, sample, params, depth)
+        anneal_alphas = calc_anneal_alphas(models, iter, init_tempature, total_sent_lens)
+
+        resample_all(models, sample, params, depth, anneal_alphas)
 
         ## Update sentence indices for next batch:
         if end_ind == len(ev_seqs):
@@ -1154,24 +1163,24 @@ def getBmax():
     global b_max
     return b_max
 
-def resample_all(models, sample, params, depth, init=False):
+def resample_all(models, sample, params, depth, anneal_alphas=0):
     ## Sample distributions for all the model params and emissions params
     ## TODO -- make the Models class do this in a resample_all() method
-    if init:
-        a_base = sample.alpha_a * sample.beta_a   # init with super random distributions
-        b_base = sample.alpha_b * sample.beta_b
-        f_base = sample.alpha_f * sample.beta_f
-        j_base = sample.alpha_j * sample.beta_j
-        g_base = sample.alpha_g * sample.beta_g
-        h_base = sample.alpha_h * sample.beta_h
-    else:
+    if anneal_alphas == 0:
         a_base =  sample.alpha_a * sample.beta_a
         b_base = sample.alpha_b * sample.beta_b
         f_base = sample.alpha_f * sample.beta_f
         j_base = sample.alpha_j * sample.beta_j
         g_base = sample.alpha_g * sample.beta_g
-        h_base = sample.alpha_h * sample.beta_h
-    
+    elif isinstance(anneal_alphas, dict):
+        a_base = (sample.alpha_a + anneal_alphas['A']) * sample.beta_a
+        b_base = (sample.alpha_b + anneal_alphas['B_J0'])* sample.beta_b
+        f_base = (sample.alpha_f + anneal_alphas['F'])* sample.beta_f
+        j_base = (sample.alpha_j + anneal_alphas['J']) * sample.beta_j
+        g_base = (sample.alpha_g + anneal_alphas['G']) * sample.beta_g
+    else:
+        raise Exception("Anneal alphas are neither 0 nor a dictionary!")
+
     # Resample lex and make sure the null tag can only generate the null word
     models.lex.sampleDirichlet(h_base)
     models.lex.dist[0,0] = 0.0

@@ -26,6 +26,7 @@ cimport Sampler
 import Indexer
 import FullDepthCompiler
 import os
+import time
 from uhhmm_io import printException, ParsingError
 
 ## This function was required because of some funkiness on ubuntu systems where reverse dns lookup was returning a loopback ip
@@ -323,6 +324,8 @@ cdef class PyzmqWorker:
                 break
             except EOFError:
                 logging.warning("EOF error encounter at model loading")
+                time.sleep(5)
+
         in_file.close()
         return model, file_sig
 
