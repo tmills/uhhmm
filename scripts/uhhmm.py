@@ -744,7 +744,7 @@ def resample_beta_g(models, gamma):
     #logging.info("New beta value is %s" % model.pos.beta)
 
 def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_max, g_max):
-    beta_base = corpus_shape[1] * corpus_shape[0]/ 100 # add 1/100 corpus sized pseudo counts
+    beta_base = 1 # add 1/100 corpus sized pseudo counts
     ## F model:
     models.F = [None] * depth
     ## J models:
