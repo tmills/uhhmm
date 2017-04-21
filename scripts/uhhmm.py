@@ -781,7 +781,7 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
 
         ## four awaited models:
         models.B_J1[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|J1_"+str(d))
-        models.B_J1[d].beta = np.ones(b_max) / b_max * beta_base / 2
+        models.B_J1[d].beta = np.ones(b_max) / b_max * beta_base
         
         models.B_J0[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|J0_"+str(d))
         models.B_J0[d].beta = models.B_J1[d].beta
