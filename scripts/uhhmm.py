@@ -744,7 +744,6 @@ def resample_beta_g(models, gamma):
     #logging.info("New beta value is %s" % model.pos.beta)
 
 def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_max, g_max):
-    beta_base = 1000 # add 1/100 corpus sized pseudo counts
     ## F model:
     models.F = [None] * depth
     ## J models:
@@ -762,11 +761,11 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
     for d in range(0, depth):
         ## One fork model:
         models.F[d] = Model((b_max, 2), alpha=float(params.get('alphaf')), name="Fork"+str(d))
-        models.F[d].beta = np.ones(2) / 2 * beta_base
+        models.F[d].beta = np.ones(2)
 
         ## Two join models:
         models.J[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaj')), name="Join"+str(d))
-        models.J[d].beta = np.ones(2) / 2 * beta_base
+        models.J[d].beta = np.ones(2)
         
         # models.reduce[d] = Model((a_max, b_max, 2), alpha=float(params.get('alphaj')), name="J|F0_"+str(d))
         # models.reduce[d].beta = np.ones(2) / 2
@@ -774,14 +773,14 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
         ## TODO -- set d > 0 beta to the value of the model at d (can probably do this later)
         ## One active model:
         models.A[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="Act"+str(d))
-        models.A[d].beta = np.ones(a_max) / a_max * beta_base
+        models.A[d].beta = np.ones(a_max)
         
         # models.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
         # models.root[d].beta = np.ones(a_max) / a_max
 
         ## four awaited models:
         models.B_J1[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|J1_"+str(d))
-        models.B_J1[d].beta = np.ones(b_max) / b_max * beta_base
+        models.B_J1[d].beta = np.ones(b_max)
         
         models.B_J0[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|J0_"+str(d))
         models.B_J0[d].beta = models.B_J1[d].beta
@@ -795,11 +794,11 @@ def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_
 
     ## one pos model:
     models.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape, name="POS")
-    models.pos.beta = np.ones(g_max) / g_max * beta_base
+    models.pos.beta = np.ones(g_max)
 
     ## one lex model:
     models.lex = Model((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
-    models.lex.beta = np.ones(max_output+1) / (max_output + 1) * beta_base
+    models.lex.beta = np.ones(max_output+1)
 
     models.append(models.F)
     models.append(models.J)
@@ -1189,21 +1188,20 @@ def resample_all(models, sample, params, depth, init=False):
     for d in range(depth-1, -1, -1):
         print('depth {} model B J1: B| (B A) or (B P)'.format(d))
         print(models.B_J1[d].pairCounts)
-        models.B_J1[d].sampleDirichlet(b_base if d == 0 else b_base + models.B_J1[d-1].pairCounts * sample.alpha_b)
+        models.B_J1[d].sampleDirichlet(b_base) # if d == 0 else b_base + models.B_J1[d-1].pairCounts * sample.alpha_b)
         print('depth {} model B J0: B| (A A) or (A P)'.format(d))
         print(models.B_J0[d].pairCounts)
-        models.B_J0[d].sampleDirichlet(b_base if d == 0 else b_base + models.B_J0[d-1].pairCounts * sample.alpha_b)
+        models.B_J0[d].sampleDirichlet(b_base) # if d == 0 else b_base + models.B_J0[d-1].pairCounts * sample.alpha_b)
         # models.cont[d].sampleDirichlet(b_base if d == 0 else b_base + models.cont[d-1].pairCounts * sample.alpha_b)
         # models.next[d].sampleDirichlet(b_base if d == 0 else b_base + models.next[d-1].pairCounts * sample.alpha_b)
         print("depth {} model A: A|(B A) or (B P)".format(d))
         print(models.A[d].pairCounts)
-        models.A[d].sampleDirichlet(a_base if d == 0 else a_base + models.A[d-1].pairCounts * sample.alpha_a)
+        models.A[d].sampleDirichlet(a_base) # if d == 0 else a_base + models.A[d-1].pairCounts * sample.alpha_a)
         # models.root[d].sampleDirichlet(a_base if d == 0 else a_base + models.root[d-1].pairCounts * sample.alpha_a)
         # models.reduce[d].sampleDirichlet(j_base if d == 0 else j_base + models.reduce[d-1].pairCounts * sample.alpha_j)
         print("depth {} model J: J|(A B) or (P B)".format(d))
         print(models.J[d].pairCounts)
-        models.J[d].sampleDirichlet(j_base if d == 0 else j_base + models.J[d-1].pairCounts * sample.alpha_j)
+        models.J[d].sampleDirichlet(j_base) # if d == 0 else j_base + models.J[d-1].pairCounts * sample.alpha_j)
         print("depth {} model F: F|B".format(d))
         print(models.F[d].pairCounts)
-        models.F[d].sampleDirichlet(f_base if d == 0 else f_base + models.F[d-1].pairCounts * sample.alpha_f)
-
+        models.F[d].sampleDirichlet(f_base) # if d == 0 else f_base + models.F[d-1].pairCounts * sample.alpha_f)
