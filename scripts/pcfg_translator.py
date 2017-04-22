@@ -178,7 +178,7 @@ def _calc_j_model(gamma_counts, gamma_stars, d, abp_domain_size, normalize=False
             lhs_index = int(lhs.symbol())
             for rhs in gamma_A_counts[depth][lhs]:
                 rhs_left_index = int(rhs[0].symbol())
-                j_model[depth, rhs_left_index, lhs_index,  1] += gamma_A_counts[depth][lhs][rhs]
+                j_model[depth, rhs_left_index, lhs_index,  1] += gamma_B_counts[depth][lhs][rhs]
                 j_model[depth, rhs_left_index, :-1,  0] += gamma_A_counts[depth][lhs][rhs] * \
                                                          gamma_star_plus[depth, :, lhs_index]
     if normalize:
