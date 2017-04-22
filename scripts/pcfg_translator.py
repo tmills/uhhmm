@@ -40,7 +40,7 @@ def extract_counts(trees, abp_domain_size):
 
 def _build_nonterminals(abp_domain_size):
     # we build the 0 nonterminal just for convenience. it is not used.
-    return nltk.grammar.nonterminals(','.join([str(x) for x in range(0, abp_domain_size+1)])+',...' )
+    return nltk.grammar.nonterminals(','.join([str(x) for x in range(0, abp_domain_size+1)]))
 
 def _calc_delta(pcfg, J, abp_domain_size, d, nonterminals):
     delta = np.zeros((2, J, abp_domain_size + 1, d))  # the delta model. s * d * i
@@ -55,8 +55,6 @@ def _calc_delta(pcfg, J, abp_domain_size, d, nonterminals):
             delta[1, 1:, a_index, :] = lexical_sum
     for i_index in range(2, J):
         for a_index in range(abp_domain_size+1):  # the category labels correspond to their true labels. there is no 0
-            if a_index == 0:
-                continue
             a = nonterminals[a_index]
             for depth in range(d):
                 nonterm_sum_a = 0
@@ -176,11 +174,11 @@ def _calc_j_model(gamma_counts, gamma_stars, d, abp_domain_size, normalize=False
     gamma_A_counts, gamma_B_counts = gamma_counts
     j_model = np.zeros((d, abp_domain_size+2, abp_domain_size+2, 2))
     for depth in range(d):
-        for lhs in gamma_B_counts[depth]:
+        for lhs in gamma_A_counts[depth]:
             lhs_index = int(lhs.symbol())
-            for rhs in gamma_B_counts[depth][lhs]:
+            for rhs in gamma_A_counts[depth][lhs]:
                 rhs_left_index = int(rhs[0].symbol())
-                j_model[depth, rhs_left_index, lhs_index,  1] += gamma_B_counts[depth][lhs][rhs]
+                j_model[depth, rhs_left_index, lhs_index,  1] += gamma_A_counts[depth][lhs][rhs]
                 j_model[depth, rhs_left_index, :-1,  0] += gamma_A_counts[depth][lhs][rhs] * \
                                                          gamma_star_plus[depth, :, lhs_index]
     if normalize:
@@ -306,7 +304,10 @@ def calc_anneal_alphas(models, iter, burnin, init_tempature, total_sent_lens):
         else:
             model_shape = model.dist.shape
         model_size = reduce(lambda x, y: x*y, model_shape)
-        anneal_alphas[model_name] = init_tempature * (total_sent_lens / model_size) * (burnin - min(iter, burnin)) / burnin
+        if iter >= burnin:
+            anneal_alphas[model_name] = 0
+        else:
+            anneal_alphas[model_name] = init_tempature * (total_sent_lens / model_size) * (burnin - iter) / burnin
     return anneal_alphas
 
 
