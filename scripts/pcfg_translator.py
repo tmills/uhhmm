@@ -161,10 +161,10 @@ def _calc_f_model(gamma_stars, d, abp_domain_size, normalize=False):
         for lhs in range(0, abp_domain_size+1):
             for rhs in range(0, abp_domain_size+1):
                 if lhs != rhs:
-                    f_model[depth, lhs, 1] += gamma_star_plus[depth, lhs, rhs] * preterm_marginal_distr[lhs]
+                    f_model[depth, lhs, 1] += gamma_star_plus[depth, lhs, rhs] * preterm_marginal_distr[rhs]
                 else:
-                    f_model[depth, lhs, 0] += preterm_marginal_distr[lhs]
-                    f_model[depth, lhs, 1] += gamma_star_plus[depth, lhs, rhs] * preterm_marginal_distr[lhs]
+                    f_model[depth, lhs, 0] += preterm_marginal_distr[rhs]
+                    f_model[depth, lhs, 1] += gamma_star_plus[depth, lhs, rhs] * preterm_marginal_distr[rhs]
         if depth == 0:
             f_model[0, 0, 0] = 0
     if normalize:
@@ -241,6 +241,8 @@ def _calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize=False):
                 w_model[lhs_index][int(rhs[0])] = pcfg_counts[lhs][rhs]
             elif all([nltk.grammar.is_terminal(x) for x in rhs]) and len(rhs) == 1 and rhs[0] == '-ROOT-':
                 w_model[lhs_index][0] = pcfg_counts[lhs][rhs]
+            else:
+                raise Exception("unknown lexical item %s" % rhs)
     if normalize:
         return _normalize_a_tensor(w_model)
     return w_model
