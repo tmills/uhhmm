@@ -242,7 +242,7 @@ def _calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize=False):
             elif all([nltk.grammar.is_terminal(x) for x in rhs]) and len(rhs) == 1 and rhs[0] == '-ROOT-':
                 w_model[lhs_index][0] = pcfg_counts[lhs][rhs]
             else:
-                raise Exception("unknown lexical item %s" % rhs)
+                raise Exception("unknown lexical item {}".format( rhs))
     if normalize:
         return _normalize_a_tensor(w_model)
     return w_model
