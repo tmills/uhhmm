@@ -419,7 +419,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             vector<int> v = {8, 19406, 24314, 26426};
             if (sents[sent_ind].size() > 3 && ind <= 4){
                 cout << "column view" << endl;
-                print(dyn_prog_col[v[ind]]);
+                cout << "ind" << ind << " " << dyn_prog_col[v[ind]] << endl;
             }
             blas::xmy(*expanded_lex, dyn_prog_col, dyn_prog_col);
 //             cout << "Computing normalizer" << endl;
