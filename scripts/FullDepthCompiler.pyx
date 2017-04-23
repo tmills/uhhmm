@@ -17,6 +17,7 @@ from PyzmqMessage import ModelWrapper
 #from Indexer import Indexer
 import Indexer
 import scipy.sparse
+logging.basicConfig(stream=sys.stdout)
 
 #@profile
 def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False):
@@ -25,7 +26,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     cdef int f,j,a,b,g, prevF, prevJ
     cdef float range_probs
     cdef np.ndarray range_probs_full
-    logging.basicConfig(stream=sys.stdout)
+
     prev_state = indexer.extractState(prev_index)
     logging.debug(' '.join(map(str, ['index',prev_index,'state',prev_state.unfiltered_str()])))
     start_depth = get_cur_awa_depth(prev_state.b)
