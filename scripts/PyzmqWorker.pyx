@@ -54,6 +54,7 @@ cdef class PyzmqWorker:
         self.gpu = gpu
         self.batch_size = batch_size
         self.my_ip = get_local_ip()
+        logging.basicConfig(stream=sys.stdout)
 
     def __reduce__(self):
         return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.gpu, self.batch_size, self.seed, self.debug_level), None)
