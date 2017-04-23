@@ -13,7 +13,7 @@ cdef class Model
 
 cdef class Model:
 
-    def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, corpus_shape=(1,1), name="Unspecified"):
+    def __init__(self, shape, float alpha=0.0, beta=None, corpus_shape=(1,1), name="Unspecified"):
         ## Initialize with ones to prevent underflow during distribution sampling
         ## at iteration 0
         self.shape = shape

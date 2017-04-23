@@ -4,10 +4,10 @@ cimport numpy as np
 
 cdef class Model:
     cdef public tuple shape, corpus_shape
-    cdef public np.ndarray pairCounts, dist, beta
+    cdef public np.ndarray pairCounts, dist
     cdef public float alpha
     cdef public str name
-    cdef public trans_prob
+    cdef public trans_prob, beta
     
 cdef class Models:
     cdef list models
