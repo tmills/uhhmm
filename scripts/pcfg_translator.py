@@ -13,15 +13,29 @@ RB_TREES = ["-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::+::POS1::1 +::ACT1/AWA2::-::
 D2D_TREES = ["-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::+::POS2::2 +::ACT1/AWA3::+::POS4::3 +::ACT1/AWA5::+::POS3::4 +::ACT1/AWA5::-::POS5::5",
              "-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::+::POS2::2 +::ACT1/AWA3::+::POS4::6 -::ACT4/AWA4::-::POS4::7 +::ACT1/AWA5::+::POS3::4 +::ACT1/AWA5::-::POS5::5"]
 
+Solution_trees = ["-::ACT0/AWA0::+::POS1::a -::ACT1/AWA2::-::POS2::b -::ACT1/AWA2::-::POS2::d -::ACT1/AWA2::+::POS4::e +::ACT1/AWA3::+::POS4::f +::ACT1/AWA5::-::POS5::g",\
+                    "-::ACT0/AWA0::+::POS1::a -::ACT1/AWA2::-::POS2::b -::ACT1/AWA2::+::POS4::c +::ACT1/AWA3::+::POS4::f +::ACT1/AWA5::-::POS5::g"]
+
+# calculate the loglikelihood of a PCFG grammar on some PCFG rule counts excluding the root rules
+def calc_pcfg_loglikelihood(pcfg, pcfg_counts):
+    loglikehood = 0
+    for lhs in pcfg_counts:
+        if lhs.symbol() != '0':
+            for rhs in pcfg_counts[lhs]:
+                loglikehood += np.log10(pcfg[lhs][rhs])*pcfg_counts[lhs][rhs]
+    return loglikehood
+
+# input is a list of (state_sequence, word_sequence) and outputs a PCFG grammar and raw PCFG counts
 def translate_through_pcfg(seqs_of_states, depth, abp_domain_size):
     trees = []
     for seq in seqs_of_states:
         tree = full_chain_convert(seq, depth)
         print(tree)
         trees.append(tree)
-    count_dict = extract_counts(trees, abp_domain_size)
-    return count_dict
+    pcfg_probs_and_counts = extract_counts(trees, abp_domain_size)
+    return pcfg_probs_and_counts
 
+# input is a list of trees instead of tuples of state sequences
 def extract_counts(trees, abp_domain_size):
     pcfg = {}
     top_cat = nltk.grammar.Nonterminal('0')
