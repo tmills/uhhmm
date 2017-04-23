@@ -63,23 +63,25 @@ cdef class Model:
         d = {}
         d['pairCounts'] = self.pairCounts
         d['dist'] = self.dist
-        d['u'] = self.u
         d['trans_prob'] = self.trans_prob
         d['beta'] = self.beta
         d['alpha'] = self.alpha
         d['name'] = self.name
-        
-        return (Model, ( (self.pairCounts.shape[0], self.pairCounts.shape[1]),), d)
+        d['corpus_shape'] = self.corpus_shape
+        d['shape'] = self.shape
+
+        return (Model, (self.shape, self.alpha, self.beta, self.corpus_shape, self.name), d)
         
     def __setstate__(self, d):
         #logging.info("Into set_state")
+        self.shape = d['shape']
         self.pairCounts = d['pairCounts']
         self.dist = d['dist']
-        self.u = d['u']
         self.trans_prob = d['trans_prob']
         self.beta = d['beta']
         self.alpha = d['alpha']
-        self.name = d['name']        
+        self.name = d['name']
+        self.corpus_shape = d['corpus_shape']
         
 cdef class Models:
     def __init__(self):
