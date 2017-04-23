@@ -421,7 +421,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
                 cout << "column view" << endl;
                 cout << "ind" << ind << " " << dyn_prog_col[v[ind]] << endl;
                 cout << "lex" << ind << " " << (*expanded_lex)[v[ind]] << endl;
-                cout << "pos" << ind << " " << (*pos_full_array[v[ind]] << endl;
+                cout << "pos" << ind << " " << (*pos_full_array)[v[ind]] << endl;
             }
             blas::xmy(*expanded_lex, dyn_prog_col, dyn_prog_col);
 //             cout << "Computing normalizer" << endl;
