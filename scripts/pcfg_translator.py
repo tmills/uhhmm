@@ -295,6 +295,11 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, R
     pseudo_W = _calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize)
     _inc_counts(models.lex, pseudo_W, inc)
     # print(_calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize))
+    print("TOTAL COUNTS FOR ALL MODELS IN PCFG REACCOUNTS F {}, J {}, A {}, B[J0] {}, B[J1] {}, P {}, W {}"
+          .format(np.sum(pseudo_F), np.sum(pseudo_J),
+                  np.sum(pseudo_A), np.sum(pseudo_B[0]),
+                  np.sum(pseudo_B[1]), np.sum(pseudo_P)
+                  , np.sum(pseudo_W)))
 
 def calc_anneal_alphas(models, iter, burnin, init_tempature, total_sent_lens):
     anneal_alphas = {}
@@ -308,6 +313,11 @@ def calc_anneal_alphas(models, iter, burnin, init_tempature, total_sent_lens):
             anneal_alphas[model_name] = 0
         else:
             anneal_alphas[model_name] = init_tempature * (total_sent_lens / model_size) * (burnin - iter) / burnin
+    print("ALPHAS F {}, J {}, A {}, B {}, P {}, W {} TOTAL STATES {}".format(anneal_alphas['F'],
+                                                                             anneal_alphas['J'], anneal_alphas['A'],
+                                                                             anneal_alphas['B']
+                                                                             , anneal_alphas['P'], anneal_alphas['W'],
+                                                                             total_sent_lens))
     return anneal_alphas
 
 
