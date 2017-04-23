@@ -10,10 +10,14 @@ the main function is translate_through_pcfg
 RB_TREES = ["-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2",
             "-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::-::POS2::2"]
 
+D2D_TREES = ["-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::+::POS2::2 +::ACT1/AWA3::+::POS4::3 +::ACT1/AWA5::+::POS3::4 +::ACT1/AWA5::-::POS5::5",
+             "-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::+::POS2::2 +::ACT1/AWA3::+::POS4::6 -::ACT4/AWA4::-::POS4::7 +::ACT1/AWA5::+::POS3::4 +::ACT1/AWA5::-::POS5::5"]
+
 def translate_through_pcfg(seqs_of_states, depth, abp_domain_size):
     trees = []
     for seq in seqs_of_states:
         tree = full_chain_convert(seq, depth)
+        print(tree)
         trees.append(tree)
     count_dict = extract_counts(trees, abp_domain_size)
     return count_dict
@@ -296,10 +300,10 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, R
     _inc_counts(models.lex, pseudo_W, inc)
     # print(_calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize))
     print("TOTAL COUNTS FOR ALL MODELS IN PCFG REACCOUNTS F {}, J {}, A {}, B[J0] {}, B[J1] {}, P {}, W {}"
-          .format(np.sum(pseudo_F), np.sum(pseudo_J),
-                  np.sum(pseudo_A), np.sum(pseudo_B[0]),
-                  np.sum(pseudo_B[1]), np.sum(pseudo_P)
-                  , np.sum(pseudo_W)))
+          .format(np.sum(pseudo_F[:-1]), np.sum(pseudo_J[:-1]),
+                  np.sum(pseudo_A[:-1]), np.sum(pseudo_B[0][:-1]),
+                  np.sum(pseudo_B[1][:-1]), np.sum(pseudo_P[:-1])
+                  , np.sum(pseudo_W[:-1])))
 
 def calc_anneal_alphas(models, iter, burnin, init_tempature, total_sent_lens):
     anneal_alphas = {}
@@ -333,16 +337,16 @@ def main():
     # tree = ['-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::-::POS2::2','-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::-::POS2::2']
             # '-::ACT0/AWA0::+::POS2::1 -::ACT2/AWA2::-::POS1::2', '-::ACT0/AWA0::+::POS2::1 -::ACT1/AWA2::-::POS1::2']
     # tree_processed = full_chain_convert(tree, depth=2)
-    abp_domain_size = 2
-    d = 2
+    abp_domain_size = 5
+    d = 3
     J = 50
     normalize = False
     nonterms = _build_nonterminals(abp_domain_size)
-    lex_size = 4
+    lex_size = 7+1
     # print(tree_processed)
     # print(tree_processed.productions())
 
-    pcfg, pcfg_counts= translate_through_pcfg(tree*1000, d, abp_domain_size)
+    pcfg, pcfg_counts= translate_through_pcfg(D2D_TREES*1000, d, abp_domain_size)
     print("PCFG")
     print(pcfg)
     print(pcfg_counts)
