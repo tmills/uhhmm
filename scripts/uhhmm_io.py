@@ -8,6 +8,7 @@ import pickle
 import shutil
 import sys, linecache
 import State
+from left_corner2normal_tree_converter import *
 
 ## This method reads a "last_sample*.txt" file which is space-delimited, and
 ## each token is formatted as f/j::ACT/AWA;^d:POS;token where ^d indicates that
@@ -92,7 +93,7 @@ def read_serialized_models(pickle_filename):
 def write_output(sample, stats, config, gold_pos=None):
 #    last_sample = samples[-1]
     models = sample.models
-    depth = len(models.fj)
+    depth = len(models.F)
 
     #print("Default encoding is %s" % sys.getdefaultencoding() )
 
@@ -122,18 +123,20 @@ def write_output(sample, stats, config, gold_pos=None):
     f.write('%d\t%s\n' % (sample.iter, np.array_str(models.pos.beta)))
     f.close()
 
-    for d in range(0, depth):
-        write_model(models.act[d].globalPairCounts, output_dir + "/p_act_act_%d.txt" % sample.iter, condPrefix="AB", outcomePrefix="ACT", depth=d)
-        write_model(models.root[d].globalPairCounts, output_dir + "/p_act_root_%d.txt" %sample.iter, condPrefix="BG", outcomePrefix="ACT", depth=d)
-        write_model(models.fj[d].globalPairCounts, output_dir + "/p_fj_%d.txt" % sample.iter, condPrefix="ABBG", outcomePrefix="FJ", depth=d)
-        write_model(models.cont[d].globalPairCounts, output_dir + "/p_awa_cont_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="AWA", depth=d)
-        write_model(models.start[d].globalPairCounts, output_dir + "/p_awa_start_%d.txt" % sample.iter, condPrefix="AA", outcomePrefix="AWA", depth=d)
-        write_model(models.exp[d].globalPairCounts, output_dir + "/p_awa_exp_%d.txt" % sample.iter, condPrefix="GA", outcomePrefix="AWA", depth=d)
-        write_model(models.next[d].globalPairCounts, output_dir + "/p_awa_next_%d.txt" % sample.iter, condPrefix="BA", outcomePrefix="AWA", depth=d)
-
     #write_lex_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
-    write_model(models.pos.globalPairCounts, output_dir + "/p_pos_%d.txt" % sample.iter, condPrefix="B", outcomePrefix="POS")
-    write_model(models.lex.globalPairCounts, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
+    write_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
+    write_model(models.pos.dist, output_dir + "/p_pos_%d.txt" % sample.iter, condPrefix="B", outcomePrefix="POS")
+
+    for d in range(0, depth):
+        write_model(models.B_J0[d].dist, output_dir + "/p_awa_j0_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="AWA", depth=d)
+        write_model(models.B_J1[d].dist, output_dir + "/p_awa_j1_%d.txt" % sample.iter, condPrefix="AA", outcomePrefix="AWA", depth=d)
+        # write_model(models.exp[d].dist, output_dir + "/p_awa_exp_%d.txt" % sample.iter, condPrefix="GA", outcomePrefix="AWA", depth=d)
+        # write_model(models.next[d].dist, output_dir + "/p_awa_next_%d.txt" % sample.iter, condPrefix="BA", outcomePrefix="AWA", depth=d)
+        write_model(models.A[d].dist, output_dir + "/p_act_%d.txt" % sample.iter, condPrefix="AB", outcomePrefix="ACT", depth=d)
+        # write_model(models.root[d].dist, output_dir + "/p_act_root_%d.txt" %sample.iter, condPrefix="BG", outcomePrefix="ACT", depth=d)
+        write_model(models.F[d].dist, output_dir + "/p_fork_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="F", depth=d)
+        write_model(models.J[d].dist, output_dir + "/p_j_%d.txt" % sample.iter, condPrefix="AB", outcomePrefix="J", depth=d)
+        # write_model(models.trans[d].dist, output_dir + "/p_j_trans_%d.txt" % sample.iter, condPrefix="BG", outcomePrefix="J", depth=d)
 
     write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter, word_dict)
 
@@ -148,45 +151,28 @@ def checkpoint(sample, config):
     out_file = open(output_dir + "/sample.obj", 'wb')
     pickle.dump(sample, out_file)
     out_file.close()
-#    out_file = open(output_dir + "/sample.obj", 'rb')
-#    sample2 = pickle.load(out_file)
-#    print('Saved object FJ:')
-#    print(sample.models.fj[0].dist.shape)
-#    print(sample.models.fj[0].dist.sum())
-#    print(sample.models.fj[0].pairCounts.shape)
-#    print(sample.models.fj[0].pairCounts.sum())
-#    print(sample.models.fj[0].globalPairCounts.shape)
-#    print(sample.models.fj[0].globalPairCounts.sum())
-#    print('Loaded object FJ:')
-#    print(sample2.models.fj[0].dist.shape)
-#    print(sample2.models.fj[0].dist.sum())
-#    print(sample2.models.fj[0].pairCounts.shape)
-#    print(sample2.models.fj[0].pairCounts.sum())
-#    print(sample2.models.fj[0].globalPairCounts.shape)
-#    print(sample2.models.fj[0].globalPairCounts.sum())
 
     f = open(output_dir + "/logprobs.txt", 'a', encoding='utf-8')
     f.write('%d\t%f\n' % (sample.iter,sample.log_prob) )
     f.close()
 
 
-def write_model(counts, out_file, word_dict=None, condPrefix="", outcomePrefix="", depth=-1):
+def write_model(dist, out_file, word_dict=None, condPrefix="", outcomePrefix="", depth=-1):
     f = open(out_file, 'a' if depth > 0 else 'w', encoding='utf-8')
-    out_dim = counts.shape[-1]
+    out_dim = dist.shape[-1]
 
-    normalized_glob_cts = np.nan_to_num(counts/(counts.sum(axis=-1)[...,None]))
-
-    for ind,val in np.ndenumerate(normalized_glob_cts):
+    for ind,val in np.ndenumerate(dist):
         lhs = ind[0:-1]
         rhs = ind[-1]
+        unlog_val = 10**val
 
-        if val < 0.000001:
+        if (out_dim > 2 and rhs == 0) or unlog_val < 0.000001:
             continue
 
-        if word_dict is None:
-            f.write("P( %s%d | %s%s, %d ) = %f \n" % (outcomePrefix, rhs, condPrefix, str(lhs), depth, val))
-        elif rhs != 0:
-            f.write("P( %s | %s, %d ) = %f \n" % (word_dict[rhs], str(lhs), depth, val))
+        if word_dict == None:
+            f.write("P( %s%d | %s%s, %d ) = %f \n" % (outcomePrefix, rhs, condPrefix, str(lhs), depth, unlog_val))
+        else:
+            f.write("P( %s | %s, %d ) = %f \n" % (word_dict[rhs], str(lhs), depth, unlog_val))
 
     f.close()
 
@@ -196,29 +182,41 @@ def write_lex_model(dist, out_file, word_dict=None):
     for ind,val in np.ndenumerate(dist):
         lhs = ind[0:-1]
         rhs = ind[-1]
+        unlog_val = 10**val
 
-        if (out_dim > 2 and rhs == 0) or val < 0.000001:
+        if (out_dim > 2 and rhs == 0) or unlog_val < 0.000001:
             continue
 
-        if word_dict is None:
-            f.write("X %s : %s = %f \n" % (str(lhs), str(rhs), val))
+        if word_dict == None:
+            f.write("X %s : %s = %f \n" % (str(lhs), str(rhs), 10**val))
         else:
-            f.write("X %s : %s = %f \n" % (str(lhs), word_dict[rhs], val))
+            f.write("X %s : %s = %f \n" % (str(lhs), word_dict[rhs], 10**val))
 
 ## Sample output format -- each time step (token) is represented as the following:
 ## F/J::Active/Awaited:Pos   (see str() method in the State() class)
 ## Here we add the word to the end separated by a semi-colon.
 ## One sentence per line, with tokens separated by spaces.
+## The translate parameter controls whether the state sequences or bracketed parses are printed out
 def write_last_sample(sample, out_file, word_dict):
     f = open(out_file, 'w', encoding='utf-8')
+    bracketed_f = open(out_file.replace('.txt', '')+'.linetrees', 'w', encoding='utf-8')
     #pdb.set_trace()
     for sent_num,sent_state in enumerate(sample.hid_seqs):
         state_str = ""
+        token_strs = [word_dict[sample.ev_seqs[sent_num][x]] for x in range(len(sent_state))]
         for token_num,token_state in enumerate(sent_state):
-            token_str = word_dict[ sample.ev_seqs[sent_num][token_num] ]
-            state_str += token_state.str() + ';' + token_str + ' '
+            token_str = token_strs[token_num]
+            state_str += token_state.raw_str() + '::' + token_str + ' '
         f.write(state_str.rstrip())
         f.write('\n')
+        normed_states = normalize_dateline(sent_state)
+        state_str = convert_states_into_tree(normed_states, word_seq=token_strs)
+        state_str = str(state_str).replace('\n', '')
+        state_str = re.sub('\s+', ' ', state_str)
+        bracketed_f.write(state_str.rstrip())
+        bracketed_f.write('\n')
+    f.close()
+    bracketed_f.close()
 
 def extract_pos(sample):
     pos_seqs = list()
