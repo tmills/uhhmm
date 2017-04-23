@@ -396,14 +396,14 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             // lex_column is |g| x 1 
             array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
                 
-            // print(lex_column);
+             print(lex_column);
 //             cout << '6' << endl;
             // lexMultiplier is state_size x |g|, expanded_lex is state_size x 1
 //             cout << "Multiplying lex multiplier by lex column" << endl;
 //            cout << "lex column" << endl;
 //            print(lex_column);
             multiply(* lexMultiplier, lex_column, * expanded_lex);
-            // print(expanded_lex);
+             print(expanded_lex);
 //             cout << '7' << endl;
             // dyn_prog_row is 1 x state_size
             // dyn_prog_column is state_size x 1
