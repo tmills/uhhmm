@@ -267,7 +267,7 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, R
     if not RB_init:
         pcfg, pcfg_counts = translate_through_pcfg(mixed_seqs, d, abp_domain_size)
     else:
-        pcfg, pcfg_counts = translate_through_pcfg(RB_TREES*1000, d, abp_domain_size)
+        pcfg, pcfg_counts = translate_through_pcfg(D2D_TREES*1000, d, abp_domain_size)
     nonterms = _build_nonterminals(abp_domain_size)
     delta_A, delta_B = _calc_delta(pcfg, J, abp_domain_size, d, nonterms)
     # print(delta_A, delta_B)
