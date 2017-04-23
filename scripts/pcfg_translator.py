@@ -263,7 +263,8 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, R
     d = d + 1  # calculate d+1 depth models for all pseudo count models, but not using them in _inc_counts
     abp_domain_size = models.A[0].dist.shape[0] - 2
     lex_size = models.lex.dist.shape[-1]
-    mixed_seqs = zip(hid_seq, sent)
+    if not RB_init:
+        mixed_seqs = zip(hid_seq, sent)
     if not RB_init:
         pcfg, pcfg_counts = translate_through_pcfg(mixed_seqs, d, abp_domain_size)
     else:
