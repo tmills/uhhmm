@@ -416,8 +416,11 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             // dyn_prog_column is state_size x 1
             array2d<float, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
 //             cout << "Multiplying expanded_lex by dyn prog row" << endl;
-            cout << "column view" << endl;
-            print(dyn_prog_col);
+            vector<int> v = {8, 19406, 24314, 26426};
+            if (sents[sent_ind].size() > 3 && ind <= 4){
+                cout << "column view" << endl;
+                print(dyn_prog_col[v[ind]]);
+            }
             blas::xmy(*expanded_lex, dyn_prog_col, dyn_prog_col);
 //             cout << "Computing normalizer" << endl;
             normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
@@ -439,7 +442,6 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
                 float final_normalizer = cusp::blas::dot(*trans_slice, final_dyn_col);
                 log_probs[sent_ind] += log10f(final_normalizer);
                 cout << " ind "<< ind << " sent_ind " << sent_ind << "end log prob " << log10f(final_normalizer) << endl;
-                continue;
             }
         }
         
