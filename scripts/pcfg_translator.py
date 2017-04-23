@@ -313,9 +313,9 @@ def calc_anneal_alphas(models, iter, burnin, init_tempature, total_sent_lens):
             anneal_alphas[model_name] = 0
         else:
             anneal_alphas[model_name] = init_tempature * (total_sent_lens / model_size) * (burnin - iter) / burnin
-    print("ALPHAS F {}, J {}, A {}, B {}, P {}, W {} TOTAL STATES {}".format(anneal_alphas['F'],
+    print("ALPHAS F {}, J {}, A {}, Bs {}, P {}, W {} TOTAL STATES {}".format(anneal_alphas['F'],
                                                                              anneal_alphas['J'], anneal_alphas['A'],
-                                                                             anneal_alphas['B']
+                                                                             anneal_alphas['B_J0']
                                                                              , anneal_alphas['P'], anneal_alphas['W'],
                                                                              total_sent_lens))
     return anneal_alphas
