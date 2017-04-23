@@ -417,7 +417,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             array2d<float, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
 //             cout << "Multiplying expanded_lex by dyn prog row" << endl;
             vector<int> v = {8, 19406, 24314, 26426};
-            if (sents[sent_ind].size() > 3 && ind <= 4){
+            if (sents[sent_ind].size() > 3 && ind < 4){
                 cout << "column view" << endl;
                 cout << "ind" << ind << " " << dyn_prog_col[v[ind]] << endl;
             }
