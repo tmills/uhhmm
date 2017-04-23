@@ -421,7 +421,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
 //            print(dyn_prog_col);
 //                cout << "Adding logged normalizer to sentence logprobs" << endl;
             log_probs[sent_ind] += log10f(normalizer);
-            cout << " ind "<< ind << " sent_ind " << sent_ind << " log prob " << log10f(normalizer) << " " << normalizer << endl;
+            cout << " ind "<< ind << " sent_ind " << sent_ind << " token " << token << " log prob " << log10f(normalizer) << " " << normalizer << endl;
             if (sents[sent_ind].size() - 1 == ind){
                 int EOS = p_indexer -> get_EOS_full();
 //                cout << EOS << endl;
