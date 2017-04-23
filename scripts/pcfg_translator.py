@@ -17,11 +17,10 @@ Solution_trees = ["-::ACT0/AWA0::+::POS1::a -::ACT1/AWA2::-::POS2::b -::ACT1/AWA
                     "-::ACT0/AWA0::+::POS1::a -::ACT1/AWA2::-::POS2::b -::ACT1/AWA2::+::POS4::c +::ACT1/AWA3::+::POS4::f +::ACT1/AWA5::-::POS5::g"]
 
 D2D_TREES2 = ["-::ACT0/AWA0::+::POS1::1 -::ACT4/AWA2::-::POS2::2 -::ACT5/AWA3::-::POS3::3",
-              "-::ACT0/AWA0::+::POS1::1 -::ACT4/AWA2::-::POS2::2 -::ACT5/AWA3::+::POS3::3 -::ACT3/AWA4::+::POS1::1 +::ACT3/AWA2::-::POS2::2 +::ACT5/AWA4::+::POS1::1 +::ACT5/AWA2::-::POS2::2"]
+              "-::ACT0/AWA0::+::POS1::1 -::ACT4/AWA2::-::POS2::2 -::ACT5/AWA3::+::POS3::3 -::ACT5/AWA3;ACT3/AWA4::+::POS1::1 +::ACT5/AWA3;ACT3/AWA2::-::POS2::2 +::ACT5/AWA4::+::POS1::1 +::ACT5/AWA2::-::POS2::2"]
 
-solution_trees = ["-::ACT0/AWA0::+::POS5::a -::ACT5/AWA2::-::POS2::b -::ACT5/AWA2::-::POS2::c",
-                  "-::ACT0/AWA0::+::POS5::a -::ACT5/AWA2::-::POS2::b -::ACT5/AWA2::-::POS2::c -::ACT5/AWA2::+::POS5::a "
-                  "-::ACT5/AWA2;ACT5/AWA2::-::POS2::b +::ACT5/AWA5::+::POS5::a +::ACT5/AWA2::-::POS2::b"]
+solution_trees = ["-::ACT0/AWA0::+::POS1::a -::ACT4/AWA2::-::POS2::b -::ACT5/AWA4::-::POS3::c",
+                  "-::ACT0/AWA0::+::POS1::a -::ACT4/AWA2::-::POS2::b -::ACT4/AWA3::-::POS3::c -::ACT5/AWA3::+::POS1::a -::ACT5/AWA3;ACT4/AWA2::-::POS2::b +::ACT5/AWA4::+::POS1::a +::ACT5/AWA2::-::POS2::b"]
 
 # calculate the loglikelihood of a PCFG grammar on some PCFG rule counts excluding the root rules
 def calc_pcfg_loglikelihood(pcfg, pcfg_counts):
@@ -368,7 +367,7 @@ def main():
     # print(tree_processed)
     # print(tree_processed.productions())
 
-    pcfg, pcfg_counts= translate_through_pcfg(D2D_TREES*1000, d, abp_domain_size)
+    pcfg, pcfg_counts= translate_through_pcfg(D2D_TREES2*1000, d, abp_domain_size)
     print("PCFG")
     print(pcfg)
     print(pcfg_counts)

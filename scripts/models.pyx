@@ -16,7 +16,7 @@ cdef class Model:
         ## at iteration 0
         self.shape = shape
         self.corpus_shape = corpus_shape
-        self.pairCounts = np.ones(shape, dtype=np.float)
+        self.pairCounts = np.zeros(shape, dtype=np.float)
         self.dist = np.random.random(shape)
         self.dist /= self.dist.sum(1, keepdims=True)
         self.dist = np.log10(self.dist)
