@@ -152,7 +152,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                         if cur_val is True:
                             boundary = val_index
                     else:
-                        if all(row_index_bool) is False:
+                        if all([ not x for x in row_index_bool]):
                             corrected_pos_dist[index] = pos_dist[0]
                             print(row_index, 0)
                         else:
