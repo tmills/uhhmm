@@ -316,7 +316,7 @@ def calc_anneal_alphas(models, iter, burnin, init_tempature, total_sent_lens):
     print("ALPHAS F {}, J {}, A {}, Bs {}, P {}, W {} TOTAL STATES {}".format(anneal_alphas['F'],
                                                                              anneal_alphas['J'], anneal_alphas['A'],
                                                                              anneal_alphas['B_J0']
-                                                                             , anneal_alphas['P'], anneal_alphas['W'],
+                                                                             , anneal_alphas['pos'], anneal_alphas['lex'],
                                                                              total_sent_lens))
     return anneal_alphas
 
