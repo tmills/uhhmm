@@ -282,7 +282,7 @@ Array* HmmSampler::make_pos_full_array(Array* pos_matrix ,int g_max, int b_max, 
         ArrayView one_section_of_array(temp_array->subarray(i*pos_matrix_size, pos_matrix_size));
         copy(*pos_matrix, one_section_of_array);
     }
-    cout << "THE VALUE" << temp_array[26426] << endl;
+    cout << " THE VALUE " << (*temp_array)[26426] << endl;
     return temp_array;
 }
 
