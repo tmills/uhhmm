@@ -324,7 +324,7 @@ cdef class PyzmqWorker:
                 break
             except EOFError:
                 logging.warning("EOF error encounter at model loading")
-                time.sleep(5)
+            time.sleep(5)
 
         in_file.close()
         return model, file_sig

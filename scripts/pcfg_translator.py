@@ -312,8 +312,9 @@ def calc_anneal_alphas(models, iter, burnin, init_tempature, total_sent_lens):
 
 
 def main():
-    tree = ["-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2",
-            "-::ACT0/AWA0::+::POS1::1 -::ACT2/AWA2::-::POS2::2"]
+    tree = ["-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA1::+::POS1::1 +::ACT1/AWA1::-::POS1::2",
+            "-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA1::-::POS1::2"]
+    # tree = [(a b (c (f g))), (a (b (d e))) (f g)))]
     # tree = ['-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::+::POS1::1 +::ACT1/AWA2::-::POS2::2',
     # '-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA2::-::POS2::2',
     # '-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA1::-::POS1::1 -::ACT1/AWA2::-::POS2::2',
