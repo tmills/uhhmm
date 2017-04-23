@@ -17,7 +17,6 @@ from PyzmqMessage import ModelWrapper
 #from Indexer import Indexer
 import Indexer
 import scipy.sparse
-logging.basicConfig(stream=sys.stdout)
 
 #@profile
 def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False):
