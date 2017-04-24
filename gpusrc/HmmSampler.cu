@@ -230,20 +230,20 @@ Dense* get_sentence_array(std::vector<std::vector<int> > sents, int max_len){
 
 void HmmSampler::set_models(Model * models){
 
-     cout << 'set_models 1' << endl;
+     cout << "set_models 1" << endl;
     p_model = models;
-     cout << 'set_models 2' << endl;
+     cout << "set_models 2" << endl;
     if (p_indexer != NULL){
         delete p_indexer;
 	p_indexer = NULL;
     }
     p_indexer = new Indexer(models);
-     cout << 'set_models 3' << endl;
+     cout << "set_models 3" << endl;
     int g_len = p_model-> g_max;
     int state_size = p_indexer -> get_state_size();
     cudaMemset(&G_SIZE,0,sizeof(int));
     cudaMemcpyToSymbol(G_SIZE, &g_len, sizeof(int), 0, cudaMemcpyHostToDevice);
-     cout << 'set_models 4' << endl;
+     cout << "set_models 4" << endl;
     //if (lexMatrix != NULL){
     //    delete lexMatrix;
     //    lexMatrix = NULL;
@@ -252,7 +252,7 @@ void HmmSampler::set_models(Model * models){
     lexMatrix = p_model -> lex; 
     // print(*(lexMatrix->get_view()));
     // exp_array(lexMatrix->get_view()->values); // exp the lex dist // the gpu models are not logged, should not need this
-     cout << 'set_models 5' << endl;
+     cout << "set_models 5" << endl;
     pos_matrix = p_model -> pos;
 //    cusp::print(*pos_matrix);
     if (lexMultiplier != NULL){
@@ -260,9 +260,9 @@ void HmmSampler::set_models(Model * models){
         lexMultiplier = NULL;
     }
     lexMultiplier = tile(g_len, p_indexer->get_state_size());
-    cout << 'set_models 6' << endl;
+    cout << "set_models 6" << endl;
     expand_mat = expand(g_len, p_indexer->get_state_size());
-    cout << 'set_models 7' << endl;
+    cout << "set_models 7" << endl;
     // print(*lexMultiplier);
     pi = p_model -> pi;
     // print( *(pi->get_view()) );
@@ -271,20 +271,20 @@ void HmmSampler::set_models(Model * models){
         trans_slice = NULL;
     }
     trans_slice = new Array(p_indexer->get_state_size(), 0.0f);
-    cout << 'set_models 8' << endl;
+    cout << "set_models 8" << endl;
     expanded_lex = trans_slice;
     sum_dict = trans_slice;
     int b_len = p_model -> b_max;
     cout << "pos full array" << endl;
     int depth = p_model -> get_depth();
     pos_full_array = make_pos_full_array(pos_matrix, g_len, b_len, depth, state_size);
-    cout << 'set_models 9' << endl;
+    cout << "set_models 9" << endl;
 //    print(*pos_full_array);
     // cout.precision(float_limit::max_digits10);
 }
 
 Array* HmmSampler::make_pos_full_array(Array* pos_matrix ,int g_max, int b_max, int depth, int state_size){
-    cout << 'make_pos_full_array in' << endl;
+    cout << "make_pos_full_array in" << endl;
     int pos_matrix_size = pow(b_max, depth) * g_max * 2;
     int copy_times = state_size / pos_matrix_size;
     Array* temp_array = new Array(state_size, 0.0f);
@@ -294,31 +294,31 @@ Array* HmmSampler::make_pos_full_array(Array* pos_matrix ,int g_max, int b_max, 
         ArrayView one_section_of_array(temp_array->subarray(i*pos_matrix_size, pos_matrix_size));
         copy(*pos_matrix, one_section_of_array);
     }
-    cout << 'make_pos_full_array out' << endl;
+    cout << "make_pos_full_array out" << endl;
 //    cout << " THE VALUE " << (*temp_array)[26426] << endl;
     return temp_array;
 }
 
 void HmmSampler::initialize_dynprog(int batch_size, int max_len){
     try{
-    cout << 'initialize_dynprog in' << endl;
+    cout << "initialize_dynprog in" << endl;
     sampler_batch_size = batch_size;
     max_sent_len = max_len;
     dyn_prog = new Dense*[max_len];
     for(int i = 0; i < max_len; i++){
         dyn_prog[i] = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
     }
-    cout << 'initialize_dynprog 2' << endl;
+    cout << "initialize_dynprog 2" << endl;
     start_state = new Dense(p_indexer->get_state_size(), batch_size, 0.0f);
     for(int i = 0; i < batch_size; i++){
         start_state->operator()(0, i) = 1;
     }
     int a_max, b_max, g_max;
-    cout << 'initialize_dynprog 3' << endl;
+    cout << "initialize_dynprog 3" << endl;
     std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();
     int state_size_no_g = p_indexer->get_state_size() / g_max;
     dyn_prog_part = new Dense(state_size_no_g, batch_size, 0.0f);
-    cout << 'initialize_dynprog out' << endl;
+    cout << "initialize_dynprog out" << endl;
     } catch (...) {
         cout << "init dynprog error!" << endl;
         throw;
@@ -416,7 +416,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
                 cout << "lex"<< endl;
 //                print(lex_column);
 //            }
-//             cout << '6' << endl;
+//             cout << "6" << endl;
             // lexMultiplier is state_size x |g|, expanded_lex is state_size x 1
 //             cout << "Multiplying lex multiplier by lex column" << endl;
 //            cout << "lex column" << endl;
@@ -427,7 +427,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
 //                print(*expanded_lex);
 //            }
 
-             cout << 'lex finished' << endl;
+             cout << "lex finished" << endl;
             // dyn_prog_row is 1 x state_size
             // dyn_prog_column is state_size x 1
             array2d<float, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
@@ -508,7 +508,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
 //        }
 
         for (int t = sent.size() - 1; t > -1; t --){
-            cout << 't' << t << " prev sample t is " << sample_t <<endl;
+            cout << "t" << t << " prev sample t is " << sample_t <<endl;
             // auto t11 = Clock::now();
             std::tie(sample_state, sample_t) = _reverse_sample_inner(sample_t, t, sent_ind);
              cout << "Sample t is " << sample_t << endl;
