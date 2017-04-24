@@ -273,7 +273,7 @@ def _normalize_a_tensor(tensor):
 
 def _inc_counts(model, ref_model, inc=1, add_noise=False):
     mu = 0
-    sigma = 300
+    sigma = 500
     if isinstance(model, list):
         for depth in range(len(model)):
             model[depth].pairCounts += ref_model[depth] * inc
