@@ -275,8 +275,8 @@ def _inc_counts(model, ref_model, inc=1, add_noise=False):
     if isinstance(model, list):
         for depth in range(len(model)):
             model[depth].pairCounts += ref_model[depth] * inc
-            if add_noise:
-                noise = np.random.normal(mu, sigma, size=)
+            # if add_noise:
+            #     noise = np.random.normal(mu, sigma, size=)
     else:
         model.pairCounts += ref_model * inc
 
