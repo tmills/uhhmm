@@ -273,7 +273,7 @@ def _normalize_a_tensor(tensor):
 
 def _inc_counts(model, ref_model, inc=1, add_noise=False):
     mu = 0
-    sigma = 1000
+    sigma = 2000
     if isinstance(model, list):
         for depth in range(len(model)):
             model[depth].pairCounts += ref_model[depth] * inc
@@ -283,6 +283,7 @@ def _inc_counts(model, ref_model, inc=1, add_noise=False):
                 noise = np.random.normal(mu, sigma, flat_size)
                 noise = noise.reshape(size)
                 model[depth].pairCounts += noise
+                model[depth].pairCounts = np.absolute(model[depth].pairCounts)
     else:
         model.pairCounts += ref_model * inc
         if add_noise:
@@ -291,6 +292,8 @@ def _inc_counts(model, ref_model, inc=1, add_noise=False):
             noise = np.random.normal(mu, sigma, flat_size)
             noise = noise.reshape(size)
             model.pairCounts += noise
+            model.pairCounts = np.absolute(model.pairCounts)
+
 
 def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, RB_init=False):
     d = len(models.A)
