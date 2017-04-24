@@ -36,7 +36,7 @@ def translate_through_pcfg(seqs_of_states, depth, abp_domain_size):
     trees = []
     for seq in seqs_of_states:
         tree = full_chain_convert(seq, depth)
-        print(tree)
+        # print(tree)
         trees.append(tree)
     pcfg_probs_and_counts = extract_counts(trees, abp_domain_size)
     return pcfg_probs_and_counts
@@ -271,10 +271,12 @@ def _calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize=False):
 def _normalize_a_tensor(tensor):
     return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-10)  # to supress zero division warning
 
-def _inc_counts(model, ref_model, inc=1):
+def _inc_counts(model, ref_model, inc=1, add_noise=False):
     if isinstance(model, list):
         for depth in range(len(model)):
             model[depth].pairCounts += ref_model[depth] * inc
+            if add_noise:
+                noise = np.random.normal(mu, sigma, size=)
     else:
         model.pairCounts += ref_model * inc
 
