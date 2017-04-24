@@ -272,13 +272,15 @@ def _normalize_a_tensor(tensor):
     return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-10)  # to supress zero division warning
 
 def _inc_counts(model, ref_model, inc=1, add_noise=False):
+    mu = 0
+    sigma = 100
     if isinstance(model, list):
         for depth in range(len(model)):
             model[depth].pairCounts += ref_model[depth] * inc
             if add_noise:
                 size = model[depth].pairCounts.shape
                 flat_size = np.prod(size)
-                noise = np.random.normal(0, 50, flat_size)
+                noise = np.random.normal(mu, sigma, flat_size)
                 noise = noise.reshape(size)
                 model[depth].pairCounts += noise
     else:
@@ -286,7 +288,7 @@ def _inc_counts(model, ref_model, inc=1, add_noise=False):
         if add_noise:
             size = model.pairCounts.shape
             flat_size = np.prod(size)
-            noise = np.random.normal(0, 50, flat_size)
+            noise = np.random.normal(mu, sigma, flat_size)
             noise = noise.reshape(size)
             model.pairCounts += noise
 
