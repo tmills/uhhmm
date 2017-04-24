@@ -158,7 +158,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         sample.discount = float(params.get('discount'))
         sample.ev_seqs = ev_seqs
 
-        RB_INIT = False
+        RB_INIT = True
         if RB_INIT:
             pcfg_increment_counts(None, None, models, RB_init=RB_INIT)
 

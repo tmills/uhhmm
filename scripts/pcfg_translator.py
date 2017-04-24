@@ -275,22 +275,34 @@ def _inc_counts(model, ref_model, inc=1, add_noise=False):
     if isinstance(model, list):
         for depth in range(len(model)):
             model[depth].pairCounts += ref_model[depth] * inc
-            # if add_noise:
-            #     noise = np.random.normal(mu, sigma, size=)
+            if add_noise:
+                size = model[depth].pairCounts.shape
+                flat_size = np.prod(size)
+                noise = np.random.normal(0, 50, flat_size)
+                noise = noise.reshape(size)
+                model[depth].pairCounts += noise
     else:
         model.pairCounts += ref_model * inc
+        if add_noise:
+            size = model.pairCounts.shape
+            flat_size = np.prod(size)
+            noise = np.random.normal(0, 50, flat_size)
+            noise = noise.reshape(size)
+            model.pairCounts += noise
 
 def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, RB_init=False):
     d = len(models.A)
     d = d + 1  # calculate d+1 depth models for all pseudo count models, but not using them in _inc_counts
     abp_domain_size = models.A[0].dist.shape[0] - 2
     lex_size = models.lex.dist.shape[-1]
+    add_noise = False
     if not RB_init:
         mixed_seqs = zip(hid_seq, sent)
     if not RB_init:
         pcfg, pcfg_counts = translate_through_pcfg(mixed_seqs, d, abp_domain_size)
     else:
         pcfg, pcfg_counts = translate_through_pcfg(D2D_TREES2*1000, d, abp_domain_size)
+        add_noise = True
     nonterms = _build_nonterminals(abp_domain_size)
     delta_A, delta_B = _calc_delta(pcfg, J, abp_domain_size, d, nonterms)
     # print(delta_A, delta_B)
@@ -299,28 +311,28 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, R
     gamma_star, preterm_marginal_distr = _calc_expected_counts((gamma_A, gamma_B), pcfg_counts, J, d, abp_domain_size)
     # print("F")
     pseudo_F = _calc_f_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize)
-    _inc_counts(models.F, pseudo_F, inc)
+    _inc_counts(models.F, pseudo_F, inc, add_noise)
     # print(_calc_f_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize))
     # print("J")
     pseudo_J = _calc_j_model((gamma_A_counts, gamma_B_counts),(gamma_star, preterm_marginal_distr),d,abp_domain_size,normalize)
-    _inc_counts(models.J, pseudo_J, inc)
+    _inc_counts(models.J, pseudo_J, inc, add_noise)
     # print(_calc_j_model((gamma_A_counts, gamma_B_counts),(gamma_star, preterm_marginal_distr),d,abp_domain_size,normalize))
     # print("A")
     pseudo_A = _calc_a_model((gamma_A_counts, gamma_B_counts), (gamma_star, preterm_marginal_distr), d, abp_domain_size,normalize)
-    _inc_counts(models.A, pseudo_A, inc)
+    _inc_counts(models.A, pseudo_A, inc, add_noise)
     # print(_calc_a_model((gamma_A_counts, gamma_B_counts), (gamma_star, preterm_marginal_distr), d, abp_domain_size,normalize))
     # print("B")
     pseudo_B = _calc_b_models((gamma_A_counts, gamma_B_counts), d, abp_domain_size,normalize)
-    _inc_counts(models.B_J0, pseudo_B[0], inc)
-    _inc_counts(models.B_J1, pseudo_B[1], inc)
+    _inc_counts(models.B_J0, pseudo_B[0], inc, add_noise)
+    _inc_counts(models.B_J1, pseudo_B[1], inc, add_noise)
     # print(_calc_b_models((gamma_A_counts, gamma_B_counts), d, abp_domain_size,normalize))
     # print("P")
     pseudo_P = _calc_p_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize)
-    _inc_counts(models.pos, pseudo_P, inc)
+    _inc_counts(models.pos, pseudo_P, inc, add_noise)
     # print(_calc_p_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize))
     # print("W")
     pseudo_W = _calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize)
-    _inc_counts(models.lex, pseudo_W, inc)
+    _inc_counts(models.lex, pseudo_W, inc, add_noise)
     # print(_calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize))
     print("TOTAL COUNTS FOR ALL MODELS IN PCFG REACCOUNTS F {}, J {}, A {}, B[J0] {}, B[J1] {}, P {}, W {}"
           .format(np.sum(pseudo_F[:-1]), np.sum(pseudo_J[:-1]),
