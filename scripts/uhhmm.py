@@ -27,7 +27,7 @@ import HmmSampler
 from dahl_split_merge import perform_split_merge_operation
 from models import Model, Models
 from workers import start_local_workers_with_distributer, start_cluster_workers
-from pcfg_translator import pcfg_increment_counts, calc_anneal_alphas
+from pcfg_translator import pcfg_increment_counts, calc_anneal_alphas, calc_anneal_likelihood
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -102,7 +102,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     if gpu and num_gpu_workers < 1 and num_cpu_workers > 0:
         logging.warn("Inconsistent config: gpu flag set with %d gpu workers; setting gpu=False" % (num_gpu_workers))
         gpu=False
-    init_tempature = float(params.get('init_temperature', 0))
+    init_anneal_alpha = float(params.get('init_anneal_alpha', 0))
+    init_anneal_likelihood = float(params.get("init_anneal_likelihood", 1))
 
     return_to_finite = False
     ready_for_sample = False
@@ -431,9 +432,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if split_merge:
             resample_beta_g(models, sample.gamma)
 
-        anneal_alphas = calc_anneal_alphas(models, iter, burnin, init_tempature, total_sent_lens)
+        anneal_alphas = calc_anneal_alphas(models, iter, burnin, init_anneal_alpha, total_sent_lens)
+        anneal_likelihood = calc_anneal_likelihood(models, iter, burnin, init_anneal_likelihood)
 
-        resample_all(models, sample, params, depth, anneal_alphas)
+        resample_all(models, sample, params, depth, anneal_alphas, anneal_likelihood)
 
         ## Update sentence indices for next batch:
         if end_ind == len(ev_seqs):
@@ -1163,7 +1165,7 @@ def getBmax():
     global b_max
     return b_max
 
-def resample_all(models, sample, params, depth, anneal_alphas=0):
+def resample_all(models, sample, params, depth, anneal_alphas=0, anneal_likelihood=1):
     ## Sample distributions for all the model params and emissions params
     ## TODO -- make the Models class do this in a resample_all() method
     if anneal_alphas == 0:
@@ -1188,6 +1190,7 @@ def resample_all(models, sample, params, depth, anneal_alphas=0):
     # print("model W: W|P with base {}".format(h_base[0]))
     # print(models.lex.pairCounts)
     models.lex.sampleDirichlet(h_base)
+    models.lex.dist*(1/anneal_likelihood)
     models.lex.dist[0,0] = 0.0
     models.lex.dist[0,1:].fill(-np.inf)
 
@@ -1195,6 +1198,7 @@ def resample_all(models, sample, params, depth, anneal_alphas=0):
     # print("model P: P|B with base {}".format(g_base[0]))
     # print(models.pos.pairCounts)
     models.pos.sampleDirichlet(g_base)
+    models.pos.dist*(1/anneal_likelihood)
     if np.argwhere(np.isnan(models.pos.dist)).size > 0:
         logging.error("Resampling the pos dist resulted in a nan")
 
@@ -1203,19 +1207,21 @@ def resample_all(models, sample, params, depth, anneal_alphas=0):
         # print('depth {} model B J1: B| (B A) or (B P) with base {}'.format(d,b_base[0]))
         # print(models.B_J1[d].pairCounts)
         models.B_J1[d].sampleDirichlet(b_base) # if d == 0 else b_base + models.B_J1[d-1].pairCounts * sample.alpha_b)
+        models.B_J1[d].dist*(1/anneal_likelihood)
         # print('depth {} model B J0: B| (A A) or (A P) with base {}'.format(d,b_base[0]))
         # print(models.B_J0[d].pairCounts)
         models.B_J0[d].sampleDirichlet(b_base) # if d == 0 else b_base + models.B_J0[d-1].pairCounts * sample.alpha_b)
-        # models.cont[d].sampleDirichlet(b_base if d == 0 else b_base + models.cont[d-1].pairCounts * sample.alpha_b)
-        # models.next[d].sampleDirichlet(b_base if d == 0 else b_base + models.next[d-1].pairCounts * sample.alpha_b)
+        models.B_J0[d].dist*(1/anneal_likelihood)
         # print("depth {} model A: A|(B A) or (B P) with base {}".format(d,a_base[0]))
         # print(models.A[d].pairCounts)
         models.A[d].sampleDirichlet(a_base) # if d == 0 else a_base + models.A[d-1].pairCounts * sample.alpha_a)
-        # models.root[d].sampleDirichlet(a_base if d == 0 else a_base + models.root[d-1].pairCounts * sample.alpha_a)
-        # models.reduce[d].sampleDirichlet(j_base if d == 0 else j_base + models.reduce[d-1].pairCounts * sample.alpha_j)
+        models.A[d].dist*(1/anneal_likelihood)
+
         # print("depth {} model J: J|(A B) or (P B) with base {}".format(d,j_base[0]))
         # print(models.J[d].pairCounts)
         models.J[d].sampleDirichlet(j_base) # if d == 0 else j_base + models.J[d-1].pairCounts * sample.alpha_j)
+        models.J[d].dist*(1/anneal_likelihood)
         # print("depth {} model F: F|B with base {}".format(d,f_base[0]))
         # print(models.F[d].pairCounts)
         models.F[d].sampleDirichlet(f_base) # if d == 0 else f_base + models.F[d-1].pairCounts * sample.alpha_f)
+        models.F[d].dist*(1/anneal_likelihood)

@@ -347,6 +347,8 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, R
 
 def calc_anneal_alphas(models, iter, burnin, init_tempature, total_sent_lens):
     anneal_alphas = {}
+    if init_tempature == 0:
+        return 0
     for model_name, model in models:
         if isinstance(model, list):
             model_shape = model[0].dist.shape
@@ -364,6 +366,11 @@ def calc_anneal_alphas(models, iter, burnin, init_tempature, total_sent_lens):
                                                                              total_sent_lens))
     return anneal_alphas
 
+def calc_anneal_likelihood(iter, burnin, init_tempature):
+    if iter < burnin and init_tempature != 1:
+        return init_tempature * ((burnin - iter) / burnin)
+    else:
+        return 1
 
 def main():
     tree = ["-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA1::+::POS1::1 +::ACT1/AWA1::-::POS1::2",
