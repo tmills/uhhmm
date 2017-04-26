@@ -154,10 +154,10 @@ class DistributedModelCompiler(FullDepthCompiler):
                     else:
                         if all([ not x for x in row_index_bool]):
                             corrected_pos_dist[index] = pos_dist[0]
-                            print(row_index, 0)
+                            # print(row_index, 0)
                         else:
                             corrected_pos_dist[index] = pos_dist[row_index[boundary]]
-                            print(row_index, row_index[boundary])
+                            # print(row_index, row_index[boundary])
             else:
                 corrected_pos_dist = pos_dist
             corrected_pos_dist = np.repeat(corrected_pos_dist, [2]*corrected_pos_dist.shape[0], axis=0)
