@@ -44,7 +44,6 @@ def init_with_strategy(ints_seqs, strategy, abp_domain_size):
     assert isinstance(ints_seqs, list)
     for line in ints_seqs:
         this_tree = strategy(line, abp_domain_size)
-        this_tree = full_chain_convert(this_tree)
         trees.append(this_tree)
     pcfg_probs_and_counts = extract_counts(trees, abp_domain_size)
     return pcfg_probs_and_counts
