@@ -3,6 +3,7 @@ import nltk
 import numpy as np
 from copy import deepcopy
 from functools import reduce
+from init_pcfg_strategies import *
 """
 this file is for translating sequences of states to pcfg counts and back to uhhmm counts
 the main function is translate_through_pcfg
@@ -21,6 +22,32 @@ D2D_TREES2 = ["-::ACT0/AWA0::+::POS1::1 -::ACT4/AWA2::-::POS2::2 -::ACT5/AWA3::-
 
 solution_trees = ["-::ACT0/AWA0::+::POS1::a -::ACT4/AWA2::-::POS2::b -::ACT5/AWA4::-::POS3::c",
                   "-::ACT0/AWA0::+::POS1::a -::ACT4/AWA2::-::POS2::b -::ACT4/AWA3::-::POS3::c -::ACT5/AWA3::+::POS1::a -::ACT5/AWA3;ACT4/AWA2::-::POS2::b +::ACT5/AWA4::+::POS1::a +::ACT5/AWA2::-::POS2::b"]
+# passing in the filename as well as the designated domain size
+# domain size must match the number of nonterminals in the gold tree file
+def load_gold_trees(filename, abp_domain_size):
+    trees = []
+    with open(filename) as f:
+        for line in f:
+            line = line.strip()
+            this_tree = full_chain_convert(line)
+            print(this_tree)
+            trees.append(this_tree)
+    pcfg_probs_and_counts = extract_counts(trees, abp_domain_size)
+    num_cats = len(pcfg_probs_and_counts[0])
+    if num_cats != abp_domain_size:
+        raise Exception("number of ABP categories in gold {} does not match the model size {}!".format(num_cats, abp_domain_size))
+    return pcfg_probs_and_counts
+# pass in the file name of the ints file
+# init with a strategy that is defined in pcfg init strategies script
+def init_with_strategy(ints_seqs, strategy, abp_domain_size):
+    trees = []
+    assert isinstance(ints_seqs, list)
+    for line in ints_seqs:
+        this_tree = strategy(line, abp_domain_size)
+        this_tree = full_chain_convert(this_tree)
+        trees.append(this_tree)
+    pcfg_probs_and_counts = extract_counts(trees, abp_domain_size)
+    return pcfg_probs_and_counts
 
 # calculate the loglikelihood of a PCFG grammar on some PCFG rule counts excluding the root rules
 def calc_pcfg_loglikelihood(pcfg, pcfg_counts):
@@ -295,19 +322,21 @@ def _inc_counts(model, ref_model, inc=1, add_noise=False):
             model.pairCounts = np.absolute(model.pairCounts)
 
 
-def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, RB_init=False):
+def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, gold_pcfg_file=None,
+                          add_noise=False, strategy=None, ints_seqs=None):
     d = len(models.A)
     d = d + 1  # calculate d+1 depth models for all pseudo count models, but not using them in _inc_counts
     abp_domain_size = models.A[0].dist.shape[0] - 2
     lex_size = models.lex.dist.shape[-1]
-    add_noise = False
-    if not RB_init:
+    if not gold_pcfg_file and not strategy:
         mixed_seqs = zip(hid_seq, sent)
-    if not RB_init:
         pcfg, pcfg_counts = translate_through_pcfg(mixed_seqs, d, abp_domain_size)
+    elif gold_pcfg_file:
+        pcfg, pcfg_counts = load_gold_trees(gold_pcfg_file,abp_domain_size)
+    elif ints_seqs and strategy:
+        pcfg, pcfg_counts = init_with_strategy(ints_seqs, strategy, abp_domain_size)
     else:
-        pcfg, pcfg_counts = translate_through_pcfg(D2D_TREES2*1000, d, abp_domain_size)
-        add_noise = True
+        raise Exception("bad combination of initialization options!")
     nonterms = _build_nonterminals(abp_domain_size)
     delta_A, delta_B = _calc_delta(pcfg, J, abp_domain_size, d, nonterms)
     # print(delta_A, delta_B)
@@ -366,9 +395,16 @@ def calc_anneal_alphas(models, iter, burnin, init_tempature, total_sent_lens):
                                                                              total_sent_lens))
     return anneal_alphas
 
-def calc_anneal_likelihood(iter, burnin, init_tempature):
-    if iter < burnin and init_tempature != 1:
-        return init_tempature * ((burnin - iter) / burnin)
+# annealing follows this schedule
+# for anneal_likelihood_phase amount of iters, the temperature goes down by the amount that is
+# evenly assigned to that amount of iters at the end of that episode
+def calc_anneal_likelihood(cur_iter, length_of_annealing, init_tempature, anneal_likelihood_phase):
+    if init_tempature == 1:
+        return 1
+    num_phases = length_of_annealing // anneal_likelihood_phase
+    if cur_iter < length_of_annealing and init_tempature != 1:
+        cur_phase = cur_iter // anneal_likelihood_phase
+        return init_tempature * ( (num_phases - cur_phase) / num_phases ) + 1
     else:
         return 1
 

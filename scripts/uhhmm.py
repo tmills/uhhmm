@@ -28,6 +28,8 @@ from dahl_split_merge import perform_split_merge_operation
 from models import Model, Models
 from workers import start_local_workers_with_distributer, start_cluster_workers
 from pcfg_translator import pcfg_increment_counts, calc_anneal_alphas, calc_anneal_likelihood
+import copy
+from init_pcfg_strategies import *
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -104,6 +106,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         gpu=False
     init_anneal_alpha = float(params.get('init_anneal_alpha', 0))
     init_anneal_likelihood = float(params.get("init_anneal_likelihood", 1))
+    anneal_likelihood_phase = int(params.get("anneal_likelihood_phase", 0))
+    random_restarts = int(params.get("random_restarts",0))
+    gold_init_file = params.get("gold_init_file", None)
+    init_strategy = params.get("init_strategy", None)
 
     return_to_finite = False
     ready_for_sample = False
@@ -159,10 +165,15 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         sample.discount = float(params.get('discount'))
         sample.ev_seqs = ev_seqs
 
-        RB_INIT = False
-        if RB_INIT:
-            pcfg_increment_counts(None, None, models, RB_init=RB_INIT)
-
+        # initialization: a few controls:
+        if gold_init_file:
+            pcfg_increment_counts(None, None, models, gold_init_file=gold_init_file)
+        if init_strategy:
+            logging.info("Initialization strategy found \"{}\". Executing strategy.".format(init_strategy))
+            if init_strategy in STRATEGY_STRINGS:
+                pcfg_increment_counts(None, None, models, strategy=STRATEGY_STRINGS[init_strategy], ints_seqs=sample.ev_seqs)
+            else:
+                raise Exception("strategy {} not found!".format(init_strategy))
         resample_all(models, sample, params, depth)
         models.resetAll()
 
@@ -220,7 +231,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             print('OK', file=c)
 
     logging.info("Starting workers")
-
+    max_loglikelihood = -np.inf
+    best_init_model = None
+    best_anneal_model = None
     ### Start doing actual sampling:
     while num_samples < max_samples:
         sample.iter = iter
@@ -348,6 +361,29 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     raise
                 sample.log_prob += parse.log_prob
             hid_seqs[parse.index] = parse.state_list
+
+        # random restarts control
+        if iter < random_restarts - 1:
+            if sample.log_prob > max_loglikelihood:
+                max_loglikelihood = sample.log_prob
+                best_init_model = copy.deepcopy(sample.models)
+                sample.models.resetAll()
+                resample_all(models, sample, params, depth )
+                logging.info("The {} random restart has a loglikelihood of {}".format(iter, sample.log_prob))
+                sample.log_prob = 0
+                continue
+        elif iter == random_restarts - 1:
+            sample.models = best_init_model
+            models = best_init_model
+            logging.info("The {} random restart has a loglikelihood of {}".format(iter, sample.log_prob))
+            logging.info("The best init model has a loglikehood of {}. Will be using this for sampling.".format(max_loglikelihood))
+            max_loglikelihood = -np.inf
+            sample.log_prob = 0
+            continue
+        else:
+            pass
+
+        # incrementing counts in the pair counts tables of the models
         pcfg_increment_counts(state_list, state_indices, models)
 
         if num_processed < (end_ind - start_ind):
@@ -433,9 +469,23 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             resample_beta_g(models, sample.gamma)
 
         anneal_alphas = calc_anneal_alphas(models, iter, burnin, init_anneal_alpha, total_sent_lens)
-        anneal_likelihood = calc_anneal_likelihood(iter, burnin, init_anneal_likelihood)
+        cur_iter = iter - random_restarts
+        anneal_length = burnin - random_restarts
+        anneal_likelihood = calc_anneal_likelihood(cur_iter, anneal_length, init_anneal_likelihood, anneal_likelihood_phase)
 
         resample_all(models, sample, params, depth, anneal_alphas, anneal_likelihood)
+
+        # anneal likelihood control
+
+        if iter > random_restarts - 1 and iter < burnin - 1:
+            if sample.log_prob > max_loglikelihood:
+                best_anneal_model = copy.deepcopy(models)
+                max_loglikelihood = sample.log_prob
+            annealing_iter = (iter - random_restarts) % anneal_likelihood_phase
+            if annealing_iter == 0:
+                models = best_anneal_model
+                sample.models = best_anneal_model
+
 
         ## Update sentence indices for next batch:
         if end_ind == len(ev_seqs):
@@ -1169,7 +1219,7 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, anneal_likeliho
     ## Sample distributions for all the model params and emissions params
     ## TODO -- make the Models class do this in a resample_all() method
     if anneal_alphas == 0:
-        a_base =  sample.alpha_a * sample.beta_a
+        a_base = sample.alpha_a * sample.beta_a
         b_base = sample.alpha_b * sample.beta_b
         f_base = sample.alpha_f * sample.beta_f
         j_base = sample.alpha_j * sample.beta_j
