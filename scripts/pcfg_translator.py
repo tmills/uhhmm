@@ -30,7 +30,7 @@ def load_gold_trees(filename, abp_domain_size):
         for line in f:
             line = line.strip()
             this_tree = full_chain_convert(line)
-            print(this_tree)
+            # print(this_tree)
             trees.append(this_tree)
     pcfg_probs_and_counts = extract_counts(trees, abp_domain_size)
     num_cats = len(pcfg_probs_and_counts[0])

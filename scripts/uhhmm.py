@@ -106,7 +106,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         gpu=False
     init_anneal_alpha = float(params.get('init_anneal_alpha', 0))
     init_anneal_likelihood = float(params.get("init_anneal_likelihood", 1))
-    anneal_likelihood_phase = int(params.get("anneal_likelihood_phase", 0))
+    anneal_likelihood_phase = int(params.get("anneal_likelihood_phase", 1))
     random_restarts = int(params.get("random_restarts",0))
     gold_init_file = params.get("gold_init_file", None)
     init_strategy = params.get("init_strategy", None)
