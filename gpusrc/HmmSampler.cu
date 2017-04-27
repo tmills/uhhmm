@@ -93,7 +93,7 @@ int HmmSampler::get_sample(AView &v){
 //            cout << " ";
 //            float plus_one = (*sum_dict)[dart_target+ 1];
 //            printf("%A\n", plus_one);
-           if (v[dart_target] != 0.0f && dart_target != v.size()){
+           if (dart_target != v.size() && v[dart_target] != 0.0f ){
                 condition = 0;
 //                cout << "out of loop" << endl;
            }
