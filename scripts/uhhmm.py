@@ -110,6 +110,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     random_restarts = int(params.get("random_restarts",0))
     gold_init_file = params.get("gold_init_file", None)
     init_strategy = params.get("init_strategy", None)
+    always_sample = int(params.get("always_sample", 0))
 
     return_to_finite = False
     ready_for_sample = False
@@ -414,6 +415,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             logging.info("Finished complete pass through data -- calling checkpoint function")
             sample.hid_seqs = hid_seqs
             checkpoint_function(sample)
+            # always sample
+            if always_sample:
+                ready_for_sample = True
+
             if ready_for_sample:
                 logging.info("Collecting sample")
                 #samples.append(sample)
@@ -1241,7 +1246,7 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, anneal_likeliho
     # print("model W: W|P with base {}".format(h_base[0]))
     # print(models.lex.pairCounts)
     models.lex.sampleDirichlet(h_base)
-    models.lex.dist*(1/anneal_likelihood)
+    models.lex.dist *= (1/anneal_likelihood)
     models.lex.dist[0,0] = 0.0
     models.lex.dist[0,1:].fill(-np.inf)
 
@@ -1249,7 +1254,7 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, anneal_likeliho
     # print("model P: P|B with base {}".format(g_base[0]))
     # print(models.pos.pairCounts)
     models.pos.sampleDirichlet(g_base)
-    models.pos.dist*(1/anneal_likelihood)
+    models.pos.dist *= (1/anneal_likelihood)
     if np.argwhere(np.isnan(models.pos.dist)).size > 0:
         logging.error("Resampling the pos dist resulted in a nan")
 
@@ -1258,21 +1263,21 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, anneal_likeliho
         # print('depth {} model B J1: B| (B A) or (B P) with base {}'.format(d,b_base[0]))
         # print(models.B_J1[d].pairCounts)
         models.B_J1[d].sampleDirichlet(b_base) # if d == 0 else b_base + models.B_J1[d-1].pairCounts * sample.alpha_b)
-        models.B_J1[d].dist*(1/anneal_likelihood)
+        models.B_J1[d].dist *= (1/anneal_likelihood)
         # print('depth {} model B J0: B| (A A) or (A P) with base {}'.format(d,b_base[0]))
         # print(models.B_J0[d].pairCounts)
         models.B_J0[d].sampleDirichlet(b_base) # if d == 0 else b_base + models.B_J0[d-1].pairCounts * sample.alpha_b)
-        models.B_J0[d].dist*(1/anneal_likelihood)
+        models.B_J0[d].dist *= (1/anneal_likelihood)
         # print("depth {} model A: A|(B A) or (B P) with base {}".format(d,a_base[0]))
         # print(models.A[d].pairCounts)
         models.A[d].sampleDirichlet(a_base) # if d == 0 else a_base + models.A[d-1].pairCounts * sample.alpha_a)
-        models.A[d].dist*(1/anneal_likelihood)
+        models.A[d].dist *= (1/anneal_likelihood)
 
         # print("depth {} model J: J|(A B) or (P B) with base {}".format(d,j_base[0]))
         # print(models.J[d].pairCounts)
         models.J[d].sampleDirichlet(j_base) # if d == 0 else j_base + models.J[d-1].pairCounts * sample.alpha_j)
-        models.J[d].dist*(1/anneal_likelihood)
+        models.J[d].dist *= (1/anneal_likelihood)
         # print("depth {} model F: F|B with base {}".format(d,f_base[0]))
         # print(models.F[d].pairCounts)
         models.F[d].sampleDirichlet(f_base) # if d == 0 else f_base + models.F[d-1].pairCounts * sample.alpha_f)
-        models.F[d].dist*(1/anneal_likelihood)
+        models.F[d].dist *= (1/anneal_likelihood)
