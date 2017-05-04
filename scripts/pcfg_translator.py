@@ -39,11 +39,11 @@ def load_gold_trees(filename, abp_domain_size):
     return pcfg_probs_and_counts
 # pass in the file name of the ints file
 # init with a strategy that is defined in pcfg init strategies script
-def init_with_strategy(ints_seqs, strategy, abp_domain_size):
+def init_with_strategy(ints_seqs, strategy, abp_domain_size, gold_pos_dict = None):
     trees = []
     assert isinstance(ints_seqs, list)
     for line in ints_seqs:
-        this_tree = strategy(line, abp_domain_size)
+        this_tree = strategy(line, abp_domain_size, gold_pos_dict=gold_pos_dict)
         trees.append(this_tree)
     pcfg_probs_and_counts = extract_counts(trees, abp_domain_size)
     return pcfg_probs_and_counts
@@ -322,7 +322,7 @@ def _inc_counts(model, ref_model, inc=1, add_noise=False):
 
 
 def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, gold_pcfg_file=None,
-                          add_noise=False, strategy=None, ints_seqs=None):
+                          add_noise=False, strategy=None, ints_seqs=None, gold_pos_dict = None):
     d = len(models.A)
     d = d + 1  # calculate d+1 depth models for all pseudo count models, but not using them in _inc_counts
     abp_domain_size = models.A[0].dist.shape[0] - 2
@@ -333,7 +333,7 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, g
     elif gold_pcfg_file:
         pcfg, pcfg_counts = load_gold_trees(gold_pcfg_file,abp_domain_size)
     elif ints_seqs and strategy:
-        pcfg, pcfg_counts = init_with_strategy(ints_seqs, strategy, abp_domain_size)
+        pcfg, pcfg_counts = init_with_strategy(ints_seqs, strategy, abp_domain_size, gold_pos_dict)
     else:
         raise Exception("bad combination of initialization options!")
     nonterms = _build_nonterminals(abp_domain_size)

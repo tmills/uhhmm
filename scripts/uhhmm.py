@@ -111,6 +111,14 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     gold_init_file = params.get("gold_init_file", None)
     init_strategy = params.get("init_strategy", None)
     always_sample = int(params.get("always_sample", 0))
+    gold_pos_dict_file = params.get("gold_pos_dict_file", None)
+
+    if gold_pos_dict_file is not None:
+        gold_pos_dict  = {}
+        with open(gold_pos_dict_file) as g:
+            for line in g:
+                line = line.strip().split(' = ')
+                gold_pos_dict[int(line[0])] = int(line[1])
 
     return_to_finite = False
     ready_for_sample = False
@@ -172,7 +180,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if init_strategy:
             logging.info("Initialization strategy found \"{}\". Executing strategy.".format(init_strategy))
             if init_strategy in STRATEGY_STRINGS:
-                pcfg_increment_counts(None, None, models, strategy=STRATEGY_STRINGS[init_strategy], ints_seqs=sample.ev_seqs)
+                pcfg_increment_counts(None, None, models, strategy=STRATEGY_STRINGS[init_strategy], ints_seqs=sample.ev_seqs
+                                      , gold_pos_dict = gold_pos_dict)
             else:
                 raise Exception("strategy {} not found!".format(init_strategy))
         resample_all(models, sample, params, depth)
