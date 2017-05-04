@@ -108,12 +108,12 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     init_anneal_likelihood = float(params.get("init_anneal_likelihood", 1))
     anneal_likelihood_phase = int(params.get("anneal_likelihood_phase", 1))
     random_restarts = int(params.get("random_restarts",0))
-    gold_init_file = params.get("gold_init_file", None)
-    init_strategy = params.get("init_strategy", None)
+    gold_init_file = params.get("gold_init_file", '')
+    init_strategy = params.get("init_strategy", '')
     always_sample = int(params.get("always_sample", 0))
-    gold_pos_dict_file = params.get("gold_pos_dict_file", None)
+    gold_pos_dict_file = params.get("gold_pos_dict_file", '')
 
-    if gold_pos_dict_file is not None:
+    if gold_pos_dict_file:
         gold_pos_dict  = {}
         with open(gold_pos_dict_file) as g:
             for line in g:
