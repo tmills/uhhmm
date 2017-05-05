@@ -1205,7 +1205,7 @@ def decrement_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
 
 def increment_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
     # for ind in range(start_ind, end_ind):
-        pcfg_increment_counts(hid_seqs[start_ind:end_ind], sents[start_ind:end_ind], models, 1)
+        pcfg_increment_counts(hid_seqs[start_ind:end_ind], sents[start_ind:end_ind ], models, 1)
         #increment_counts(hid_seqs[ind], sents[ind], models, 1)
 
 def handle_sigint(signum, frame, workers):
