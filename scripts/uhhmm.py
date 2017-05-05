@@ -1199,13 +1199,13 @@ def increment_counts(hid_seq, sent, models, inc=1):
         prev_state = state
 
 def decrement_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
-    for ind in range(start_ind, end_ind):
-        pcfg_increment_counts(hid_seqs[ind], sents[ind], models, -1)
+    # for ind in range(start_ind, end_ind):
+        pcfg_increment_counts(hid_seqs[start_ind:end_ind], sents[start_ind:end_ind], models, -1)
         #increment_counts(hid_seqs[ind], sents[ind], models, -1)
 
 def increment_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
-    for ind in range(start_ind, end_ind):
-        pcfg_increment_counts(hid_seqs[ind], sents[ind], models, 1)
+    # for ind in range(start_ind, end_ind):
+        pcfg_increment_counts(hid_seqs[start_ind:end_ind], sents[start_ind:end_ind], models, 1)
         #increment_counts(hid_seqs[ind], sents[ind], models, 1)
 
 def handle_sigint(signum, frame, workers):
