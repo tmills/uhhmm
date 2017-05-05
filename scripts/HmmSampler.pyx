@@ -30,10 +30,11 @@ def boolean_depth(l):
 
 cdef class HmmSampler(Sampler.Sampler):
 
-    def __init__(self, seed):
+    def __init__(self, obs_model, seed):
         Sampler.Sampler.__init__(self, seed)
         self.indexer = None
         self.models = None
+        self.obs_model = obs_model
 #        self.pi = None
 
     def get_factor_expand_mat(self):
@@ -67,7 +68,7 @@ cdef class HmmSampler(Sampler.Sampler):
     def set_models(self, models):
         self.models = models[0]
         unlog_models(self.models)
-        self.lexMatrix = np.matrix(self.models.lex.dist, copy=False)
+        #self.lexMatrix = np.matrix(self.models.lex.dist, copy=False)
         self.depth = len(self.models.fj)
         self.indexer = Indexer.Indexer(self.models)
 
@@ -79,6 +80,8 @@ cdef class HmmSampler(Sampler.Sampler):
         self.indptr = lexMultiplier.indptr
 
         self.factor_expand_mat = self.get_factor_expand_mat()
+
+        self.obs_models.set_models(models)
 
     def initialize_dynprog(self, batch_size, maxLen):
         ## We ignore batch size since python only processes one at a time
@@ -128,8 +131,9 @@ cdef class HmmSampler(Sampler.Sampler):
                 # Expand 1 x K to 1 x N with p(g | b) replicated values
                 forward[index,:] = factored_transition * sparse_factored_expand_mat
 
-                expanded_lex = self.lexMatrix[:,token].transpose() * lexMultiplier
-                forward[index,:] = np.multiply(forward[index,:], expanded_lex)
+                lex_prob = self.obs_model.get_probability_vector(token)
+
+                forward[index,:] = np.multiply(forward[index,:], lex_prob)
 
                 normalizer = forward[index,:].sum()
                 forward[index,:] /= normalizer
@@ -172,20 +176,20 @@ cdef class HmmSampler(Sampler.Sampler):
             maxes = self.indexer.getVariableMaxes()
             totalK = self.indexer.get_state_size()
             depth = len(self.models.fj)
-        
+
             ## Normalize and grab the sample from the forward probs at the end of the sentence
             last_index = len(sent)-1
 
             ## normalize after multiplying in the transition out probabilities
             self.dyn_prog[last_index,:] /= self.dyn_prog[last_index,:].sum()
-            
+
             ## EOS state is f=0,j=1,a=[0]*d,b=[0]*d,g=0. Located 1/4 way through state list.
             if len(sent) == 1:
                 sample_t = self.indexer.get_EOS_1wrd_full()
             else:
                 sample_t = self.indexer.get_EOS_full()
-  
-            for t in range(len(sent)-1,-1,-1):              
+
+            for t in range(len(sent)-1,-1,-1):
                 sample_state, sample_t = self._reverse_sample_inner(pi, sample_t, t)
                 sample_seq.append(sample_state)
 
