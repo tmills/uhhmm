@@ -400,7 +400,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             logging.warning("Didn't receive the correct number of parses at iteration %d" % iter)
 
         logging.info("Parsed %d sentences this batch -- now have %d parses" % (end_ind-start_ind, end_ind ) )
-        # max_state_check(hid_seqs, models, "parses")
+        max_state_check(hid_seqs, models, "parses")
 
         pos_counts = models.pos.pairCounts[:].sum()
         lex_counts = models.lex.pairCounts[:].sum()
@@ -471,7 +471,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             prev_sample = sample
             sample = next_sample
 
-        # max_state_check(hid_seqs, models, "sampling hyperparameters")
+        max_state_check(hid_seqs, models, "sampling hyperparameters")
 
         t0 = time.time()
 
@@ -549,7 +549,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     return (samples, stats)
 
 def max_state(hid_seqs):
-    return max(a.g for b in hid_seqs for a in b)
+    return max(a.g for b in hid_seqs for a in b if a)
 
 def max_state_check(hid_seqs, models, location):
     ms = max_state(hid_seqs)

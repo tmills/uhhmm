@@ -61,9 +61,10 @@ def calc_pcfg_loglikelihood(pcfg, pcfg_counts):
 def translate_through_pcfg(seqs_of_states, depth, abp_domain_size):
     trees = []
     for seq in seqs_of_states:
-        tree = full_chain_convert(seq, depth)
-        # print(tree)
-        trees.append(tree)
+        if all(seq):
+            tree = full_chain_convert(seq, depth)
+            # print(tree)
+            trees.append(tree)
     pcfg_probs_and_counts = extract_counts(trees, abp_domain_size)
     return pcfg_probs_and_counts
 
