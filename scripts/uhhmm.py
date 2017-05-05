@@ -549,7 +549,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     return (samples, stats)
 
 def max_state(hid_seqs):
-    return max(a.g for b in hid_seqs for a in b if a)
+    return max(a.g for b in hid_seqs for a in b if b)
 
 def max_state_check(hid_seqs, models, location):
     ms = max_state(hid_seqs)
