@@ -29,7 +29,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     start_depth = get_cur_awa_depth(prev_state.b)
     (a_max, b_max, g_max) = indexer.getVariableMaxes()
     totalK = indexer.get_state_size()
-    
+
     ## Get EOS indices
     EOS_full = indexer.get_EOS_full()
     EOS = indexer.get_EOS()
@@ -45,12 +45,12 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     ## If previous was EOS, no outgoing transitions allowed
     if prev_index/g_max == EOS or prev_index/g_max == EOS_1wrd:
         return indices, data, indices_full, data_full
-    
+
     ## Skip invalid start states
     if depth > 1:
         ## One that should not be allowed by our indexing scheme:
         for d in range(0, depth):
-            if len(np.where(prev_state.f >= 0)[0]) > 1 or len(np.where(prev_state.j >= 0)[0]) > 1:                      
+            if len(np.where(prev_state.f >= 0)[0]) > 1 or len(np.where(prev_state.j >= 0)[0]) > 1:
                 logging.error("Two values in F stack with nonnegative value: this should not be allowed")
                 raise Exception
 
@@ -90,7 +90,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
             prev_b_above = prev_state.b[start_depth-1]
 
     t00 = time.time()
-    
+
     ## special case for start state:
     if prev_index == 0:
         state_index = 0
@@ -102,20 +102,20 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
         indices.append(state_index)
         data.append(1)
         return indices, data, indices_full, data_full
-        
+
     for f in (0,1):
         next_state.f = f
 
         for j in (0,1):
             next_state.j = j
-            
+
             ## when t=0, start_depth will be -1, which in the d> 1 case will wraparound.
             ## we want in the t=0 case for f_{t=1} to be [-/-]*d
             if start_depth >= 0 or next_state.f == 1:
                 cum_probs[0] = models.fj[start_depth].dist[ prev_a, prev_b, prev_b_above, prev_g, 2*f+j ]
             else:
                 continue
-            
+
             ## Add probs for transition to EOS
             if next_state.f==0 and j==1 and start_depth == 0:
                 # FJ decision into EOS is observed, don't model. Just extract prob from awaited transition
@@ -132,7 +132,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                   data_full.append(EOS_prob)
                 indices.append(EOS_1wrd)
                 data.append(EOS_prob)
-          
+
             for a in range(1, a_max-1):
                 next_state.a[:] = 0
                 for b in range(1, b_max-1):
@@ -142,9 +142,9 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                         if a == prev_state.a[start_depth]:
                             next_state.a[0:start_depth] = prev_state.a[0:start_depth]
                             next_state.b[0:start_depth] = prev_state.b[0:start_depth]
-                        
+
                             next_state.a[start_depth] = a
-                        
+
                             cum_probs[1] = cum_probs[0] * models.cont[start_depth].dist[ prev_b, prev_g, b ]
                             next_state.b[start_depth] = b
                         else:
@@ -156,7 +156,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                             continue
                         next_state.a[0:start_depth-1] = prev_state.a[0:start_depth-1]
                         next_state.b[0:start_depth-1] = prev_state.b[0:start_depth-1]
-                    
+
                         if a == prev_state.a[start_depth-1]:
                             next_state.a[start_depth-1] = a
                             next_state.b[start_depth-1] = b
@@ -170,7 +170,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                         next_state.b[0:start_depth] = prev_state.b[0:start_depth]
                         next_state.a[start_depth] = a
                         cum_probs[1] = cum_probs[0] * models.act[start_depth].dist[ prev_a, prev_b_above, a ] * models.start[start_depth].dist[ prev_a, a, b ]
-                    
+
                         next_state.b[start_depth] = b
 
                     elif f == 1 and j == 0:
@@ -181,9 +181,9 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                         next_state.b[0:start_depth+1] = prev_state.b[0:start_depth+1]
                         next_state.a[start_depth+1] = a
                         cum_probs[1] = cum_probs[0] * models.root[start_depth+1].dist[ prev_b_above, prev_g, a ] * models.exp[start_depth+1].dist[ prev_g, a, b ]
-                    
+
                         next_state.b[start_depth+1] = b
-                                            
+
                     ## Now multiply in the pos tag probability:
                     state_index = indexer.getStateIndex(next_state.f, next_state.j, next_state.a, next_state.b, 0) / g_max
                     state_index_full = indexer.getStateIndex(next_state.f, next_state.j, next_state.a, next_state.b, 0)
@@ -202,10 +202,10 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
 
 cdef class FullDepthCompiler:
     cdef int depth
-    
+
     def __init__(self, depth):
         self.depth = depth
-    
+
     #@profile
     def compile_and_store_models(self, models, working_dir):
         indexer = Indexer.Indexer(models)
@@ -213,7 +213,7 @@ cdef class FullDepthCompiler:
         maxes = indexer.getVariableMaxes()
         (a_max, b_max, g_max) = maxes
         totalK = indexer.get_state_size()
-        
+
         cache_hits = 0
         t0 = time.time()
         indptr = np.zeros(totalK+1)
@@ -222,7 +222,7 @@ cdef class FullDepthCompiler:
 
         ## Take exponent out of inner loop:
         unlog_models(models, self.depth)
-                
+
         for prev_index in range(0,totalK):
             indptr[prev_index+1] = indptr[prev_index]
             (local_indices, local_data) = compile_one_line(self.depth, prev_index, models, indexer)
@@ -233,7 +233,7 @@ cdef class FullDepthCompiler:
         logging.info("Flattening sublists into main list")
         flat_indices = [item for sublist in indices for item in sublist]
         flat_data = [item for sublist in data for item in sublist]
-            
+
         relog_models(models, self.depth)
         logging.info("Creating csr transition matrix from sparse indices")
         pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK), dtype=np.float64)
@@ -248,46 +248,46 @@ cdef class FullDepthCompiler:
 
         time_spent = time.time() - t0
         logging.info("Done in %d s with %d cache hits and %d non-zero values" % (time_spent, cache_hits, nnz))
-        
+
 
 def unlog_models(models, depth):
 
     for d in range(0, depth):
         models.fj[d].dist = 10**models.fj[d].dist
-        
+
         models.act[d].dist = 10**models.act[d].dist
         models.root[d].dist = 10**models.root[d].dist
-        
+
         models.cont[d].dist = 10**models.cont[d].dist
         models.exp[d].dist = 10**models.exp[d].dist
         models.next[d].dist = 10**models.next[d].dist
         models.start[d].dist = 10**models.start[d].dist
-        
+
     models.pos.dist = 10**models.pos.dist
 
 def relog_models(models, depth):
     for d in range(0, depth):
         models.fj[d].dist = np.log10(models.fj[d].dist)
-        
+
         models.act[d].dist = np.log10(models.act[d].dist)
         models.root[d].dist = np.log10(models.root[d].dist)
-        
+
         models.cont[d].dist = np.log10(models.cont[d].dist)
         models.exp[d].dist = np.log10(models.exp[d].dist)
         models.next[d].dist = np.log10(models.next[d].dist)
         models.start[d].dist = np.log10(models.start[d].dist)
-        
+
     models.pos.dist = np.log10(models.pos.dist)
 
 def get_cur_awa_depth(stack):
     ## Essentially empty -- used for first time step
     if stack[0] <= 0:
         return -1
-    
+
     ## If we encounter a zero at position 1, then the depth is 0
     for d in range(1, len(stack)):
         if stack[d] == 0:
             return d-1
-    
+
     ## Stack is full -- if d=4 then max depth index is 3
     return len(stack)-1
