@@ -98,7 +98,7 @@ cdef class PyzmqWorker:
 
             if model_wrapper.model_type == ModelWrapper.HMM and not self.gpu:
                 if self.batch_size > 0:
-                    sampler = HmmSampler.HmmSampler(self.seed)
+                    sampler = HmmSampler.HmmSampler(seed=self.seed)
                     sampler.set_models(model_wrapper.model)
                     self.processSentences(sampler, model_wrapper.model[1], jobs_socket, results_socket)
                 else:
