@@ -244,6 +244,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     max_loglikelihood = -np.inf
     best_init_model = None
     best_anneal_model = None
+    prev_anneal_likelihood = 1
     ### Start doing actual sampling:
     while num_samples < max_samples:
         sample.iter = iter
@@ -493,15 +494,16 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         resample_all(models, sample, params, depth, anneal_alphas, anneal_likelihood)
 
         # anneal likelihood control
-
-        if iter > random_restarts - 1 and iter < burnin - 1:
+        if anneal_likelihood != prev_anneal_likelihood and iter != 0:
+            prev_anneal_likelihood == anneal_likelihood
+            models = best_anneal_model
+            sample.models = best_anneal_model
+            logging.info("Annealling jumps from {} to {}. The model is set to the model with the logprob of {}.".format\
+                             (prev_anneal_likelihood, anneal_likelihood, max_loglikelihood))
+        elif anneal_likelihood == prev_anneal_likelihood and anneal_likelihood != 1:
             if sample.log_prob > max_loglikelihood:
                 best_anneal_model = copy.deepcopy(models)
                 max_loglikelihood = sample.log_prob
-            annealing_iter = (iter - random_restarts) % anneal_likelihood_phase
-            if annealing_iter == 0:
-                models = best_anneal_model
-                sample.models = best_anneal_model
 
 
         ## Update sentence indices for next batch:
