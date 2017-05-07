@@ -22,6 +22,7 @@ from uhhmm_io import printException
 import models
 cimport models
 import scipy.sparse
+from CategoricalObservationModel import CategoricalObservationModel
 
 def boolean_depth(l):
     for index,val in enumerate(l):
@@ -30,11 +31,14 @@ def boolean_depth(l):
 
 cdef class HmmSampler(Sampler.Sampler):
 
-    def __init__(self, obs_model, seed):
+    def __init__(self, obs_model=None, seed=0):
         Sampler.Sampler.__init__(self, seed)
         self.indexer = None
         self.models = None
-        self.obs_model = obs_model
+        if obs_model is None:
+            self.obs_model = CategoricalObservationModel(self.indexer)
+        else:
+            self.obs_model = obs_model
 #        self.pi = None
 
     def get_factor_expand_mat(self):
@@ -75,13 +79,13 @@ cdef class HmmSampler(Sampler.Sampler):
         g_len = self.models.pos.dist.shape[1]
         w_len = self.models.lex.dist.shape[1]
         lexMultiplier = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, self.indexer.get_state_size() // g_len)))
-        self.data = lexMultiplier.data
-        self.indices = lexMultiplier.indices
-        self.indptr = lexMultiplier.indptr
+        #self.data = lexMultiplier.data
+        #self.indices = lexMultiplier.indices
+        #self.indptr = lexMultiplier.indptr
 
         self.factor_expand_mat = self.get_factor_expand_mat()
 
-        self.obs_models.set_models(models)
+        self.obs_model.set_models(self.models)
 
     def initialize_dynprog(self, batch_size, maxLen):
         ## We ignore batch size since python only processes one at a time
@@ -114,7 +118,7 @@ cdef class HmmSampler(Sampler.Sampler):
             ## array -- we don't have to copy it into a matrix and recopy back to array
             ## to get the return value
             self.dyn_prog[:] = 0
-            lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
+            #lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
             sparse_factored_expand_mat = scipy.sparse.csc_matrix(self.factor_expand_mat)
             ## Make forward be transposed up front so we don't have to do all the transposing inside the loop
             forward = np.matrix(self.dyn_prog, copy=False)
