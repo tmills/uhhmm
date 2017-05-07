@@ -374,14 +374,16 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         # random restarts control
         if iter < random_restarts - 1:
+            logging.info("The {} random restart has a loglikelihood of {}".format(iter, sample.log_prob))
+            checkpoint_function(None, sample.log_prob)
             if sample.log_prob > max_loglikelihood:
                 max_loglikelihood = sample.log_prob
                 best_init_model = copy.deepcopy(sample.models)
-                sample.models.resetAll()
-                resample_all(models, sample, params, depth )
-                logging.info("The {} random restart has a loglikelihood of {}".format(iter, sample.log_prob))
-                sample.log_prob = 0
-                continue
+            sample.models.resetAll()
+            resample_all(models, sample, params, depth )
+            sample.log_prob = 0
+            iter += 1
+            continue
         elif iter == random_restarts - 1:
             sample.models = best_init_model
             models = best_init_model
@@ -389,6 +391,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             logging.info("The best init model has a loglikehood of {}. Will be using this for sampling.".format(max_loglikelihood))
             max_loglikelihood = -np.inf
             sample.log_prob = 0
+            iter += 1
             continue
         else:
             pass
