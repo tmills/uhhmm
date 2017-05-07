@@ -195,7 +195,7 @@ Array* pos_full_array, int g_max, int b_max){
         ValueArrayView values = s -> values.subarray(start_column_index, num_of_entry);
         thrust::scatter(thrust::device, values.begin(), values.end(), column_indices.begin(), result.begin());
 //        cusp::print(result);
-        cout << "g is " << g_index << "and the prob is " <<(*pos_matrix)[pos_matrix_dim] << endl;
+//        cout << "g is " << g_index << "and the prob is " <<(*pos_matrix)[pos_matrix_dim] << endl;
 //        blas::scal(result, (*pos_full_array)[i]);
     }
     cout << "get row out" << endl;
