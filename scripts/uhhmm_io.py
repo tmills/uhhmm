@@ -143,15 +143,14 @@ def write_output(sample, stats, config, gold_pos=None):
 def checkpoint(sample, config):
     output_dir = config.get('io', 'output_dir')
 
-    if sample is not None:
-        if os.path.isfile(output_dir + "/sample.obj"):
-            logging.info("Saving previous checkpoint")
-            shutil.copy(output_dir +"/sample.obj", output_dir + "/sample.obj.last")
+    if os.path.isfile(output_dir + "/sample.obj"):
+        logging.info("Saving previous checkpoint")
+        shutil.copy(output_dir +"/sample.obj", output_dir + "/sample.obj.last")
 
-        logging.info("Creating new checkpoint")
-        out_file = open(output_dir + "/sample.obj", 'wb')
-        pickle.dump(sample, out_file)
-        out_file.close()
+    logging.info("Creating new checkpoint")
+    out_file = open(output_dir + "/sample.obj", 'wb')
+    pickle.dump(sample, out_file)
+    out_file.close()
 
     f = open(output_dir + "/logprobs.txt", 'a', encoding='utf-8')
     f.write('%d\t%f\n' % (sample.iter,sample.log_prob) )
