@@ -27,7 +27,7 @@ import HmmSampler
 from dahl_split_merge import perform_split_merge_operation
 from models import Model, Models
 from workers import start_local_workers_with_distributer, start_cluster_workers
-from pcfg_translator import pcfg_increment_counts, calc_anneal_alphas, calc_anneal_likelihood
+from pcfg_translator import pcfg_increment_counts, calc_anneal_alphas, calc_anneal_likelihood, calc_simulated_annealing
 import copy
 from init_pcfg_strategies import *
 
@@ -106,7 +106,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         gpu=False
     init_anneal_alpha = float(params.get('init_anneal_alpha', 0))
     init_anneal_likelihood = float(params.get("init_anneal_likelihood", 1))
+    final_anneal_likelihood = float(params.get("final_anneal_likelihood", 0))
     anneal_likelihood_phase = int(params.get("anneal_likelihood_phase", 1))
+    anneal_length = int(params.get("anneal_length", 1))
     random_restarts = int(params.get("random_restarts",0))
     gold_init_file = params.get("gold_init_file", '')
     init_strategy = params.get("init_strategy", '')
@@ -488,8 +490,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         anneal_alphas = calc_anneal_alphas(models, iter, burnin, init_anneal_alpha, total_sent_lens)
         cur_iter = iter - random_restarts
-        anneal_length = burnin - random_restarts
-        anneal_likelihood = calc_anneal_likelihood(cur_iter, anneal_length, init_anneal_likelihood, anneal_likelihood_phase)
+        assert iter <= anneal_length, "number of iterations is larger than annealing length!"
+        # anneal_likelihood = calc_anneal_likelihood(cur_iter, anneal_length, init_anneal_likelihood, anneal_likelihood_phase)
+        anneal_likelihood = calc_simulated_annealing(iter, anneal_length, init_anneal_likelihood, final_anneal_likelihood)
 
         resample_all(models, sample, params, depth, anneal_alphas, anneal_likelihood)
 

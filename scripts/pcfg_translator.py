@@ -408,6 +408,13 @@ def calc_anneal_likelihood(cur_iter, length_of_annealing, init_tempature, anneal
     else:
         return 1
 
+# annealing follows this schedule
+# for anneal_likelihood_phase amount of iters, the temperature goes down by the amount that is
+# evenly assigned to that amount of iters at the end of that episode
+def calc_simulated_annealing(cur_iter, length_of_annealing, init_tempature=1, final_temperature=10):
+    return (cur_iter/length_of_annealing) * final_temperature + init_tempature
+
+
 def main():
     tree = ["-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA1::+::POS1::1 +::ACT1/AWA1::-::POS1::2",
             "-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA1::-::POS1::2"]
