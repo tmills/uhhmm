@@ -492,23 +492,23 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         cur_iter = iter - random_restarts
         assert iter <= anneal_length, "number of iterations is larger than annealing length!"
         # anneal_likelihood = calc_anneal_likelihood(cur_iter, anneal_length, init_anneal_likelihood, anneal_likelihood_phase)
-        anneal_likelihood = calc_simulated_annealing(iter, anneal_length, init_anneal_likelihood, final_anneal_likelihood)
+        anneal_likelihood = calc_simulated_annealing(cur_iter, anneal_length, init_anneal_likelihood, final_anneal_likelihood)
 
         resample_all(models, sample, params, depth, anneal_alphas, anneal_likelihood)
 
-        # anneal likelihood control
-        if prev_anneal_likelihood == 1 and anneal_likelihood > 1:
-            prev_anneal_likelihood = anneal_likelihood
-        if anneal_likelihood < prev_anneal_likelihood and iter != 0:
-            prev_anneal_likelihood = anneal_likelihood
-            models = best_anneal_model
-            sample.models = best_anneal_model
-            logging.info("Annealling jumps from {} to {}. The model is set to the model with the logprob of {}.".format\
-                             (prev_anneal_likelihood, anneal_likelihood, max_loglikelihood))
-        elif anneal_likelihood == prev_anneal_likelihood and anneal_likelihood != 1:
-            if sample.log_prob > max_loglikelihood:
-                best_anneal_model = copy.deepcopy(models)
-                max_loglikelihood = sample.log_prob
+        # # anneal likelihood control
+        # if prev_anneal_likelihood == 1 and anneal_likelihood > 1:
+        #     prev_anneal_likelihood = anneal_likelihood
+        # if anneal_likelihood < prev_anneal_likelihood and iter != 0:
+        #     prev_anneal_likelihood = anneal_likelihood
+        #     models = best_anneal_model
+        #     sample.models = best_anneal_model
+        #     logging.info("Annealling jumps from {} to {}. The model is set to the model with the logprob of {}.".format\
+        #                      (prev_anneal_likelihood, anneal_likelihood, max_loglikelihood))
+        # elif anneal_likelihood == prev_anneal_likelihood and anneal_likelihood != 1:
+        #     if sample.log_prob > max_loglikelihood:
+        #         best_anneal_model = copy.deepcopy(models)
+        #         max_loglikelihood = sample.log_prob
 
 
         ## Update sentence indices for next batch:
