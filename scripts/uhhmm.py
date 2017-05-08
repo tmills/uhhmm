@@ -494,8 +494,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         resample_all(models, sample, params, depth, anneal_alphas, anneal_likelihood)
 
         # anneal likelihood control
+        if prev_anneal_likelihood == 1 and anneal_likelihood > 1:
+            prev_anneal_likelihood = anneal_likelihood
         if anneal_likelihood < prev_anneal_likelihood and iter != 0:
-            prev_anneal_likelihood == anneal_likelihood
+            prev_anneal_likelihood = anneal_likelihood
             models = best_anneal_model
             sample.models = best_anneal_model
             logging.info("Annealling jumps from {} to {}. The model is set to the model with the logprob of {}.".format\
