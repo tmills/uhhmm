@@ -490,7 +490,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         anneal_alphas = calc_anneal_alphas(models, iter, burnin, init_anneal_alpha, total_sent_lens)
         cur_iter = iter - random_restarts
-        assert iter <= anneal_length, "number of iterations is larger than annealing length!"
+        assert iter <= anneal_length and anneal_length != 1, "number of iterations is larger than annealing length!"
         # anneal_likelihood = calc_anneal_likelihood(cur_iter, anneal_length, init_anneal_likelihood, anneal_likelihood_phase)
         anneal_likelihood = calc_simulated_annealing(cur_iter, anneal_length, init_anneal_likelihood, final_anneal_likelihood)
 
