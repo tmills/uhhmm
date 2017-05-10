@@ -4,6 +4,7 @@ import numpy as np
 from copy import deepcopy
 from functools import reduce
 from init_pcfg_strategies import *
+import logging
 """
 this file is for translating sequences of states to pcfg counts and back to uhhmm counts
 the main function is translate_through_pcfg
@@ -298,9 +299,9 @@ def _calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize=False):
 def _normalize_a_tensor(tensor):
     return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-10)  # to supress zero division warning
 
-def _inc_counts(model, ref_model, inc=1, add_noise=False):
+def _inc_counts(model, ref_model, inc=1, add_noise=False, sigma=1):
     mu = 0
-    sigma = 2000
+    sigma = sigma
     if isinstance(model, list):
         for depth in range(len(model)):
             model[depth].pairCounts += ref_model[depth] * inc
@@ -323,7 +324,7 @@ def _inc_counts(model, ref_model, inc=1, add_noise=False):
 
 
 def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, gold_pcfg_file=None,
-                          add_noise=False, strategy=None, ints_seqs=None, gold_pos_dict = None):
+                          add_noise=False, noise_sigma = 0, strategy=None, ints_seqs=None, gold_pos_dict = None):
     d = len(models.A)
     d = d + 1  # calculate d+1 depth models for all pseudo count models, but not using them in _inc_counts
     abp_domain_size = models.A[0].dist.shape[0] - 2
@@ -345,30 +346,30 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, g
     gamma_star, preterm_marginal_distr = _calc_expected_counts((gamma_A, gamma_B), pcfg_counts, J, d, abp_domain_size)
     # print("F")
     pseudo_F = _calc_f_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize)
-    _inc_counts(models.F, pseudo_F, inc, add_noise)
+    _inc_counts(models.F, pseudo_F, inc, add_noise, noise_sigma)
     # print(_calc_f_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize))
     # print("J")
     pseudo_J = _calc_j_model((gamma_A_counts, gamma_B_counts),(gamma_star, preterm_marginal_distr),d,abp_domain_size,normalize)
-    _inc_counts(models.J, pseudo_J, inc, add_noise)
+    _inc_counts(models.J, pseudo_J, inc, add_noise, noise_sigma)
     # print(_calc_j_model((gamma_A_counts, gamma_B_counts),(gamma_star, preterm_marginal_distr),d,abp_domain_size,normalize))
     # print("A")
     pseudo_A = _calc_a_model((gamma_A_counts, gamma_B_counts), (gamma_star, preterm_marginal_distr), d, abp_domain_size,normalize)
-    _inc_counts(models.A, pseudo_A, inc, add_noise)
+    _inc_counts(models.A, pseudo_A, inc, add_noise, noise_sigma)
     # print(_calc_a_model((gamma_A_counts, gamma_B_counts), (gamma_star, preterm_marginal_distr), d, abp_domain_size,normalize))
     # print("B")
     pseudo_B = _calc_b_models((gamma_A_counts, gamma_B_counts), d, abp_domain_size,normalize)
-    _inc_counts(models.B_J0, pseudo_B[0], inc, add_noise)
-    _inc_counts(models.B_J1, pseudo_B[1], inc, add_noise)
+    _inc_counts(models.B_J0, pseudo_B[0], inc, add_noise, noise_sigma)
+    _inc_counts(models.B_J1, pseudo_B[1], inc, add_noise, noise_sigma)
     # print(_calc_b_models((gamma_A_counts, gamma_B_counts), d, abp_domain_size,normalize))
     # print("P")
     pseudo_P = _calc_p_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize)
-    _inc_counts(models.pos, pseudo_P, inc, add_noise)
+    _inc_counts(models.pos, pseudo_P, inc, add_noise, noise_sigma)
     # print(_calc_p_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize))
     # print("W")
     pseudo_W = _calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize)
-    _inc_counts(models.lex, pseudo_W, inc, add_noise)
+    _inc_counts(models.lex, pseudo_W, inc, add_noise, noise_sigma)
     # print(_calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize))
-    print("TOTAL COUNTS FOR ALL MODELS IN PCFG REACCOUNTS F {}, J {}, A {}, B[J0] {}, B[J1] {}, P {}, W {}"
+    logging.info("TOTAL COUNTS FOR ALL MODELS IN PCFG REACCOUNTS F {}, J {}, A {}, B[J0] {}, B[J1] {}, P {}, W {}"
           .format(np.sum(pseudo_F[:-1]), np.sum(pseudo_J[:-1]),
                   np.sum(pseudo_A[:-1]), np.sum(pseudo_B[0][:-1]),
                   np.sum(pseudo_B[1][:-1]), np.sum(pseudo_P[:-1])

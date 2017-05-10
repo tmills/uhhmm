@@ -111,6 +111,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     anneal_length = int(params.get("anneal_length", 1))
     random_restarts = int(params.get("random_restarts",0))
     gold_init_file = params.get("gold_init_file", '')
+    add_noise = int(params.get("add_noise",0))
+    noise_sigma = float(params.get('noise_sigma', 0))
     init_strategy = params.get("init_strategy", '')
     always_sample = int(params.get("always_sample", 0))
     gold_pos_dict_file = params.get("gold_pos_dict_file", '')
@@ -178,8 +180,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         # initialization: a few controls:
         if gold_init_file:
-            pcfg_increment_counts(None, None, models, gold_init_file=gold_init_file)
-        if init_strategy:
+            pcfg_increment_counts(None, None, models, gold_init_file=gold_init_file, add_noise=add_noise, noise_sigma=noise_sigma)
+        elif init_strategy:
             logging.info("Initialization strategy found \"{}\". Executing strategy.".format(init_strategy))
             if init_strategy in STRATEGY_STRINGS:
                 pcfg_increment_counts(None, None, models, strategy=STRATEGY_STRINGS[init_strategy], ints_seqs=sample.ev_seqs
