@@ -5,15 +5,15 @@
 import numpy as np
 cimport Indexer
 cimport numpy as np
-cimport ObservationModel
+cimport PosDependentObservationModel
+cimport models
 
-cdef class GaussianObservationModel(ObservationModel.ObservationModel):
+cdef class GaussianObservationModel(PosDependentObservationModel.PosDependentObservationModel):
     def __init__(self, indexer):
         self.indexer = indexer
 
-    def set_models(self, models):
+    cdef set_models(self, models.Models models):
         self.indexer = Indexer.Indexer(models)
-        g_len = models.pos.dist.shape[1]
 
     ## In this version of the observation model, token is a continuous vector.
     ## Here we compute the joint probability of the observation dimensions given
@@ -23,7 +23,7 @@ cdef class GaussianObservationModel(ObservationModel.ObservationModel):
     ## For multinomial, we have G * W params.
     ## For gaussian we have G x 2 x D params for D-dimensional embeddings.
     ## Assume that the values inside the models.lex array are scipy.stats.norm distributions.
-    def get_probability_vector(self, token):
+    cdef get_pos_probability_vector(self, token):
         maxes = self.indexer.getVariableMaxes()
         (a_max,b_max,g_max) = maxes
 

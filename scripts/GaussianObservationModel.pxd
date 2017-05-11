@@ -5,7 +5,7 @@
 import numpy as np
 cimport Indexer
 cimport numpy as np
-cimport ObservationModel
+cimport PosDependentObservationModel
 
-cdef class GaussianObservationModel(ObservationModel.ObservationModel):
+cdef class GaussianObservationModel(PosDependentObservationModel.PosDependentObservationModel):
     cdef Indexer.Indexer indexer
