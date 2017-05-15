@@ -1262,7 +1262,6 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, ac_coeff=1):
     ## Sample distributions for all the model params and emissions params
     ## TODO -- make the Models class do this in a resample_all() method
     logging.info("Resampling all models with alpha_anneal {} and likelihood_anneal {}".format(anneal_alphas, ac_coeff))
-    models.ac_coeff = ac_coeff
     if anneal_alphas == 0:
         a_base = sample.alpha_a * sample.beta_a
         b_base = sample.alpha_b * sample.beta_b
