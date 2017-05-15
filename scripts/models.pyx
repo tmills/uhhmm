@@ -86,6 +86,7 @@ cdef class Model:
 cdef class Models:
     def __init__(self):
         self.models = []
+        self.ac_coeff = 1.0
         
 #    def resample_all(self):
 #        for model in self.models:

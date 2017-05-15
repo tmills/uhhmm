@@ -248,7 +248,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     max_loglikelihood = -np.inf
     best_init_model = None
     best_anneal_model = None
-    prev_anneal_likelihood = 1
+    best_anneal_likelihood = -np.inf
+    prev_anneal_coeff = -np.inf
     ### Start doing actual sampling:
     while num_samples < max_samples:
         sample.iter = iter
@@ -491,10 +492,26 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             resample_beta_g(models, sample.gamma)
 
         anneal_alphas = calc_anneal_alphas(models, iter, burnin, init_anneal_alpha, total_sent_lens)
-        cur_iter = iter - random_restarts
+        cur_anneal_iter = iter - random_restarts
         assert (iter <= anneal_length and anneal_length > 1) or anneal_length == 1, "number of iterations is larger than annealing length!"
         # anneal_likelihood = calc_anneal_likelihood(cur_iter, anneal_length, init_anneal_likelihood, anneal_likelihood_phase)
-        anneal_likelihood = calc_simulated_annealing(cur_iter, anneal_length, init_anneal_likelihood, final_anneal_likelihood)
+        anneal_likelihood = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
+                                                     final_anneal_likelihood, anneal_likelihood_phase)
+        # annealing control
+        next_anneal_likelihood = calc_simulated_annealing(cur_anneal_iter+1, anneal_length, init_anneal_likelihood,
+                                                     final_anneal_likelihood, anneal_likelihood_phase)
+        if next_anneal_likelihood != anneal_likelihood:
+            logging.info("The annealing coeff will jump from {} to {}".format(anneal_likelihood, next_anneal_likelihood))
+            if sample.log_prob > max_loglikelihood:
+                best_anneal_likelihood = sample.log_prob
+                best_anneal_model = copy.deepcopy(sample.models)
+            sample.models = best_anneal_model
+            models = best_anneal_model
+            max_loglikelihood = -np.inf
+        else:
+            if sample.log_prob > max_loglikelihood:
+                best_anneal_likelihood = sample.log_prob
+                best_anneal_model = copy.deepcopy(sample.models)
 
         resample_all(models, sample, params, depth, anneal_alphas, anneal_likelihood)
 
@@ -1241,10 +1258,11 @@ def getBmax():
     global b_max
     return b_max
 
-def resample_all(models, sample, params, depth, anneal_alphas=0, anneal_likelihood=1):
+def resample_all(models, sample, params, depth, anneal_alphas=0, ac_coeff=1):
     ## Sample distributions for all the model params and emissions params
     ## TODO -- make the Models class do this in a resample_all() method
-    logging.info("Resampling all models with alpha_anneal {} and likelihood_anneal {}".format(anneal_alphas, anneal_likelihood))
+    logging.info("Resampling all models with alpha_anneal {} and likelihood_anneal {}".format(anneal_alphas, ac_coeff))
+    models.ac_coeff = ac_coeff
     if anneal_alphas == 0:
         a_base = sample.alpha_a * sample.beta_a
         b_base = sample.alpha_b * sample.beta_b
@@ -1267,7 +1285,7 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, anneal_likeliho
     # print("model W: W|P with base {}".format(h_base[0]))
     # print(models.lex.pairCounts)
     models.lex.sampleDirichlet(h_base)
-    models.lex.dist *= (anneal_likelihood)
+    models.lex.dist *= (ac_coeff)
     models.lex.dist[0,0] = 0.0
     models.lex.dist[0,1:].fill(-np.inf)
 
@@ -1275,7 +1293,7 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, anneal_likeliho
     # print("model P: P|B with base {}".format(g_base[0]))
     # print(models.pos.pairCounts)
     models.pos.sampleDirichlet(g_base)
-    models.pos.dist *= (anneal_likelihood)
+    models.pos.dist *= (ac_coeff)
     if np.argwhere(np.isnan(models.pos.dist)).size > 0:
         logging.error("Resampling the pos dist resulted in a nan")
 
@@ -1284,21 +1302,21 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, anneal_likeliho
         # print('depth {} model B J1: B| (B A) or (B P) with base {}'.format(d,b_base[0]))
         # print(models.B_J1[d].pairCounts)
         models.B_J1[d].sampleDirichlet(b_base) # if d == 0 else b_base + models.B_J1[d-1].pairCounts * sample.alpha_b)
-        models.B_J1[d].dist *= (anneal_likelihood)
+        models.B_J1[d].dist *= (ac_coeff)
         # print('depth {} model B J0: B| (A A) or (A P) with base {}'.format(d,b_base[0]))
         # print(models.B_J0[d].pairCounts)
         models.B_J0[d].sampleDirichlet(b_base) # if d == 0 else b_base + models.B_J0[d-1].pairCounts * sample.alpha_b)
-        models.B_J0[d].dist *= (anneal_likelihood)
+        models.B_J0[d].dist *= (ac_coeff)
         # print("depth {} model A: A|(B A) or (B P) with base {}".format(d,a_base[0]))
         # print(models.A[d].pairCounts)
         models.A[d].sampleDirichlet(a_base) # if d == 0 else a_base + models.A[d-1].pairCounts * sample.alpha_a)
-        models.A[d].dist *= (anneal_likelihood)
+        models.A[d].dist *= (ac_coeff)
 
         # print("depth {} model J: J|(A B) or (P B) with base {}".format(d,j_base[0]))
         # print(models.J[d].pairCounts)
         models.J[d].sampleDirichlet(j_base) # if d == 0 else j_base + models.J[d-1].pairCounts * sample.alpha_j)
-        models.J[d].dist *= (anneal_likelihood)
+        models.J[d].dist *= (ac_coeff)
         # print("depth {} model F: F|B with base {}".format(d,f_base[0]))
         # print(models.F[d].pairCounts)
         models.F[d].sampleDirichlet(f_base) # if d == 0 else f_base + models.F[d-1].pairCounts * sample.alpha_f)
-        models.F[d].dist *= (anneal_likelihood)
+        models.F[d].dist *= (ac_coeff)

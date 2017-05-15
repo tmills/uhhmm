@@ -184,7 +184,8 @@ class DistributedModelCompiler(FullDepthCompiler):
             for b_index, b_cats in enumerate(row_indices):
                 for f_index in (0, 1):
                     for g_index in range(0, g_max):
-                        logging.debug(' '.join(map(str, ['P', g_index, 'B',b_cats,'F', f_index, corrected_pos_dist[b_index*2*g_max+f_index*g_max+g_index]])))
+                        logging.debug(' '.join(map(str, ['P', g_index, 'B',b_cats,'F', f_index,
+                                                         corrected_pos_dist[b_index*2*g_max+f_index*g_max+g_index]])))
             # for index_t_1 in pi.shape[0]:
             #     state_t_1 = indexer.extractState(index_t_1)
             #     if np.sum(pi[index_t_1]) == 0:
@@ -197,7 +198,7 @@ class DistributedModelCompiler(FullDepthCompiler):
             #                                             'pos line:', pos_dist[]])))
 
             model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, corrected_pos_dist,
-                                                        indexer.get_EOS_full()), self.depth)
+                                                        indexer.get_EOS_full(), models.ac_coeff), self.depth)
             logging.info("EOS index is "+str(indexer.get_EOS_full()))
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
             logging.info("Saving GPU models for use")
@@ -206,7 +207,7 @@ class DistributedModelCompiler(FullDepthCompiler):
         relog_models(models, self.depth)
         if full_pi:
             pi_full = pi_full.tocsc()
-            model = ModelWrapper(ModelWrapper.HMM, (models, pi_full), self.depth)
+            model = ModelWrapper(ModelWrapper.HMM, (models, pi_full, models.ac_coeff), self.depth)
         else:
             model = ModelWrapper(ModelWrapper.HMM, (models, pi), self.depth)
         # EOS = indexer.get_EOS()

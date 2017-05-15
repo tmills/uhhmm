@@ -13,4 +13,5 @@ cdef class Models:
     cdef list models
     cdef public list F, J, A, B_J0, B_J1
     cdef public Model pos, lex
+    cdef float ac_coeff
 

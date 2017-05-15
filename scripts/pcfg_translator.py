@@ -5,6 +5,7 @@ from copy import deepcopy
 from functools import reduce
 from init_pcfg_strategies import *
 import logging
+import math
 """
 this file is for translating sequences of states to pcfg counts and back to uhhmm counts
 the main function is translate_through_pcfg
@@ -412,8 +413,15 @@ def calc_anneal_likelihood(cur_iter, length_of_annealing, init_tempature, anneal
 # annealing follows this schedule
 # for anneal_likelihood_phase amount of iters, the temperature goes down by the amount that is
 # evenly assigned to that amount of iters at the end of that episode
-def calc_simulated_annealing(cur_iter, length_of_annealing, init_tempature=1, final_temperature=10):
-    return (cur_iter/length_of_annealing) * final_temperature + init_tempature
+def calc_simulated_annealing(cur_anneal_iter, length_of_annealing, init_ac_coeff=0.4, final_ac_coeff=1,
+                             anneal_likelihood_phase=2):
+    num_iters_per_phases = math.floor(length_of_annealing / anneal_likelihood_phase)
+    temperature_drop_per_phase = (final_ac_coeff - init_ac_coeff) / anneal_likelihood_phase
+    cur_phase = cur_anneal_iter // num_iters_per_phases
+    ac_coeffecient = init_ac_coeff + temperature_drop_per_phase * cur_phase
+    if cur_anneal_iter >= length_of_annealing :
+        return 1
+    return ac_coeffecient
 
 
 def main():
