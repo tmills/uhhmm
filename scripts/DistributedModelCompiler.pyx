@@ -198,7 +198,7 @@ class DistributedModelCompiler(FullDepthCompiler):
             #                                             'pos line:', pos_dist[]])))
 
             model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, corrected_pos_dist,
-                                                        indexer.get_EOS_full(), models.ac_coeff), self.depth)
+                                                        indexer.get_EOS_full()), self.depth)
             logging.info("EOS index is "+str(indexer.get_EOS_full()))
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
             logging.info("Saving GPU models for use")
