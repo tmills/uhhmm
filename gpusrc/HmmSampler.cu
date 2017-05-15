@@ -43,7 +43,7 @@ pi_num_rows(pi_num_rows), pi_num_cols(pi_num_cols), pi_vals(pi_vals),
 pi_vals_size(pi_vals_size), pi_row_offsets(pi_row_offsets), pi_row_offsets_size(pi_row_offsets_size),
 pi_col_indices(pi_col_indices), pi_col_indices_size(pi_col_indices_size), lex_vals(lex_vals),
 lex_vals_size(lex_vals_size), lex_num_rows(lex_num_rows), lex_num_cols(lex_num_cols), a_max(a_max),
-b_max(b_max), g_max(g_max), depth(depth), pos_vals(pos_vals), pos_vals_size(pos_vals_size), EOS_index(EOS_index)){
+b_max(b_max), g_max(g_max), depth(depth), pos_vals(pos_vals), pos_vals_size(pos_vals_size), EOS_index(EOS_index){
     pi = new SparseView(pi_num_rows, pi_num_cols, pi_vals_size, pi_row_offsets, pi_col_indices, pi_vals, pi_row_offsets_size, pi_col_indices_size);
     lex = new DenseView(lex_num_rows, lex_num_cols, lex_vals_size, lex_vals);
     pos = new Array(pos_vals, pos_vals_size);
