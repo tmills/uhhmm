@@ -385,12 +385,18 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             if sample.log_prob > max_loglikelihood:
                 max_loglikelihood = sample.log_prob
                 best_init_model = copy.deepcopy(sample.models)
+                best_init_model.resetAll()
             sample.models.resetAll()
             resample_all(models, sample, params, depth )
             sample.log_prob = 0
             iter += 1
             continue
         elif iter == random_restarts - 1:
+            checkpoint_function(sample)
+            if sample.log_prob > max_loglikelihood:
+                max_loglikelihood = sample.log_prob
+                best_init_model = copy.deepcopy(sample.models)
+                best_init_model.resetAll()
             sample.models = best_init_model
             models = best_init_model
             logging.info("The {} random restart has a loglikelihood of {}".format(iter, sample.log_prob))
@@ -495,25 +501,27 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         cur_anneal_iter = iter - random_restarts
         assert (iter <= anneal_length and anneal_length > 1) or anneal_length == 1, "number of iterations is larger than annealing length!"
         # anneal_likelihood = calc_anneal_likelihood(cur_iter, anneal_length, init_anneal_likelihood, anneal_likelihood_phase)
-        anneal_likelihood = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
+        ac_coeff = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
                                                      final_anneal_likelihood, anneal_likelihood_phase)
+
+        next_ac_coeff = calc_simulated_annealing(cur_anneal_iter+1, anneal_length, init_anneal_likelihood,
+                                                     final_anneal_likelihood, anneal_likelihood_phase)
+
         # annealing control
-        next_anneal_likelihood = calc_simulated_annealing(cur_anneal_iter+1, anneal_length, init_anneal_likelihood,
-                                                     final_anneal_likelihood, anneal_likelihood_phase)
-        if next_anneal_likelihood != anneal_likelihood:
-            logging.info("The annealing coeff will jump from {} to {}".format(anneal_likelihood, next_anneal_likelihood))
-            if sample.log_prob > max_loglikelihood:
+        if next_ac_coeff != ac_coeff:
+            logging.info("The annealing coeff will jump from {} to {}".format(ac_coeff, next_ac_coeff))
+            if sample.log_prob > best_anneal_likelihood:
                 best_anneal_likelihood = sample.log_prob
                 best_anneal_model = copy.deepcopy(sample.models)
             sample.models = best_anneal_model
             models = best_anneal_model
             max_loglikelihood = -np.inf
         else:
-            if sample.log_prob > max_loglikelihood:
+            if sample.log_prob > best_anneal_likelihood:
                 best_anneal_likelihood = sample.log_prob
                 best_anneal_model = copy.deepcopy(sample.models)
 
-        resample_all(models, sample, params, depth, anneal_alphas, anneal_likelihood)
+        resample_all(models, sample, params, depth, anneal_alphas, ac_coeff)
 
         # # anneal likelihood control
         # if prev_anneal_likelihood == 1 and anneal_likelihood > 1:
