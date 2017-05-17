@@ -513,9 +513,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             if sample.log_prob > best_anneal_likelihood:
                 best_anneal_likelihood = sample.log_prob
                 best_anneal_model = copy.deepcopy(sample.models)
+            logging.info("The best model at {} has likelihood of {} ".format(ac_coeff, best_anneal_likelihood))
             sample.models = best_anneal_model
             models = best_anneal_model
-            max_loglikelihood = -np.inf
+            best_anneal_likelihood = -np.inf
         else:
             if sample.log_prob > best_anneal_likelihood:
                 best_anneal_likelihood = sample.log_prob
