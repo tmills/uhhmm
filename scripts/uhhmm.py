@@ -384,9 +384,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             checkpoint_function(sample)
             if sample.log_prob > max_loglikelihood:
                 max_loglikelihood = sample.log_prob
-                best_init_model = copy.deepcopy(sample.models)
+                best_init_model = copy.deepcopy(models)
                 best_init_model.resetAll()
-            sample.models.resetAll()
+            models.resetAll()
             resample_all(models, sample, params, depth )
             sample.log_prob = 0
             iter += 1
@@ -395,7 +395,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             checkpoint_function(sample)
             if sample.log_prob > max_loglikelihood:
                 max_loglikelihood = sample.log_prob
-                best_init_model = copy.deepcopy(sample.models)
+                best_init_model = copy.deepcopy(models)
                 best_init_model.resetAll()
             sample.models = best_init_model
             models = best_init_model
@@ -511,16 +511,16 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if next_ac_coeff != ac_coeff:
             logging.info("The annealing coeff will jump from {} to {}".format(ac_coeff, next_ac_coeff))
             if sample.log_prob > best_anneal_likelihood:
-                best_anneal_likelihood = sample.log_prob
-                best_anneal_model = copy.deepcopy(sample.models)
+                best_anneal_likelihood = prev_sample.log_prob
+                best_anneal_model = copy.deepcopy(models)
             logging.info("The best model at {} has likelihood of {} ".format(ac_coeff, best_anneal_likelihood))
             sample.models = best_anneal_model
             models = best_anneal_model
             best_anneal_likelihood = -np.inf
         else:
             if sample.log_prob > best_anneal_likelihood:
-                best_anneal_likelihood = sample.log_prob
-                best_anneal_model = copy.deepcopy(sample.models)
+                best_anneal_likelihood = prev_sample.log_prob
+                best_anneal_model = copy.deepcopy(models)
 
         resample_all(models, sample, params, depth, anneal_alphas, ac_coeff)
 
