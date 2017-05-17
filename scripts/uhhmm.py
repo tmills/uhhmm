@@ -510,7 +510,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         # annealing control
         if next_ac_coeff != ac_coeff:
             logging.info("The annealing coeff will jump from {} to {}".format(ac_coeff, next_ac_coeff))
-            if sample.log_prob > best_anneal_likelihood:
+            if prev_sample.log_prob > best_anneal_likelihood:
                 best_anneal_likelihood = prev_sample.log_prob
                 best_anneal_model = copy.deepcopy(models)
             logging.info("The best model at {} has likelihood of {} ".format(ac_coeff, best_anneal_likelihood))
@@ -518,7 +518,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             models = best_anneal_model
             best_anneal_likelihood = -np.inf
         else:
-            if sample.log_prob > best_anneal_likelihood:
+            if prev_sample.log_prob > best_anneal_likelihood:
                 best_anneal_likelihood = prev_sample.log_prob
                 best_anneal_model = copy.deepcopy(models)
 
