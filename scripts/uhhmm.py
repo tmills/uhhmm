@@ -522,7 +522,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 best_anneal_likelihood = prev_sample.log_prob
                 best_anneal_model = copy.deepcopy(models)
 
-        resample_all(models, sample, params, depth, anneal_alphas, ac_coeff)
+            resample_all(models, sample, params, depth, anneal_alphas, ac_coeff)
 
         # # anneal likelihood control
         # if prev_anneal_likelihood == 1 and anneal_likelihood > 1:
