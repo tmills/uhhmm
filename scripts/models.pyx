@@ -61,7 +61,7 @@ cdef class Model:
         m_copy.globalPairCounts = self.globalPairCounts.copy()
         m_copy.dist = self.dist.copy()
         return m_copy
-        
+
     def __reduce__(self):
         #logging.info("Reduced called")
         d = {}
@@ -74,9 +74,9 @@ cdef class Model:
         d['corpus_shape'] = self.corpus_shape
         d['alpha'] = self.alpha
         d['name'] = self.name
-        
+
         return (Model, (self.shape, self.alpha, self.beta, self.corpus_shape, self.name), d)
-        
+
     def __setstate__(self, d):
         #logging.info("Into set_state")
         self.shape = d['shape']
@@ -87,9 +87,9 @@ cdef class Model:
         self.beta = d['beta']
         self.corpus_shape = d['corpus_shape']
         self.alpha = d['alpha']
-        self.name = d['name']        
-       
-    # Assumes beta stick has already been broken 
+        self.name = d['name']
+
+    # Assumes beta stick has already been broken
     def add_outcome(self):
         new_ix = self.shape[-1]
         self.pairCounts = np.insert(self.pairCounts, new_ix, 1, -1)
@@ -112,7 +112,7 @@ cdef class Model:
         # Remove outcome from beta
         self.beta = np.delete(self.beta, outcome, -1)
         # Uniformly redistribute lost beta
-        self.beta += lost_beta/self.shape[-1] 
+        self.beta += lost_beta/self.shape[-1]
 
     def add_condition(self, axis=-2):
         new_shape = self.shape
@@ -168,16 +168,16 @@ cdef class Models:
 
             ## One active model:
             self.act[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|00_"+str(d))
-            
+
             self.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
 
             ## four awaited self:
             self.cont[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|11_"+str(d))
-            
+
             self.exp[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|10_"+str(d))
-            
+
             self.next[d] = Model((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|01_"+str(d))
-            
+
             self.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|00_"+str(d))
 
 
@@ -185,7 +185,8 @@ cdef class Models:
         self.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape, name="POS")
 
         ## one lex model:
-        self.lex = Model((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
+        #self.lex = Model((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
+        self.lex = scipy.stats.norm(0.0, 1.0)
 
         self.append(self.fj)
         self.append(self.act)
@@ -220,7 +221,7 @@ cdef class Models:
         d['pos'] = self.pos
         d['lex'] = self.lex
         return (Models, (), d)
-    
+
     def __setstate__(self, d):
         self.fj = d['fj']
         self.act = d['act']
@@ -239,12 +240,12 @@ cdef class Models:
 
         for d in range(depth):
             self.fj[0].add_condition(0)
-            
+
             self.root[d].add_outcome()
             self.root[d].beta[:] = self.root[0].beta[:]
             self.act[d].add_outcome()
             self.act[d].beta[:] = self.root[0].beta[:]
-            
+
             self.exp[d].add_condition(1)
             self.next[d].add_condition(1)
             self.start[d].add_condition(0)
@@ -260,12 +261,12 @@ cdef class Models:
 
             self.root[d].add_condition(0)
             self.act[d].add_condition(1)
-            
+
             self.cont[d].add_outcome()
             self.cont[d].beta[:] = self.cont[0].beta[:]
             self.next[d].add_outcome()
             self.cond[d].beta[:] = self.cont[0].beta[:]
-        
+
         self.pos.add_condition(0)
 
     def break_g_stick(self, gamma):
@@ -277,7 +278,7 @@ cdef class Models:
             self.root[d].add_condition(1)
             self.cont[d].add_condition(1)
             self.exp[d].add_condition(0)
-        
+
         self.pos.add_outcome()
         self.lex.add_condition(0)
 
@@ -301,7 +302,7 @@ cdef class Models:
         a_base =  self.root[0].alpha * self.root[0].beta + int(init)
         b_base = self.cont[0].alpha * self.cont[0].beta + int(init)
         g_base = self.pos.alpha * self.pos.beta + int(init)
-        h_base = self.lex.alpha * self.lex.beta + int(init)
+        #h_base = self.lex.alpha * self.lex.beta + int(init)
 
         for d in range(depth-1, -1, -1):
             self.fj[d].sampleDirichlet(fj_base if d == 0 else fj_base + self.fj[d-1].pairCounts * self.fj[d].alpha, decay, from_global_counts)
@@ -314,12 +315,12 @@ cdef class Models:
 
         # Resample pos and make sure only the null awa can generate the null tag
         self.pos.sampleDirichlet(g_base, decay, from_global_counts)
-        self.lex.dist[1:,0].fill(-np.inf)
+        #self.lex.dist[1:,0].fill(-np.inf)
 
         # Resample lex and make sure the null tag can only generate the null word
-        self.lex.sampleDirichlet(h_base, decay, from_global_counts)
-        self.lex.dist[0,0] = 0.0
-        self.lex.dist[0,1:].fill(-np.inf)
+        #self.lex.sampleDirichlet(h_base, decay, from_global_counts)
+        #self.lex.dist[0,0] = 0.0
+        #self.lex.dist[0,1:].fill(-np.inf)
 
     def increment_global_counts(self):
         depth = len(self.fj)
@@ -333,4 +334,3 @@ cdef class Models:
             self.root[d].globalPairCounts += self.root[d].pairCounts
         self.pos.globalPairCounts += self.pos.pairCounts
         self.lex.globalPairCounts += self.lex.pairCounts
-
