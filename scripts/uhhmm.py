@@ -514,8 +514,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 best_anneal_likelihood = prev_sample.log_prob
                 best_anneal_model = copy.deepcopy(models)
             logging.info("The best model at {} has likelihood of {} ".format(ac_coeff, best_anneal_likelihood))
-            sample.models = best_anneal_model
-            models = best_anneal_model
+            real_model = unreanneal(best_anneal_model, ac_coeff, next_ac_coeff)
+            sample.models = real_model
+            models = real_model
             best_anneal_likelihood = -np.inf
         else:
             logging.info("The log prob for this iter is {} and the best anneal likelihood for this phase is {}".format(prev_sample.log_prob, best_anneal_likelihood))
@@ -1329,3 +1330,16 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, ac_coeff=1):
         # print(models.F[d].pairCounts)
         models.F[d].sampleDirichlet(f_base) # if d == 0 else f_base + models.F[d-1].pairCounts * sample.alpha_f)
         models.F[d].dist *= (ac_coeff)
+
+def unreanneal(models, ac_coeff=1, next_ac_coeff=1):
+    logging.info("Unanneal all models with likelihood_anneal {}".format(ac_coeff))
+
+    models.lex.dist *= (next_ac_coeff/ac_coeff)
+
+    models.pos.dist *= (next_ac_coeff/ac_coeff)
+    for d in range(depth-1, -1, -1):
+        models.B_J1[d].dist *= (next_ac_coeff/ac_coeff)
+        models.B_J0[d].dist *= (next_ac_coeff/ac_coeff)
+        models.A[d].dist *= (next_ac_coeff/ac_coeff)
+        models.J[d].dist *= (next_ac_coeff/ac_coeff)
+        models.F[d].dist *= (next_ac_coeff/ac_coeff)
