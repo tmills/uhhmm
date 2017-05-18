@@ -72,7 +72,12 @@ def main(argv):
         if rand not in gold_seq.keys():
           gold_seq[rand]=pos_seq[rand]
 
-    (samples, stats) = uhhmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), working_dir, pickle_file, gold_seq, input_seqs_file=input_seqs_file)
+    word_vecs = None
+    if 'word_vecs_file' in params:
+        dict_file = config.get('io', 'dict_file')
+        word_vecs = uhhmm_io.read_word_vector_file(params.get('word_vecs_file'), uhhmm_io.read_dict_file(dict_file))
+
+    (samples, stats) = uhhmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), working_dir, pickle_file, gold_seq, input_seqs_file=input_seqs_file, word_vecs=None)
 
     if len(samples) > 0:
         io.write_output(samples[-1], stats, config, pos_seq)

@@ -63,6 +63,30 @@ def read_input_file(filename):
 
     return (pos_seqs, token_seqs)
 
+def read_word_vector_file(filename, dict):
+    f = open(filename, 'r', encoding='utf-8')
+    dim = -1
+    for line in f:
+        parts = line.split()
+        if len(parts) == 2:
+            dim = int(parts[1])
+            word_matrix = np.zeros((len(dict), dim))
+            continue
+
+        word = parts[0]
+        if not word in dict.keys():
+            continue
+        word_ind = dict[word]
+        vec = []
+        for ind in range(1,dim+1)
+            vec.append(float(parts[ind]))
+
+        np_vec = np.array(vec, dtype='float16')
+        word_matrix[word_ind] += np_vec
+
+    f.close()
+    return word_matrix
+
 def read_sample_file(filename):
     pos_seqs = list()
     f = open(filename, 'r', encoding='utf-8')
@@ -89,6 +113,16 @@ def read_serialized_models(pickle_filename):
     pickle_file = open(pickle_filename, 'rb')
     return pickle.load(pickle_file)
 
+def read_dict_file(dict_file):
+    word_dict = dict()
+    f = open(dict_file, 'r', encoding='utf-8')
+    for line in f:
+        #pdb.set_trace()
+        (word, index) = line.rstrip().split(" ")
+        word_dict[int(index)] = word
+
+    return word_dict
+
 def write_output(sample, stats, config, gold_pos=None):
 #    last_sample = samples[-1]
     models = sample.models
@@ -98,13 +132,8 @@ def write_output(sample, stats, config, gold_pos=None):
 
     output_dir = config.get('io', 'output_dir')
     dict_file = config.get('io', 'dict_file')
-    word_dict = dict()
-    if dict_file != None:
-        f = open(dict_file, 'r', encoding='utf-8')
-        for line in f:
-            #pdb.set_trace()
-            (word, index) = line.rstrip().split(" ")
-            word_dict[int(index)] = word
+    if not dict_file is None:
+        word_dict = read_dict_file(dict_file)
 
     if gold_pos != None:
         sys_pos = extract_pos(sample)
