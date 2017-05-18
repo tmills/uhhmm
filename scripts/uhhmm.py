@@ -1343,3 +1343,4 @@ def unreanneal(models, ac_coeff=1, next_ac_coeff=1):
         models.A[d].dist *= (next_ac_coeff/ac_coeff)
         models.J[d].dist *= (next_ac_coeff/ac_coeff)
         models.F[d].dist *= (next_ac_coeff/ac_coeff)
+    return models
