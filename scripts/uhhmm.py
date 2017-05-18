@@ -1335,7 +1335,7 @@ def unreanneal(models, ac_coeff=1, next_ac_coeff=1):
     logging.info("Unanneal all models with likelihood_anneal {}".format(ac_coeff))
 
     models.lex.dist *= (next_ac_coeff/ac_coeff)
-
+    depth = len(models.A)
     models.pos.dist *= (next_ac_coeff/ac_coeff)
     for d in range(depth-1, -1, -1):
         models.B_J1[d].dist *= (next_ac_coeff/ac_coeff)
