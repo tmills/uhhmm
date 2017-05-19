@@ -514,7 +514,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 best_anneal_likelihood = prev_sample.log_prob
                 best_anneal_model = copy.deepcopy(models)
             logging.info("The best model at {} has likelihood of {} ".format(ac_coeff, best_anneal_likelihood))
-            real_model = unreanneal(best_anneal_model, ac_coeff, next_ac_coeff)
+            # real_model = unreanneal(best_anneal_model, ac_coeff, next_ac_coeff)
+            real_model = best_anneal_model
             sample.models = real_model
             models = real_model
             best_anneal_likelihood = -np.inf
@@ -1298,6 +1299,8 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, ac_coeff=1):
     models.lex.dist *= (ac_coeff)
     models.lex.dist[0,0] = 0.0
     models.lex.dist[0,1:].fill(-np.inf)
+    if ac_coeff != 1:
+        normalize(models.lex.dist)
 
     # Resample pos
     # print("model P: P|B with base {}".format(g_base[0]))
@@ -1306,6 +1309,8 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, ac_coeff=1):
     models.pos.dist *= (ac_coeff)
     if np.argwhere(np.isnan(models.pos.dist)).size > 0:
         logging.error("Resampling the pos dist resulted in a nan")
+    if ac_coeff != 1:
+        normalize(models.pos.dist)
 
     logging.debug('printing out the pair counts for the models')
     for d in range(depth-1, -1, -1):
@@ -1313,23 +1318,32 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, ac_coeff=1):
         # print(models.B_J1[d].pairCounts)
         models.B_J1[d].sampleDirichlet(b_base) # if d == 0 else b_base + models.B_J1[d-1].pairCounts * sample.alpha_b)
         models.B_J1[d].dist *= (ac_coeff)
+        if ac_coeff != 1:
+            normalize(models.B_J1[d].dist)
         # print('depth {} model B J0: B| (A A) or (A P) with base {}'.format(d,b_base[0]))
         # print(models.B_J0[d].pairCounts)
         models.B_J0[d].sampleDirichlet(b_base) # if d == 0 else b_base + models.B_J0[d-1].pairCounts * sample.alpha_b)
         models.B_J0[d].dist *= (ac_coeff)
+        if ac_coeff != 1:
+            normalize(models.B_J0[d].dist)
         # print("depth {} model A: A|(B A) or (B P) with base {}".format(d,a_base[0]))
         # print(models.A[d].pairCounts)
         models.A[d].sampleDirichlet(a_base) # if d == 0 else a_base + models.A[d-1].pairCounts * sample.alpha_a)
         models.A[d].dist *= (ac_coeff)
-
+        if ac_coeff != 1:
+            normalize(models.A[d].dist)
         # print("depth {} model J: J|(A B) or (P B) with base {}".format(d,j_base[0]))
         # print(models.J[d].pairCounts)
         models.J[d].sampleDirichlet(j_base) # if d == 0 else j_base + models.J[d-1].pairCounts * sample.alpha_j)
         models.J[d].dist *= (ac_coeff)
+        if ac_coeff != 1:
+            normalize(models.J[d].dist)
         # print("depth {} model F: F|B with base {}".format(d,f_base[0]))
         # print(models.F[d].pairCounts)
         models.F[d].sampleDirichlet(f_base) # if d == 0 else f_base + models.F[d-1].pairCounts * sample.alpha_f)
         models.F[d].dist *= (ac_coeff)
+        if ac_coeff != 1:
+            normalize(models.F[d].dist)
 
 def unreanneal(models, ac_coeff=1, next_ac_coeff=1):
     logging.info("Unanneal all models with likelihood_anneal {}".format(ac_coeff))
@@ -1344,3 +1358,10 @@ def unreanneal(models, ac_coeff=1, next_ac_coeff=1):
         models.J[d].dist *= (next_ac_coeff/ac_coeff)
         models.F[d].dist *= (next_ac_coeff/ac_coeff)
     return models
+
+def normalize(matrix):
+    assert len(matrix.shape) == 2, "shape of the normalizing matrix is not 2!"
+    sums = np.sum(matrix, axis=1, keepdims=True)
+    sums = np.repeat(sums, matrix.shape[1], axis=1)
+    matrix /= sums
+    return matrix
