@@ -1371,12 +1371,13 @@ def unreanneal(models, ac_coeff=1, next_ac_coeff=1):
 # normalize a logged matrix
 def normalize(matrix):
     # assert len(matrix.shape) == 2, "shape of the normalizing matrix {} is not 2!".format(str(matrix.shape))
+    print(matrix, 'first')
     matrix = matrix ** 10
     sums = np.sum(matrix, axis=-1, keepdims=True)
     sums = np.repeat(sums, matrix.shape[-1], axis=-1)
     matrix /= sums
     matrix = np.log10(matrix)
     matrix = np.nan_to_num(matrix)
-    print(matrix)
+    print(matrix, 'last')
     # assert np.sum(matrix) == np.cumprod(matrix.shape)[-1], "{}, {}".format(np.sum(matrix), np.cumprod(matrix.shape)[-1])
     return matrix
