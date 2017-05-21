@@ -397,8 +397,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 max_loglikelihood = sample.log_prob
                 best_init_model = copy.deepcopy(models)
                 best_init_model.resetAll()
-            sample.models = best_init_model
             best_init_model = unreanneal(best_init_model, next_ac_coeff=init_anneal_likelihood)
+            sample.models = best_init_model
             models = best_init_model
             logging.info("The {} random restart has a loglikelihood of {}".format(iter, sample.log_prob))
             logging.info("The best init model has a loglikehood of {}. Will be using this for sampling.".format(max_loglikelihood))
@@ -1377,5 +1377,6 @@ def normalize(matrix):
     matrix /= sums
     matrix = np.log10(matrix)
     matrix = np.nan_to_num(matrix)
+    print(matrix)
     # assert np.sum(matrix) == np.cumprod(matrix.shape)[-1], "{}, {}".format(np.sum(matrix), np.cumprod(matrix.shape)[-1])
     return matrix
