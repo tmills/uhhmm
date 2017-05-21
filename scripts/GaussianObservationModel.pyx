@@ -9,9 +9,6 @@ cimport PosDependentObservationModel
 cimport models
 
 cdef class GaussianObservationModel(PosDependentObservationModel.PosDependentObservationModel):
-    def __init__(self, indexer):
-        self.indexer = indexer
-
     cdef set_models(self, models.Models models):
         self.indexer = Indexer.Indexer(models)
 
@@ -31,7 +28,7 @@ cdef class GaussianObservationModel(PosDependentObservationModel.PosDependentObs
         for g in range(1,g_max):
             prob = 1.0
             for ind in range(len(token)):
-                prob *= self.models.lex[g].pdf(token[ind])
+                prob *= self.models.lex[g][ind].pdf(token[ind])
             retVec.append(prob)
 
         retVec.append(0.0)

@@ -3,6 +3,7 @@ cimport numpy as np
 import logging
 import distribution_sampler as sampler
 from scipy.sparse import lil_matrix
+import scipy.stats
 
 # A mapping from input space to output space. The Model class can be
 # used to store counts during inference, and then know how to resample themselves
@@ -10,8 +11,14 @@ from scipy.sparse import lil_matrix
 # TODO: Sub-class for BooleanModel vs. InfiniteModel  with single sample()/resample() method
 # and automatically adjusting sizes for infinite version.
 cdef class Model:
+    def __init__(self, corpus_shape=(1,1), name="Unspecified"):
+        self.name = name
+        self.corpus_shape = corpus_shape
 
-    def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, corpus_shape=(1,1), name="Unspecified"):
+
+cdef class CategoricalModel(Model):
+
+    def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, name="Categorical"):
         self.shape = shape
         self.pairCounts = np.zeros(shape, dtype=np.int)
         self.globalPairCounts = np.zeros(shape, dtype=np.int)
@@ -24,8 +31,6 @@ cdef class Model:
             self.beta = beta
         else:
             self.beta = np.ones(shape[-1]) / shape[-1]
-        self.corpus_shape = corpus_shape
-        self.name = name
 
     def count(self, cond, out, val):
         out_counts = self.pairCounts[...,out]
@@ -186,7 +191,11 @@ cdef class Models:
 
         ## one lex model:
         #self.lex = Model((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
-        self.lex = scipy.stats.norm(0.0, 1.0)
+        self.lex = []
+        for i in range(g_max):
+            self.lex.append([])
+            for dim in range(dims):
+                self.lex[i].append(scipy.stats.norm(0.0, 1.0))
 
         self.append(self.fj)
         self.append(self.act)

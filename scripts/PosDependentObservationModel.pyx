@@ -12,10 +12,10 @@ cimport ObservationModel
 import sys
 
 cdef class PosDependentObservationModel(ObservationModel.ObservationModel):
-    def __init__(self, indexer):
-        self.indexer = indexer
+    def __init__(self):
+        self.indexer = None
 
-    cpdef set_models(self, models.Models models):
+    cdef set_models(self, models.Models models):
         self.indexer = Indexer.Indexer(models)
         g_len = models.pos.dist.shape[1]
         self.lexMatrix = np.matrix(models.lex.dist, copy=False)
