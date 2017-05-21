@@ -53,7 +53,7 @@ class Stats:
 # Arg 1: ev_seqs : a list of lists of integers, representing
 # the EVidence SEQuenceS seen by the user (e.g., words in a sentence
 # mapped to ints).
-def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_dir, pickle_file=None, gold_seqs=None, input_seqs_file=None):
+def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_dir, pickle_file=None, gold_seqs=None, input_seqs_file=None, word_vecs=None):
 
     global start_a, start_b, start_g
     global a_max, b_max, g_max
@@ -144,13 +144,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         sample.alpha_a = models.root[0].alpha
         sample.alpha_b = models.cont[0].alpha
         sample.alpha_g = models.pos.alpha
-        sample.alpha_h = models.lex.alpha
-        
-        sample.beta_fj = models.fj[0].beta 
-        sample.beta_a = models.root[0].beta 
+        #sample.alpha_h = models.lex.alpha
+
+        sample.beta_fj = models.fj[0].beta
+        sample.beta_a = models.root[0].beta
         sample.beta_b = models.cont[0].beta
         sample.beta_g = models.pos.beta
-        sample.beta_h = models.lex.beta
+        #sample.beta_h = models.lex.beta
         sample.gamma = float(params.get('gamma'))
         sample.discount = float(params.get('discount'))
         sample.ev_seqs = ev_seqs
@@ -167,7 +167,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         max_state_check(hid_seqs, models, "reading sample from pickle file")
 
         pos_counts = models.pos.pairCounts[:].sum()
-        lex_counts = models.lex.pairCounts[:].sum()
+        #lex_counts = models.lex.pairCounts[:].sum()
 
         a_max = models.act[0].dist.shape[-1]
         b_max = models.cont[0].dist.shape[-1]
@@ -391,7 +391,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             next_sample.alpha_b = models.cont[0].alpha
             next_sample.alpha_g = models.pos.alpha
             next_sample.alpha_h = models.lex.alpha
-            
+
             next_sample.beta_fj = models.fj[0].beta
             next_sample.beta_a = models.root[0].beta
             next_sample.beta_b = models.cont[0].beta
@@ -743,4 +743,3 @@ def getAmax():
 def getBmax():
     global b_max
     return b_max
-

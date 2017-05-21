@@ -78,7 +78,7 @@ def read_word_vector_file(filename, dict):
             continue
         word_ind = dict[word]
         vec = []
-        for ind in range(1,dim+1)
+        for ind in range(1,dim+1):
             vec.append(float(parts[ind]))
 
         np_vec = np.array(vec, dtype='float16')

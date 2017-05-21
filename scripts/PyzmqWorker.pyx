@@ -26,6 +26,8 @@ cimport Sampler
 import Indexer
 import FullDepthCompiler
 from uhhmm_io import printException, ParsingError
+import CategoricalObservationModel
+import GaussianObservationModel
 
 ## This function was required because of some funkiness on ubuntu systems where reverse dns lookup was returning a loopback ip
 ## This will try the easy way and if it returns something with 127. will make an outside connectino to known DNS (8.8.8.8) and
@@ -97,8 +99,13 @@ cdef class PyzmqWorker:
             logging.debug("Worker %d preparing to process new model" % self.tid)
 
             if model_wrapper.model_type == ModelWrapper.HMM and not self.gpu:
+                if type(model_wrapper.model.lex) == 'Model':
+                    obs_model = CategoricalObservationModel()
+                else:
+                    obs_model = GaussianObservationModel()
+
                 if self.batch_size > 0:
-                    sampler = HmmSampler.HmmSampler(seed=self.seed)
+                    sampler = HmmSampler.HmmSampler(seed=self.seed, obs_model=obs_model)
                     sampler.set_models(model_wrapper.model)
                     self.processSentences(sampler, model_wrapper.model[1], jobs_socket, results_socket)
                 else:

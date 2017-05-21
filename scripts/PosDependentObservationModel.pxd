@@ -13,6 +13,6 @@ cdef class PosDependentObservationModel(ObservationModel.ObservationModel):
     cdef Indexer.Indexer indexer
     cdef np.ndarray lexMatrix, data, indices, indptr
 
-    cpdef set_models(self, models.Models models)
+    cdef set_models(self, models.Models models)
     cdef get_probability_vector(self, token)
     cdef get_pos_probability_vector(self, token)
