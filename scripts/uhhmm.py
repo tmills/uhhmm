@@ -1365,9 +1365,11 @@ def normalize(matrix):
     matrix = matrix ** 10
     sums = np.sum(matrix, axis=-1, keepdims=True)
     sums = np.repeat(sums, matrix.shape[-1], axis=-1)
-    print(matrix, matrix.shape)
-    print(sums, sums.shape)
     matrix /= sums
+    print(matrix)
+    matrix = np.log10(matrix)
+    print(matrix)
     matrix = np.nan_to_num(matrix)
+    print(matrix)
     assert np.sum(matrix) == np.cumprod(matrix.shape)[-1], "{}, {}".format(np.sum(matrix), np.cumprod(matrix.shape)[-1])
     return matrix
