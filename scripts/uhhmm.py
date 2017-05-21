@@ -398,6 +398,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 best_init_model = copy.deepcopy(models)
                 best_init_model.resetAll()
             sample.models = best_init_model
+            best_init_model = unreanneal(best_init_model, next_ac_coeff=init_anneal_likelihood)
             models = best_init_model
             logging.info("The {} random restart has a loglikelihood of {}".format(iter, sample.log_prob))
             logging.info("The best init model has a loglikehood of {}. Will be using this for sampling.".format(max_loglikelihood))
@@ -1348,14 +1349,23 @@ def unreanneal(models, ac_coeff=1, next_ac_coeff=1):
     logging.info("Unanneal all models with likelihood_anneal {}".format(ac_coeff))
 
     models.lex.dist *= (next_ac_coeff/ac_coeff)
+    models.lex.dist = normalize(models.lex.dist)
+    models.lex.dist[0,0] = 0.0
+    models.lex.dist[0,1:].fill(-np.inf)
     depth = len(models.A)
     models.pos.dist *= (next_ac_coeff/ac_coeff)
+    models.pos.dist = normalize(models.pos.dist)
     for d in range(depth-1, -1, -1):
         models.B_J1[d].dist *= (next_ac_coeff/ac_coeff)
+        models.B_J1[d].dist = normalize(models.B_J1[d].dist)
         models.B_J0[d].dist *= (next_ac_coeff/ac_coeff)
+        models.B_J0[d].dist = normalize(models.B_J0[d].dist)
         models.A[d].dist *= (next_ac_coeff/ac_coeff)
+        models.A[d].dist = normalize(models.A[d].dist)
         models.J[d].dist *= (next_ac_coeff/ac_coeff)
+        models.J[d].dist = normalize(models.J[d].dist)
         models.F[d].dist *= (next_ac_coeff/ac_coeff)
+        models.F[d].dist = normalize(models.F[d].dist)
     return models
 
 # normalize a logged matrix
