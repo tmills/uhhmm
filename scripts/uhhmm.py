@@ -1372,6 +1372,7 @@ def unreanneal(models, ac_coeff=1, next_ac_coeff=1):
 def normalize(matrix):
     # assert len(matrix.shape) == 2, "shape of the normalizing matrix {} is not 2!".format(str(matrix.shape))
     print(matrix, 'first')
+    matrix[ matrix == -np.inf] = 0
     matrix = matrix ** 10
     sums = np.sum(matrix, axis=-1, keepdims=True)
     sums = np.repeat(sums, matrix.shape[-1], axis=-1)
