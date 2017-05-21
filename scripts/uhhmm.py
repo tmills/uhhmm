@@ -1360,7 +1360,7 @@ def unreanneal(models, ac_coeff=1, next_ac_coeff=1):
     return models
 
 def normalize(matrix):
-    assert len(matrix.shape) == 2, "shape of the normalizing matrix is not 2!"
+    assert len(matrix.shape) == 2, "shape of the normalizing matrix {} is not 2!".format(str(matrix.shape))
     sums = np.sum(matrix, axis=1, keepdims=True)
     sums = np.repeat(sums, matrix.shape[1], axis=1)
     matrix /= sums
