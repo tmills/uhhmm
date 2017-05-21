@@ -1366,5 +1366,6 @@ def normalize(matrix):
     print(matrix)
     print(sums)
     matrix /= sums
+    matrix = np.nan_to_num(matrix)
     assert np.sum(matrix) == np.cumprod(matrix.shape)[-1], "{}, {}".format(np.sum(matrix), np.cumprod(matrix.shape)[-1])
     return matrix
