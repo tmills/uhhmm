@@ -1297,11 +1297,10 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, ac_coeff=1):
     # print(models.lex.pairCounts)
     models.lex.sampleDirichlet(h_base)
     models.lex.dist *= (ac_coeff)
-    models.lex.dist[0,0] = 0.0
-    models.lex.dist[0,1:].fill(-np.inf)
     if ac_coeff != 1:
         normalize(models.lex.dist)
-
+    models.lex.dist[0,0] = 0.0
+    models.lex.dist[0,1:].fill(-np.inf)
     # Resample pos
     # print("model P: P|B with base {}".format(g_base[0]))
     # print(models.pos.pairCounts)
@@ -1371,5 +1370,5 @@ def normalize(matrix):
     print(matrix)
     matrix = np.nan_to_num(matrix)
     print(matrix)
-    assert np.sum(matrix) == np.cumprod(matrix.shape)[-1], "{}, {}".format(np.sum(matrix), np.cumprod(matrix.shape)[-1])
+    # assert np.sum(matrix) == np.cumprod(matrix.shape)[-1], "{}, {}".format(np.sum(matrix), np.cumprod(matrix.shape)[-1])
     return matrix
