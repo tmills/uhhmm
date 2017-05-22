@@ -180,6 +180,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         # initialization: a few controls:
         if gold_init_file:
+            logging.info("Initializing the models with the gold PCFG file {}.".format(gold_init_file))
             pcfg_increment_counts(None, None, models, gold_init_file=gold_init_file, add_noise=add_noise, noise_sigma=noise_sigma)
         elif init_strategy:
             logging.info("Initialization strategy found \"{}\". Executing strategy.".format(init_strategy))

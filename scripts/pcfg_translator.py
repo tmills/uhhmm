@@ -35,6 +35,7 @@ def load_gold_trees(filename, abp_domain_size):
             # print(this_tree)
             trees.append(this_tree)
     pcfg_probs_and_counts = extract_counts(trees, abp_domain_size)
+    logging.info("With gold PCFG trees, the loglikelihood of the whole corpus is {}".format(calc_pcfg_loglikelihood(pcfg_probs_and_counts[0], pcfg_probs_and_counts[1])))
     num_cats = len(pcfg_probs_and_counts[0])
     if num_cats != abp_domain_size:
         raise Exception("number of ABP categories in gold {} does not match the model size {}!".format(num_cats, abp_domain_size))
