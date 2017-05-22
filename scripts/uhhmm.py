@@ -116,6 +116,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     init_strategy = params.get("init_strategy", '')
     always_sample = int(params.get("always_sample", 0))
     gold_pos_dict_file = params.get("gold_pos_dict_file", '')
+    MAP = int(params.get("MAP", 0))
 
     if gold_pos_dict_file:
         gold_pos_dict  = {}
@@ -506,29 +507,30 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ac_coeff = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
                                                      final_anneal_likelihood, anneal_likelihood_phase)
 
-        next_ac_coeff = calc_simulated_annealing(cur_anneal_iter+1, anneal_length, init_anneal_likelihood,
-                                                     final_anneal_likelihood, anneal_likelihood_phase)
-
         # annealing control
-        if next_ac_coeff != ac_coeff:
-            logging.info("The annealing coeff will jump from {} to {}".format(ac_coeff, next_ac_coeff))
-            if prev_sample.log_prob > best_anneal_likelihood:
-                best_anneal_likelihood = prev_sample.log_prob
-                best_anneal_model = copy.deepcopy(models)
-            logging.info("The best model at {} has likelihood of {} ".format(ac_coeff, best_anneal_likelihood))
-            # real_model = unreanneal(best_anneal_model, ac_coeff, next_ac_coeff)
-            real_model = best_anneal_model
-            sample.models = real_model
-            models = real_model
-            best_anneal_likelihood = -np.inf
+        if MAP:
+            next_ac_coeff = calc_simulated_annealing(cur_anneal_iter + 1, anneal_length, init_anneal_likelihood,
+                                                     final_anneal_likelihood, anneal_likelihood_phase)
+            if next_ac_coeff != ac_coeff:
+                logging.info("The annealing coeff will jump from {} to {}".format(ac_coeff, next_ac_coeff))
+                if prev_sample.log_prob > best_anneal_likelihood:
+                    best_anneal_likelihood = prev_sample.log_prob
+                    best_anneal_model = copy.deepcopy(models)
+                logging.info("The best model at {} has likelihood of {} ".format(ac_coeff, best_anneal_likelihood))
+                # real_model = unreanneal(best_anneal_model, ac_coeff, next_ac_coeff)
+                real_model = best_anneal_model
+                sample.models = real_model
+                models = real_model
+                best_anneal_likelihood = -np.inf
+            else:
+                logging.info("The log prob for this iter is {} and the best anneal likelihood for this phase is {}".format(prev_sample.log_prob, best_anneal_likelihood))
+                if prev_sample.log_prob > best_anneal_likelihood:
+                    best_anneal_likelihood = prev_sample.log_prob
+                    best_anneal_model = copy.deepcopy(models)
+
+                resample_all(models, sample, params, depth, anneal_alphas, ac_coeff)
         else:
-            logging.info("The log prob for this iter is {} and the best anneal likelihood for this phase is {}".format(prev_sample.log_prob, best_anneal_likelihood))
-            if prev_sample.log_prob > best_anneal_likelihood:
-                best_anneal_likelihood = prev_sample.log_prob
-                best_anneal_model = copy.deepcopy(models)
-
             resample_all(models, sample, params, depth, anneal_alphas, ac_coeff)
-
         # # anneal likelihood control
         # if prev_anneal_likelihood == 1 and anneal_likelihood > 1:
         #     prev_anneal_likelihood = anneal_likelihood
