@@ -1274,7 +1274,7 @@ def getBmax():
     global b_max
     return b_max
 
-def resample_all(models, sample, params, depth, anneal_alphas=0, ac_coeff=1):
+def resample_all(models, sample, params, depth, anneal_alphas=0, ac_coeff=1, normalize_flag=0):
     ## Sample distributions for all the model params and emissions params
     ## TODO -- make the Models class do this in a resample_all() method
     logging.info("Resampling all models with alpha_anneal {} and likelihood_anneal {}".format(anneal_alphas, ac_coeff))
@@ -1301,7 +1301,7 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, ac_coeff=1):
     # print(models.lex.pairCounts)
     models.lex.sampleDirichlet(h_base)
     models.lex.dist *= (ac_coeff)
-    if ac_coeff != 1:
+    if ac_coeff != 1 and normalize_flag:
         models.lex.dist = normalize(models.lex.dist)
     models.lex.dist[0,0] = 0.0
     models.lex.dist[0,1:].fill(-np.inf)
@@ -1312,7 +1312,7 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, ac_coeff=1):
     models.pos.dist *= (ac_coeff)
     if np.argwhere(np.isnan(models.pos.dist)).size > 0:
         logging.error("Resampling the pos dist resulted in a nan")
-    if ac_coeff != 1:
+    if ac_coeff != 1 and normalize_flag:
         models.pos.dist = normalize(models.pos.dist)
 
     logging.debug('printing out the pair counts for the models')
@@ -1321,31 +1321,31 @@ def resample_all(models, sample, params, depth, anneal_alphas=0, ac_coeff=1):
         # print(models.B_J1[d].pairCounts)
         models.B_J1[d].sampleDirichlet(b_base) # if d == 0 else b_base + models.B_J1[d-1].pairCounts * sample.alpha_b)
         models.B_J1[d].dist *= (ac_coeff)
-        if ac_coeff != 1:
+        if ac_coeff != 1 and normalize_flag:
             models.B_J1[d].dist = normalize(models.B_J1[d].dist)
         # print('depth {} model B J0: B| (A A) or (A P) with base {}'.format(d,b_base[0]))
         # print(models.B_J0[d].pairCounts)
         models.B_J0[d].sampleDirichlet(b_base) # if d == 0 else b_base + models.B_J0[d-1].pairCounts * sample.alpha_b)
         models.B_J0[d].dist *= (ac_coeff)
-        if ac_coeff != 1:
+        if ac_coeff != 1 and normalize_flag:
             models.B_J0[d].dist = normalize(models.B_J0[d].dist)
         # print("depth {} model A: A|(B A) or (B P) with base {}".format(d,a_base[0]))
         # print(models.A[d].pairCounts)
         models.A[d].sampleDirichlet(a_base) # if d == 0 else a_base + models.A[d-1].pairCounts * sample.alpha_a)
         models.A[d].dist *= (ac_coeff)
-        if ac_coeff != 1:
+        if ac_coeff != 1 and normalize_flag:
             models.A[d].dist = normalize(models.A[d].dist)
         # print("depth {} model J: J|(A B) or (P B) with base {}".format(d,j_base[0]))
         # print(models.J[d].pairCounts)
         models.J[d].sampleDirichlet(j_base) # if d == 0 else j_base + models.J[d-1].pairCounts * sample.alpha_j)
         models.J[d].dist *= (ac_coeff)
-        if ac_coeff != 1:
+        if ac_coeff != 1 and normalize_flag:
             models.J[d].dist = normalize(models.J[d].dist)
         # print("depth {} model F: F|B with base {}".format(d,f_base[0]))
         # print(models.F[d].pairCounts)
         models.F[d].sampleDirichlet(f_base) # if d == 0 else f_base + models.F[d-1].pairCounts * sample.alpha_f)
         models.F[d].dist *= (ac_coeff)
-        if ac_coeff != 1:
+        if ac_coeff != 1 and normalize_flag:
             models.F[d].dist = normalize(models.F[d].dist)
 
 def unreanneal(models, ac_coeff=1, next_ac_coeff=1):
