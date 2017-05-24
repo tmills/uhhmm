@@ -533,6 +533,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
                 resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
         else:
+            logging.info("The log prob for this iter is {}".format(
+                prev_sample.log_prob))
             resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
         # # anneal likelihood control
         # if prev_anneal_likelihood == 1 and anneal_likelihood > 1:
