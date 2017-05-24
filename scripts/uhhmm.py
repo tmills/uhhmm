@@ -104,11 +104,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     if gpu and num_gpu_workers < 1 and num_cpu_workers > 0:
         logging.warn("Inconsistent config: gpu flag set with %d gpu workers; setting gpu=False" % (num_gpu_workers))
         gpu=False
+
+    # there are annealing parameters
     init_anneal_alpha = float(params.get('init_anneal_alpha', 0))
     init_anneal_likelihood = float(params.get("init_anneal_likelihood", 1))
     final_anneal_likelihood = float(params.get("final_anneal_likelihood", 0))
-    anneal_likelihood_phase = int(params.get("anneal_likelihood_phase", 1))
     anneal_length = int(params.get("anneal_length", 1))
+    anneal_likelihood_phase = int(params.get("anneal_likelihood_phase", anneal_length))
     random_restarts = int(params.get("random_restarts",0))
     gold_pcfg_file = params.get("gold_pcfg_file", '')
     add_noise = int(params.get("add_noise",0))
@@ -117,6 +119,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     always_sample = int(params.get("always_sample", 0))
     gold_pos_dict_file = params.get("gold_pos_dict_file", '')
     MAP = int(params.get("MAP", 0))
+    normalize_flag = int(params.get("normalize_flag", 0))
 
     if gold_pos_dict_file:
         gold_pos_dict  = {}
@@ -528,9 +531,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     best_anneal_likelihood = prev_sample.log_prob
                     best_anneal_model = copy.deepcopy(models)
 
-                resample_all(models, sample, params, depth, anneal_alphas, ac_coeff)
+                resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
         else:
-            resample_all(models, sample, params, depth, anneal_alphas, ac_coeff)
+            resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
         # # anneal likelihood control
         # if prev_anneal_likelihood == 1 and anneal_likelihood > 1:
         #     prev_anneal_likelihood = anneal_likelihood
@@ -1374,7 +1377,7 @@ def unreanneal(models, ac_coeff=1, next_ac_coeff=1):
 # normalize a logged matrix
 def normalize(matrix):
     # assert len(matrix.shape) == 2, "shape of the normalizing matrix {} is not 2!".format(str(matrix.shape))
-    # print(matrix, 'first')
+    print(matrix, 'first')
     matrix[ matrix == -np.inf] = 0
     matrix = matrix ** 10
     sums = np.sum(matrix, axis=-1, keepdims=True)
@@ -1382,6 +1385,6 @@ def normalize(matrix):
     matrix /= sums
     matrix = np.log10(matrix)
     matrix = np.nan_to_num(matrix)
-    # print(matrix, 'last')
+    print(matrix, 'last')
     # assert np.sum(matrix) == np.cumprod(matrix.shape)[-1], "{}, {}".format(np.sum(matrix), np.cumprod(matrix.shape)[-1])
     return matrix
