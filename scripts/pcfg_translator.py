@@ -331,15 +331,15 @@ def pcfg_replace_model(hid_seq, sent, models, pcfg_model, inc=1, J=25, normalize
     d = d + 1  # calculate d+1 depth models for all pseudo count models, but not using them in _inc_counts
     abp_domain_size = models.A[0].dist.shape[0] - 2
     lex_size = models.lex.dist.shape[-1]
-    if not gold_pcfg_file and not strategy:
+    if not hid_seq and not sent:
+        pcfg_counts = {}
+    elif not gold_pcfg_file and not strategy:
         mixed_seqs = zip(hid_seq, sent)
         _, pcfg_counts = translate_through_pcfg(mixed_seqs, d, abp_domain_size)
     elif gold_pcfg_file:
         _, pcfg_counts = load_gold_trees(gold_pcfg_file,abp_domain_size)
     elif ints_seqs and strategy:
         _, pcfg_counts = init_with_strategy(ints_seqs, strategy, abp_domain_size, gold_pos_dict)
-    elif not hid_seq and not sent:
-        pcfg_counts = {}
     else:
         raise Exception("bad combination of initialization options!")
     sampled_pcfg = pcfg_model.sample(pcfg_counts)
