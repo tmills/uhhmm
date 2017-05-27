@@ -325,8 +325,7 @@ def _inc_counts(model, ref_model, inc=1, add_noise=False, sigma=1):
             model.pairCounts += noise
             model.pairCounts = np.absolute(model.pairCounts)
 
-
-def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, gold_pcfg_file=None,
+def pcfg_increment_counts(hid_seq, sent, models, pcfg_model, inc=1, J=25, normalize=False, gold_pcfg_file=None,
                           add_noise=False, noise_sigma = 0, strategy=None, ints_seqs=None, gold_pos_dict = None):
     d = len(models.A)
     d = d + 1  # calculate d+1 depth models for all pseudo count models, but not using them in _inc_counts
@@ -341,6 +340,7 @@ def pcfg_increment_counts(hid_seq, sent, models, inc=1, J=25, normalize=False, g
         pcfg, pcfg_counts = init_with_strategy(ints_seqs, strategy, abp_domain_size, gold_pos_dict)
     else:
         raise Exception("bad combination of initialization options!")
+    sampled_pcfg = pcfg_model.sample(pcfg_counts)
     nonterms = _build_nonterminals(abp_domain_size)
     delta_A, delta_B = _calc_delta(pcfg, J, abp_domain_size, d, nonterms)
     # print(delta_A, delta_B)
