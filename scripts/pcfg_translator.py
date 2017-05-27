@@ -6,6 +6,7 @@ from functools import reduce
 from init_pcfg_strategies import *
 import logging
 import math
+from pcfg_model import PCFG_model
 """
 this file is for translating sequences of states to pcfg counts and back to uhhmm counts
 the main function is translate_through_pcfg
@@ -97,14 +98,14 @@ def _build_nonterminals(abp_domain_size):
     # we build the 0 nonterminal just for convenience. it is not used.
     return nltk.grammar.nonterminals(','.join([str(x) for x in range(0, abp_domain_size+1)]))
 
-def _calc_delta(pcfg, J, abp_domain_size, d, nonterminals):
+def _calc_delta(sampled_pcfg, J, abp_domain_size, d, nonterminals):
     delta = np.zeros((2, J, abp_domain_size + 1, d))  # the delta model. s * d * i
     for a_index in range(abp_domain_size + 1):
         # if a_index == 0:
         #     continue
         a = nonterminals[a_index]
-        if a in pcfg:
-            lexical_sum = sum([items[1] for items in pcfg[a].items() if len(items[0]) == 1 and
+        if a in sampled_pcfg:
+            lexical_sum = sum([items[1] for items in sampled_pcfg[a].items() if len(items[0]) == 1 and
                            nltk.grammar.is_terminal(items[0][0])])
             delta[0, 1:, a_index, :] = lexical_sum
             delta[1, 1:, a_index, :] = lexical_sum
@@ -114,11 +115,11 @@ def _calc_delta(pcfg, J, abp_domain_size, d, nonterminals):
             for depth in range(d):
                 nonterm_sum_a = 0
                 nonterm_sum_b = 0
-                if a in pcfg:
-                    for rhs in pcfg[a]:
+                if a in sampled_pcfg:
+                    for rhs in sampled_pcfg[a]:
                         if len(rhs) == 1:
                             continue
-                        prob = pcfg[a][rhs]
+                        prob = sampled_pcfg[a][rhs]
                         a_prime = int(rhs[0].symbol())
                         b_prime = int(rhs[1].symbol())
                         nonterm_sum_a += prob * delta[0, i_index-1, a_prime, depth] * delta[1, i_index-1, b_prime, depth]
@@ -131,49 +132,49 @@ def _calc_delta(pcfg, J, abp_domain_size, d, nonterminals):
     #          print(i, j, delta[i, j])
     return delta[0, -1,...].T, delta[1,-1,...].T
 
-def _calc_gamma(deltas, pcfg, pcfg_counts, d):
+def _calc_gamma(deltas, sampled_pcfg, d):
     delta_A, delta_B = deltas
     gamma_As, gamma_Bs = [], []
-    gamma_A_counts, gamma_B_counts = [], []
+    # gamma_A_counts, gamma_B_counts = [], []
     for depth in range(d):
         gamma_As.append({})
         gamma_Bs.append({})
-        gamma_A_counts.append({})
-        gamma_B_counts.append({})
-        for lhs in pcfg:
-            for rhs in pcfg[lhs]:
+        # gamma_A_counts.append({})
+        # gamma_B_counts.append({})
+        for lhs in sampled_pcfg:
+            for rhs in sampled_pcfg[lhs]:
                 if any([nltk.grammar.is_terminal(x) for x in rhs]):
                     continue
                 if lhs not in gamma_As[depth]:
                     gamma_As[depth][lhs] = {}
                     gamma_Bs[depth][lhs] = {}
-                    gamma_A_counts[depth][lhs] = {}
-                    gamma_B_counts[depth][lhs] = {}
+                    # gamma_A_counts[depth][lhs] = {}
+                    # gamma_B_counts[depth][lhs] = {}
                 if rhs not in gamma_As[depth][lhs]:
                     gamma_As[depth][lhs][rhs] = 0
                     gamma_Bs[depth][lhs][rhs] = 0
-                    gamma_A_counts[depth][lhs][rhs] = 0
-                    gamma_B_counts[depth][lhs][rhs] = 0
-                gamma_As[depth][lhs][rhs] = np.nan_to_num(pcfg[lhs][rhs] * delta_A[depth][int(rhs[0].symbol())] * \
+                    # gamma_A_counts[depth][lhs][rhs] = 0
+                    # gamma_B_counts[depth][lhs][rhs] = 0
+                gamma_As[depth][lhs][rhs] = np.nan_to_num(sampled_pcfg[lhs][rhs] * delta_A[depth][int(rhs[0].symbol())] * \
                                             delta_B[depth][int(rhs[1].symbol())] / delta_A[depth][int(lhs.symbol())])
-                gamma_A_counts[depth][lhs][rhs] = np.nan_to_num(pcfg_counts[lhs][rhs] * delta_A[depth][int(rhs[0].symbol())] * \
-                                            delta_B[depth][int(rhs[1].symbol())] / delta_A[depth][int(lhs.symbol())])
+                # gamma_A_counts[depth][lhs][rhs] = np.nan_to_num(pcfg_counts[lhs][rhs] * delta_A[depth][int(rhs[0].symbol())] * \
+                #                             delta_B[depth][int(rhs[1].symbol())] / delta_A[depth][int(lhs.symbol())])
                 if depth + 1 < d:
-                    gamma_Bs[depth][lhs][rhs] = np.nan_to_num(pcfg[lhs][rhs] * delta_A[depth+1][int(rhs[0].symbol())] * \
+                    gamma_Bs[depth][lhs][rhs] = np.nan_to_num(sampled_pcfg[lhs][rhs] * delta_A[depth+1][int(rhs[0].symbol())] * \
                                             delta_B[depth][int(rhs[1].symbol())]  / delta_B[depth][int(lhs.symbol())])
-                    gamma_B_counts[depth][lhs][rhs] = np.nan_to_num(pcfg_counts[lhs][rhs] * delta_A[depth+1][int(rhs[0].symbol())] * \
-                                            delta_B[depth][int(rhs[1].symbol())]  / delta_B[depth][int(lhs.symbol())])
-    return gamma_As, gamma_Bs, gamma_A_counts, gamma_B_counts
+                    # gamma_B_counts[depth][lhs][rhs] = np.nan_to_num(pcfg_counts[lhs][rhs] * delta_A[depth+1][int(rhs[0].symbol())] * \
+                    #                         delta_B[depth][int(rhs[1].symbol())]  / delta_B[depth][int(lhs.symbol())])
+    return gamma_As, gamma_Bs #, gamma_A_counts, gamma_B_counts
 
-def _calc_expected_counts(gammas, pcfg_counts, J, d, abp_domain_size):
+def _calc_expected_counts(gammas, sampled_pcfg, J, d, abp_domain_size):
     gamma_As, gamma_Bs = gammas
     gamma_star_plus = np.zeros((J, d, abp_domain_size+1, abp_domain_size+1))
     preterm_marginal_distr = np.zeros(abp_domain_size+1)
-    for lhs in pcfg_counts:  # counting the accumulative probabilities for any preterminals
-        for rhs in pcfg_counts[lhs]:
+    for lhs in sampled_pcfg:  # counting the accumulative probabilities for any preterminals
+        for rhs in sampled_pcfg[lhs]:
             if all([nltk.grammar.is_terminal(x) for x in rhs]):
                 lhs_index = int(lhs.symbol())
-                preterm_marginal_distr[lhs_index] += pcfg_counts[lhs][rhs]
+                preterm_marginal_distr[lhs_index] += sampled_pcfg[lhs][rhs]
     for j in range(J):
         for depth in range(d):
             for lhs in gamma_As[depth]:
@@ -207,7 +208,7 @@ def _calc_f_model_bp(gamma_stars, d, abp_domain_size, normalize=False):
         return _normalize_a_tensor(f_model)
     return f_model
 
-def _calc_f_model(gamma_stars, d, abp_domain_size, normalize=False):
+def _calc_f_model(gamma_stars, d, abp_domain_size, normalize=True):
     gamma_star_plus, preterm_marginal_distr = gamma_stars
     f_model = np.zeros((d, abp_domain_size+2, 2))
     for depth in range(d):
@@ -224,55 +225,55 @@ def _calc_f_model(gamma_stars, d, abp_domain_size, normalize=False):
         return _normalize_a_tensor(f_model)
     return f_model
 
-def _calc_j_model(gamma_counts, gamma_stars, d, abp_domain_size, normalize=False):
+def _calc_j_model(gammas, gamma_stars, d, abp_domain_size, normalize=True):
+    gamma_A, gamma_B = gammas
     gamma_star_plus, preterm_marginal_distr = gamma_stars
-    gamma_A_counts, gamma_B_counts = gamma_counts
     j_model = np.zeros((d, abp_domain_size+2, abp_domain_size+2, 2))
     for depth in range(d):
-        for lhs in gamma_A_counts[depth]:
+        for lhs in gamma_A[depth]:
             lhs_index = int(lhs.symbol())
-            for rhs in gamma_A_counts[depth][lhs]:
+            for rhs in gamma_A[depth][lhs]:
                 rhs_left_index = int(rhs[0].symbol())
-                j_model[depth, rhs_left_index, lhs_index,  1] += gamma_B_counts[depth][lhs][rhs]
-                j_model[depth, rhs_left_index, :-1,  0] += gamma_A_counts[depth][lhs][rhs] * \
+                j_model[depth, rhs_left_index, lhs_index,  1] += gamma_B[depth][lhs][rhs]
+                j_model[depth, rhs_left_index, :-1,  0] += gamma_A[depth][lhs][rhs] * \
                                                          gamma_star_plus[depth, :, lhs_index]
     if normalize:
         return _normalize_a_tensor(j_model)
     return j_model
 
-def _calc_a_model(gamma_counts, gamma_stars, d, abp_domain_size, normalize=False):
+def _calc_a_model(gammas, gamma_stars, d, abp_domain_size, normalize=True):
     gamma_star_plus, preterm_marginal_distr = gamma_stars
-    gamma_A_counts, gamma_B_counts = gamma_counts
+    gamma_A, gamma_B = gammas
     a_model = np.zeros((d, abp_domain_size+2, abp_domain_size+2, abp_domain_size+2))
     for depth in range(d):
-        for lhs in gamma_A_counts[depth]:
+        for lhs in gamma_A[depth]:
             lhs_index = int(lhs.symbol())
-            for rhs in gamma_A_counts[depth][lhs]:
+            for rhs in gamma_A[depth][lhs]:
                 rhs_left_index = int(rhs[0].symbol())
                 a_model[depth, :-1, rhs_left_index, lhs_index] += gamma_star_plus[depth, :, lhs_index] * \
-                                                                 gamma_A_counts[depth][lhs][rhs]
+                                                                  gamma_A[depth][lhs][rhs]
     if normalize:
         return _normalize_a_tensor(a_model)
     return a_model
 
-def _calc_b_models(gamma_counts, d, abp_domain_size, normalize=False):
-    gamma_A_counts, gamma_B_counts = gamma_counts
+def _calc_b_models(gammas, d, abp_domain_size, normalize=True):
+    gamma_A, gamma_B = gammas
     b_j0_model = np.zeros((d, abp_domain_size+2, abp_domain_size+2, abp_domain_size+2))
     b_j1_model = np.zeros((d, abp_domain_size+2, abp_domain_size+2, abp_domain_size+2))
     for depth in range(d):
-        for lhs in gamma_A_counts[depth]:
+        for lhs in gamma_A[depth]:
             lhs_index = int(lhs.symbol())
-            for rhs in gamma_A_counts[depth][lhs]:
+            for rhs in gamma_A[depth][lhs]:
                 rhs_left_index = int(rhs[0].symbol())
                 rhs_right_index = int(rhs[1].symbol())
                 # print(rhs_left_index, rhs_right_index)
-                b_j0_model[depth, lhs_index, rhs_left_index, rhs_right_index] = gamma_A_counts[depth][lhs][rhs]
-                b_j1_model[depth, lhs_index, rhs_left_index, rhs_right_index] = gamma_B_counts[depth][lhs][rhs]
+                b_j0_model[depth, lhs_index, rhs_left_index, rhs_right_index] = gamma_A[depth][lhs][rhs]
+                b_j1_model[depth, lhs_index, rhs_left_index, rhs_right_index] = gamma_B[depth][lhs][rhs]
     if normalize:
         return _normalize_a_tensor(b_j0_model), _normalize_a_tensor(b_j1_model)
     return b_j0_model, b_j1_model
 
-def _calc_p_model(gamma_stars, d, abp_domain_size, normalize=False):
+def _calc_p_model(gamma_stars, d, abp_domain_size, normalize=True):
     gamma_star_plus, preterm_marginal_distr = gamma_stars
     # p_model = np.zeros((d, abp_domain_size+1, abp_domain_size+1))
     p_model = np.zeros((abp_domain_size + 2, abp_domain_size + 2))  # no depth
@@ -285,47 +286,46 @@ def _calc_p_model(gamma_stars, d, abp_domain_size, normalize=False):
         return _normalize_a_tensor(p_model)
     return p_model
 
-def _calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize=False):
+def _calc_w_model(sampled_pcfg, abp_domain_size, lex_size, normalize=True):
     w_model = np.zeros((abp_domain_size+2, lex_size))
-    for lhs in pcfg_counts:
+    for lhs in sampled_pcfg:
         lhs_index = int(lhs.symbol())
-        for rhs in pcfg_counts[lhs]:
+        for rhs in sampled_pcfg[lhs]:
             if all([nltk.grammar.is_terminal(x) for x in rhs]) and len(rhs) == 1 and rhs[0] != '-ROOT-':
-                w_model[lhs_index][int(rhs[0])] = pcfg_counts[lhs][rhs]
+                w_model[lhs_index][int(rhs[0])] = sampled_pcfg[lhs][rhs]
             elif all([nltk.grammar.is_terminal(x) for x in rhs]) and len(rhs) == 1 and rhs[0] == '-ROOT-':
-                w_model[lhs_index][0] = pcfg_counts[lhs][rhs]
-
+                w_model[lhs_index][0] = sampled_pcfg[lhs][rhs]
     if normalize:
         return _normalize_a_tensor(w_model)
     return w_model
 
 def _normalize_a_tensor(tensor):
-    return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-10)  # to supress zero division warning
+    return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-20)  # to supress zero division warning
 
-def _inc_counts(model, ref_model, inc=1, add_noise=False, sigma=1):
-    mu = 0
-    sigma = sigma
+def _replace_model(model, ref_model, inc,add_noise=False, sigma=1):
+    # mu = 0
+    # sigma = sigma
     if isinstance(model, list):
         for depth in range(len(model)):
-            model[depth].pairCounts += ref_model[depth] * inc
-            if add_noise:
-                size = model[depth].pairCounts.shape
-                flat_size = np.prod(size)
-                noise = np.random.normal(mu, sigma, flat_size)
-                noise = noise.reshape(size)
-                model[depth].pairCounts += noise
-                model[depth].pairCounts = np.absolute(model[depth].pairCounts)
+            model[depth].dist = ref_model[depth]
+            # if add_noise:
+            #     size = model[depth].pairCounts.shape
+            #     flat_size = np.prod(size)
+            #     noise = np.random.normal(mu, sigma, flat_size)
+            #     noise = noise.reshape(size)
+            #     model[depth].pairCounts += noise
+            #     model[depth].pairCounts = np.absolute(model[depth].pairCounts)
     else:
-        model.pairCounts += ref_model * inc
-        if add_noise:
-            size = model.pairCounts.shape
-            flat_size = np.prod(size)
-            noise = np.random.normal(mu, sigma, flat_size)
-            noise = noise.reshape(size)
-            model.pairCounts += noise
-            model.pairCounts = np.absolute(model.pairCounts)
+        model.dist = ref_model
+        # if add_noise:
+        #     size = model.pairCounts.shape
+        #     flat_size = np.prod(size)
+        #     noise = np.random.normal(mu, sigma, flat_size)
+        #     noise = noise.reshape(size)
+        #     model.pairCounts += noise
+        #     model.pairCounts = np.absolute(model.pairCounts)
 
-def pcfg_increment_counts(hid_seq, sent, models, pcfg_model, inc=1, J=25, normalize=False, gold_pcfg_file=None,
+def pcfg_replace_model(hid_seq, sent, models, pcfg_model, inc=1, J=25, normalize=True, gold_pcfg_file=None,
                           add_noise=False, noise_sigma = 0, strategy=None, ints_seqs=None, gold_pos_dict = None):
     d = len(models.A)
     d = d + 1  # calculate d+1 depth models for all pseudo count models, but not using them in _inc_counts
@@ -333,44 +333,46 @@ def pcfg_increment_counts(hid_seq, sent, models, pcfg_model, inc=1, J=25, normal
     lex_size = models.lex.dist.shape[-1]
     if not gold_pcfg_file and not strategy:
         mixed_seqs = zip(hid_seq, sent)
-        pcfg, pcfg_counts = translate_through_pcfg(mixed_seqs, d, abp_domain_size)
+        _, pcfg_counts = translate_through_pcfg(mixed_seqs, d, abp_domain_size)
     elif gold_pcfg_file:
-        pcfg, pcfg_counts = load_gold_trees(gold_pcfg_file,abp_domain_size)
+        _, pcfg_counts = load_gold_trees(gold_pcfg_file,abp_domain_size)
     elif ints_seqs and strategy:
-        pcfg, pcfg_counts = init_with_strategy(ints_seqs, strategy, abp_domain_size, gold_pos_dict)
+        _, pcfg_counts = init_with_strategy(ints_seqs, strategy, abp_domain_size, gold_pos_dict)
+    elif not hid_seq and not sent:
+        pcfg_counts = {}
     else:
         raise Exception("bad combination of initialization options!")
     sampled_pcfg = pcfg_model.sample(pcfg_counts)
     nonterms = _build_nonterminals(abp_domain_size)
-    delta_A, delta_B = _calc_delta(pcfg, J, abp_domain_size, d, nonterms)
+    delta_A, delta_B = _calc_delta(sampled_pcfg, J, abp_domain_size, d, nonterms)
     # print(delta_A, delta_B)
-    gamma_A, gamma_B, gamma_A_counts, gamma_B_counts = _calc_gamma((delta_A, delta_B),pcfg, pcfg_counts,d)
+    gamma_A, gamma_B = _calc_gamma((delta_A, delta_B), sampled_pcfg, d)
     # print(_calc_expected_counts((gamma_A, gamma_B), pcfg, J, d, abp_domain_size))
-    gamma_star, preterm_marginal_distr = _calc_expected_counts((gamma_A, gamma_B), pcfg_counts, J, d, abp_domain_size)
+    gamma_star, preterm_marginal_distr = _calc_expected_counts((gamma_A, gamma_B), sampled_pcfg, J, d, abp_domain_size)
     # print("F")
-    pseudo_F = _calc_f_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize)
-    _inc_counts(models.F, pseudo_F, inc, add_noise, noise_sigma)
+    pseudo_F = _calc_f_model((gamma_star, preterm_marginal_distr), d,abp_domain_size, normalize)
+    _replace_model(models.F, pseudo_F, inc, add_noise, noise_sigma)
     # print(_calc_f_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize))
     # print("J")
-    pseudo_J = _calc_j_model((gamma_A_counts, gamma_B_counts),(gamma_star, preterm_marginal_distr),d,abp_domain_size,normalize)
-    _inc_counts(models.J, pseudo_J, inc, add_noise, noise_sigma)
+    pseudo_J = _calc_j_model((gamma_A, gamma_B),(gamma_star, preterm_marginal_distr), d,abp_domain_size,normalize)
+    _replace_model(models.J, pseudo_J, inc, add_noise, noise_sigma)
     # print(_calc_j_model((gamma_A_counts, gamma_B_counts),(gamma_star, preterm_marginal_distr),d,abp_domain_size,normalize))
     # print("A")
-    pseudo_A = _calc_a_model((gamma_A_counts, gamma_B_counts), (gamma_star, preterm_marginal_distr), d, abp_domain_size,normalize)
-    _inc_counts(models.A, pseudo_A, inc, add_noise, noise_sigma)
+    pseudo_A = _calc_a_model((gamma_A, gamma_B), (gamma_star, preterm_marginal_distr), d, abp_domain_size,normalize)
+    _replace_model(models.A, pseudo_A, inc, add_noise, noise_sigma)
     # print(_calc_a_model((gamma_A_counts, gamma_B_counts), (gamma_star, preterm_marginal_distr), d, abp_domain_size,normalize))
     # print("B")
-    pseudo_B = _calc_b_models((gamma_A_counts, gamma_B_counts), d, abp_domain_size,normalize)
-    _inc_counts(models.B_J0, pseudo_B[0], inc, add_noise, noise_sigma)
-    _inc_counts(models.B_J1, pseudo_B[1], inc, add_noise, noise_sigma)
+    pseudo_B = _calc_b_models((gamma_A, gamma_B), d, abp_domain_size,normalize)
+    _replace_model(models.B_J0, pseudo_B[0], inc, add_noise, noise_sigma)
+    _replace_model(models.B_J1, pseudo_B[1], inc, add_noise, noise_sigma)
     # print(_calc_b_models((gamma_A_counts, gamma_B_counts), d, abp_domain_size,normalize))
     # print("P")
-    pseudo_P = _calc_p_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize)
-    _inc_counts(models.pos, pseudo_P, inc, add_noise, noise_sigma)
+    pseudo_P = _calc_p_model((gamma_star, preterm_marginal_distr), d,abp_domain_size, normalize)
+    _replace_model(models.pos, pseudo_P, inc, add_noise, noise_sigma)
     # print(_calc_p_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize))
     # print("W")
-    pseudo_W = _calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize)
-    _inc_counts(models.lex, pseudo_W, inc, add_noise, noise_sigma)
+    pseudo_W = _calc_w_model(sampled_pcfg, abp_domain_size, lex_size, normalize)
+    _replace_model(models.lex, pseudo_W, inc, add_noise, noise_sigma)
     # print(_calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize))
     logging.info("TOTAL COUNTS FOR ALL MODELS IN PCFG REACCOUNTS F {}, J {}, A {}, B[J0] {}, B[J1] {}, P {}, W {}"
           .format(np.sum(pseudo_F[:-1]), np.sum(pseudo_J[:-1]),
@@ -441,9 +443,9 @@ def main():
     abp_domain_size = 5
     d = 3
     J = 50
-    normalize = False
+    normalize = True
     nonterms = _build_nonterminals(abp_domain_size)
-    lex_size = 7+1
+    lex_size = 5+2
     # print(tree_processed)
     # print(tree_processed.productions())
 
@@ -451,30 +453,31 @@ def main():
     print("PCFG")
     print(pcfg)
     print(pcfg_counts)
+    pcfg_model = PCFG_model(abp_domain_size, 5)
+    pcfg = pcfg_model.sample(pcfg_counts)
     print("DELTAs")
     # print(_calc_delta(pcfg, J, abp_domain_size, d,nonterms)[0], '\n',_calc_delta(pcfg, J, abp_domain_size, d,nonterms)[1])
     delta_A, delta_B = _calc_delta(pcfg, J, abp_domain_size, d, nonterms)
     print(delta_A, delta_B)
-    gamma_A, gamma_B, gamma_A_counts, gamma_B_counts = _calc_gamma((delta_A, delta_B),pcfg, pcfg_counts,d)
+    gamma_A, gamma_B = _calc_gamma((delta_A, delta_B),pcfg, d)
     print("GAMMAs")
     print(gamma_A)
     print(gamma_B)
-    print(gamma_A_counts)
-    print(gamma_B_counts)
+
     print("GAMMA stars")
-    gamma_star, preterm_marginal_distr = _calc_expected_counts((gamma_A, gamma_B), pcfg_counts, J, d, abp_domain_size)
+    gamma_star, preterm_marginal_distr = _calc_expected_counts((gamma_A, gamma_B), pcfg, J, d, abp_domain_size)
     print(gamma_star,preterm_marginal_distr)
     print("F")
     print(_calc_f_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize))
     print("J")
-    print(_calc_j_model((gamma_A_counts, gamma_B_counts),(gamma_star, preterm_marginal_distr),d,abp_domain_size,normalize))
+    print(_calc_j_model((gamma_A, gamma_B),(gamma_star, preterm_marginal_distr),d,abp_domain_size,normalize))
     print("A")
-    print(_calc_a_model((gamma_A_counts, gamma_B_counts), (gamma_star, preterm_marginal_distr), d, abp_domain_size,normalize))
+    print(_calc_a_model((gamma_A, gamma_B), (gamma_star, preterm_marginal_distr), d, abp_domain_size,normalize))
     print("B")
-    print(_calc_b_models((gamma_A_counts, gamma_B_counts), d, abp_domain_size,normalize))
+    print(_calc_b_models((gamma_A, gamma_B), d, abp_domain_size,normalize))
     print("P")
     print(_calc_p_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize))
     print("W")
-    print(_calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize))
+    print(_calc_w_model(pcfg, abp_domain_size, lex_size, normalize))
 if __name__ == '__main__':
     main()

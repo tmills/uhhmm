@@ -30,6 +30,7 @@ from workers import start_local_workers_with_distributer, start_cluster_workers
 from pcfg_translator import pcfg_increment_counts, calc_anneal_alphas, calc_anneal_likelihood, calc_simulated_annealing
 import copy
 from init_pcfg_strategies import *
+from pcfg_model import PCFG_model
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -120,6 +121,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     gold_pos_dict_file = params.get("gold_pos_dict_file", '')
     MAP = int(params.get("MAP", 0))
     normalize_flag = int(params.get("normalize_flag", 0))
+    pcfg_alpha = float(params.get('pcfg_alpha', 1.0))
 
     if gold_pos_dict_file:
         gold_pos_dict  = {}
@@ -147,6 +149,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     models = Models()
     start_ind = 0
     end_ind = min(num_sents, batch_size)
+
+    pcfg_model = PCFG_model(start_a, max_output)
+    pcfg_model.set_alpha(pcfg_alpha)
 
     logging.info("Initializing state")
 
@@ -193,8 +198,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                                       , gold_pos_dict = gold_pos_dict)
             else:
                 raise Exception("strategy {} not found!".format(init_strategy))
-        resample_all(models, sample, params, depth)
-        models.resetAll()
+        pcfg_replace_model(None, None, models, pcfg_model)
 
         sample.models = models
         iter = 0
@@ -390,9 +394,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             if sample.log_prob > max_loglikelihood:
                 max_loglikelihood = sample.log_prob
                 best_init_model = copy.deepcopy(models)
-                best_init_model.resetAll()
-            models.resetAll()
-            resample_all(models, sample, params, depth )
+            pcfg_replace_model(None, None, models, pcfg_model)
             sample.log_prob = 0
             iter += 1
             continue
@@ -401,8 +403,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             if sample.log_prob > max_loglikelihood:
                 max_loglikelihood = sample.log_prob
                 best_init_model = copy.deepcopy(models)
-                best_init_model.resetAll()
-            best_init_model = unreanneal(best_init_model, next_ac_coeff=init_anneal_likelihood)
+            # best_init_model = unreanneal(best_init_model, next_ac_coeff=init_anneal_likelihood)
             sample.models = best_init_model
             models = best_init_model
             logging.info("The {} random restart has a loglikelihood of {}".format(iter, sample.log_prob))
@@ -415,21 +416,21 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             pass
 
         # incrementing counts in the pair counts tables of the models
-        pcfg_increment_counts(state_list, state_indices, models)
+        pcfg_replace_model(state_list, state_indices, models, pcfg_model)
 
         if num_processed < (end_ind - start_ind):
             logging.warning("Didn't receive the correct number of parses at iteration %d" % iter)
-
-        logging.info("Parsed %d sentences this batch -- now have %d parses" % (end_ind-start_ind, end_ind ) )
-        max_state_check(hid_seqs, models, "parses")
-
-        pos_counts = models.pos.pairCounts[:].sum()
-        lex_counts = models.lex.pairCounts[:].sum()
-        if not pos_counts == lex_counts:
-            logging.warn("This iteration has %d pos counts for %d lex counts" % (pos_counts, lex_counts))
-
-        if not pos_counts == num_tokens:
-            logging.warn("This iteration has %d pos counts for %d tokens" % (pos_counts, num_tokens) )
+        #
+        # logging.info("Parsed %d sentences this batch -- now have %d parses" % (end_ind-start_ind, end_ind ) )
+        # max_state_check(hid_seqs, models, "parses")
+        #
+        # pos_counts = models.pos.pairCounts[:].sum()
+        # lex_counts = models.lex.pairCounts[:].sum()
+        # if not pos_counts == lex_counts:
+        #     logging.warn("This iteration has %d pos counts for %d lex counts" % (pos_counts, lex_counts))
+        #
+        # if not pos_counts == num_tokens:
+        #     logging.warn("This iteration has %d pos counts for %d tokens" % (pos_counts, num_tokens) )
 
         t1 = time.time()
         logging.info("Building counts tables took %d s" % (t1-t0))
@@ -503,7 +504,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if split_merge:
             resample_beta_g(models, sample.gamma)
 
-        anneal_alphas = calc_anneal_alphas(models, iter, burnin, init_anneal_alpha, total_sent_lens)
+        # anneal_alphas = calc_anneal_alphas(models, iter, burnin, init_anneal_alpha, total_sent_lens)
         cur_anneal_iter = iter - random_restarts
         assert (iter <= anneal_length and anneal_length > 1) or anneal_length == 1, "number of iterations is larger than annealing length!"
         # anneal_likelihood = calc_anneal_likelihood(cur_iter, anneal_length, init_anneal_likelihood, anneal_likelihood_phase)
@@ -530,12 +531,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 if prev_sample.log_prob > best_anneal_likelihood:
                     best_anneal_likelihood = prev_sample.log_prob
                     best_anneal_model = copy.deepcopy(models)
-
-                resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
+                pcfg_replace_model(state_list, state_indices, models, pcfg_model)
+                # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
         else:
             logging.info("The log prob for this iter is {}".format(
                 prev_sample.log_prob))
-            resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
+            pcfg_replace_model(state_list, state_indices, models, pcfg_model)
+            # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
         # # anneal likelihood control
         # if prev_anneal_likelihood == 1 and anneal_likelihood > 1:
         #     prev_anneal_likelihood = anneal_likelihood
