@@ -66,10 +66,11 @@ class PCFG_model:
                         keys_indices[rule.lhs()][rule.rhs()] = len(keys_indices[rule.lhs()])
                         indices_keys[rule.lhs()].append(rule.rhs())
                 else:
-                    rule = nltk.grammar.Production(self.nonterms[parent], ('0',))
+                    rule = nltk.grammar.Production(self.nonterms[parent], ('-ROOT-',))
                     keys_indices[rule.lhs()][rule.rhs()] = len(keys_indices[rule.lhs()])
                     indices_keys[rule.lhs()].append(rule.rhs())
             else:
+
                 for l_child in range(1, abp_domain_size + 1):
                     for r_child in range(1, abp_domain_size + 1):
                         rule = nltk.grammar.Production(self.nonterms[parent], (self.nonterms[l_child], self.nonterms[r_child]))
