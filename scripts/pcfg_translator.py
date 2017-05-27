@@ -307,7 +307,7 @@ def _replace_model(model, ref_model, inc,add_noise=False, sigma=1):
     # sigma = sigma
     if isinstance(model, list):
         for depth in range(len(model)):
-            model[depth].dist = ref_model[depth]
+            np.log10(ref_model[depth], model[depth].dist)
             # if add_noise:
             #     size = model[depth].pairCounts.shape
             #     flat_size = np.prod(size)
@@ -316,7 +316,7 @@ def _replace_model(model, ref_model, inc,add_noise=False, sigma=1):
             #     model[depth].pairCounts += noise
             #     model[depth].pairCounts = np.absolute(model[depth].pairCounts)
     else:
-        model.dist = ref_model
+        np.log10(ref_model, model.dist)
         # if add_noise:
         #     size = model.pairCounts.shape
         #     flat_size = np.prod(size)
