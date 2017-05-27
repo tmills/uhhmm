@@ -18,6 +18,7 @@ class PCFG_model:
                 return self.keys_indices[item[0]][item[1]]
         except:
             print(item)
+            print(type(item[1][0]))
             print(self.keys_indices)
             raise Exception("Blah")
 
