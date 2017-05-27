@@ -11,10 +11,15 @@ class PCFG_model:
 
     def __getitem__(self, item):
         assert isinstance(item, tuple), "PCFG can only look up tuples"
-        if isinstance(item[1], int):
-            return self.indices_keys[item[0]][item[1]]
-        elif isinstance(item[1], tuple):
-            return self.keys_indices[item[0]][item[1]]
+        try:
+            if isinstance(item[1], int):
+                return self.indices_keys[item[0]][item[1]]
+            elif isinstance(item[1], tuple):
+                return self.keys_indices[item[0]][item[1]]
+        except:
+            print(item)
+            print(self.keys_indices)
+            raise Exception("Blah")
 
     def __len__(self):
         return self.size
