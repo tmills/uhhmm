@@ -107,8 +107,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
     # there are annealing parameters
     init_anneal_alpha = float(params.get('init_anneal_alpha', 0))
-    init_anneal_likelihood = float(params.get("init_anneal_likelihood", 1))
-    final_anneal_likelihood = float(params.get("final_anneal_likelihood", 0))
+    init_anneal_likelihood = float(params.get("init_anneal_likelihood", 0))
+    final_anneal_likelihood = float(params.get("final_anneal_likelihood", 1))
     anneal_length = int(params.get("anneal_length", 1))
     anneal_likelihood_phase = int(params.get("anneal_likelihood_phase", anneal_length))
     random_restarts = int(params.get("random_restarts",0))
@@ -1379,7 +1379,7 @@ def unreanneal(models, ac_coeff=1, next_ac_coeff=1):
 # normalize a logged matrix
 def normalize(matrix):
     # assert len(matrix.shape) == 2, "shape of the normalizing matrix {} is not 2!".format(str(matrix.shape))
-    print(matrix, 'first')
+    # print(matrix, 'first')
     matrix = np.nan_to_num(matrix)
     # matrix[ matrix == -np.inf] = 0
     matrix = 10 ** matrix
@@ -1388,6 +1388,6 @@ def normalize(matrix):
     matrix /= sums
     matrix = np.log10(matrix)
     matrix = np.nan_to_num(matrix)
-    print(matrix, 'last')
+    # print(matrix, 'last')
     # assert np.sum(matrix) == np.cumprod(matrix.shape)[-1], "{}, {}".format(np.sum(matrix), np.cumprod(matrix.shape)[-1])
     return matrix
