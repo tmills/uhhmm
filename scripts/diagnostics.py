@@ -8,6 +8,7 @@ import os
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from left_corner2normal_tree_converter import parse_state_seq_string, normalize_dateline
+import sys
 
 """
 this is the diagnostics generation script which plots trace plots for all models, logprobs,
@@ -164,10 +165,11 @@ def plot_depth2_branching(dir, depth=2):
 if __name__ == '__main__':
     suffixes = ['p_fork_','p_j_', 'p_act_', 'p_awa_j0_', 'p_awa_j1_', 'p_pos_']
     # suffixes = ['p_lex_given_pos'] # too many dependent vars. too slow
-    dir = '../test/'
+    dir = sys.argv[1]
+    depth = sys.argv[2]
+    abp_domain_size = sys.argv[3]
     plot_log_probs(dir)
     plot_depth2_branching(dir)
-    depth = [2,2,2,2,2,-1,-1]
-    max_cat = 5
+    depth = [depth,depth,depth,depth,depth,-1,-1]
     for index, suf in enumerate(suffixes):
-        plot_trace_main(suf, depth[index], dir, suf, max_cat)
+        plot_trace_main(suf, depth[index], dir, suf, abp_domain_size)
