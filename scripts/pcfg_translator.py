@@ -326,7 +326,8 @@ def _replace_model(model, ref_model, inc,add_noise=False, sigma=1):
         #     model.pairCounts = np.absolute(model.pairCounts)
 
 def pcfg_replace_model(hid_seq, sent, models, pcfg_model, inc=1, J=25, normalize=True, gold_pcfg_file=None,
-                          add_noise=False, noise_sigma = 0, strategy=None, ints_seqs=None, gold_pos_dict = None):
+                       add_noise=False, noise_sigma = 0, strategy=None, ints_seqs=None, gold_pos_dict = None,
+                       ac_coeff = 1.0):
     d = len(models.A)
     d = d + 1  # calculate d+1 depth models for all pseudo count models, but not using them in _inc_counts
     abp_domain_size = models.A[0].dist.shape[0] - 2
@@ -342,7 +343,7 @@ def pcfg_replace_model(hid_seq, sent, models, pcfg_model, inc=1, J=25, normalize
         _, pcfg_counts = init_with_strategy(ints_seqs, strategy, abp_domain_size, gold_pos_dict)
     else:
         raise Exception("bad combination of initialization options!")
-    sampled_pcfg = pcfg_model.sample(pcfg_counts)
+    sampled_pcfg = pcfg_model.sample(pcfg_counts, ac_coeff)
     nonterms = _build_nonterminals(abp_domain_size)
     delta_A, delta_B = _calc_delta(sampled_pcfg, J, abp_domain_size, d, nonterms)
     # print(delta_A, delta_B)

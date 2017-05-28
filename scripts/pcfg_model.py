@@ -32,11 +32,11 @@ class PCFG_model:
     def set_alpha(self, alpha):
         self.alpha = alpha
 
-    def sample(self, pcfg_counts): # used as the normal sampling procedure
+    def sample(self, pcfg_counts, annealing_coeff=1): # used as the normal sampling procedure
         logging.info("resample the pcfg model with alpha {}.".format(self.alpha))
         self._reset_counts()
         self._update_counts(pcfg_counts)
-        sampled_pcfg = self._sample_model()
+        sampled_pcfg = self._sample_model(annealing_coeff)
         sampled_pcfg = self._translate_model_to_pcfg(sampled_pcfg)
         return sampled_pcfg
 
@@ -50,8 +50,8 @@ class PCFG_model:
                 index = self[(parent, children)]
                 self.counts[parent][index] += pcfg_counts[parent][children]
 
-    def _sample_model(self):
-        dists = {x:np.random.dirichlet(self.counts[x]) for x in self.counts}
+    def _sample_model(self, annealing_coeff=1):
+        dists = {x:np.random.dirichlet(self.counts[x]) ** annealing_coeff for x in self.counts}
         return dists
 
     def _translate_model_to_pcfg(self, dists):

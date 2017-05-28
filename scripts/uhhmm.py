@@ -190,11 +190,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         # initialization: a few controls:
         if gold_pcfg_file:
             logging.info("Initializing the models with the gold PCFG file {}.".format(gold_pcfg_file))
-            pcfg_increment_counts(None, None, models, gold_pcfg_file=gold_pcfg_file, add_noise=add_noise, noise_sigma=noise_sigma)
+            pcfg_replace_model(None, None, models, gold_pcfg_file=gold_pcfg_file, add_noise=add_noise, noise_sigma=noise_sigma)
         elif init_strategy:
             logging.info("Initialization strategy found \"{}\". Executing strategy.".format(init_strategy))
             if init_strategy in STRATEGY_STRINGS:
-                pcfg_increment_counts(None, None, models, strategy=STRATEGY_STRINGS[init_strategy], ints_seqs=sample.ev_seqs
+                pcfg_replace_model(None, None, models, strategy=STRATEGY_STRINGS[init_strategy], ints_seqs=sample.ev_seqs
                                       , gold_pos_dict = gold_pos_dict)
             else:
                 raise Exception("strategy {} not found!".format(init_strategy))
@@ -506,52 +506,40 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         # anneal_alphas = calc_anneal_alphas(models, iter, burnin, init_anneal_alpha, total_sent_lens)
         cur_anneal_iter = iter - random_restarts
-        assert (iter <= anneal_length and anneal_length > 1) or anneal_length == 1, "number of iterations is larger than annealing length!"
-        # anneal_likelihood = calc_anneal_likelihood(cur_iter, anneal_length, init_anneal_likelihood, anneal_likelihood_phase)
-        ac_coeff = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
-                                                     final_anneal_likelihood, anneal_likelihood_phase)
-
-        # annealing control
-        if MAP:
-            next_ac_coeff = calc_simulated_annealing(cur_anneal_iter + 1, anneal_length, init_anneal_likelihood,
-                                                     final_anneal_likelihood, anneal_likelihood_phase)
-            if next_ac_coeff != ac_coeff:
-                logging.info("The annealing coeff will jump from {} to {}".format(ac_coeff, next_ac_coeff))
-                if prev_sample.log_prob > best_anneal_likelihood:
-                    best_anneal_likelihood = prev_sample.log_prob
-                    best_anneal_model = copy.deepcopy(models)
-                logging.info("The best model at {} has likelihood of {} ".format(ac_coeff, best_anneal_likelihood))
-                # real_model = unreanneal(best_anneal_model, ac_coeff, next_ac_coeff)
-                real_model = best_anneal_model
-                sample.models = real_model
-                models = real_model
-                best_anneal_likelihood = -np.inf
-            else:
-                logging.info("The log prob for this iter is {} and the best anneal likelihood for this phase is {}".format(prev_sample.log_prob, best_anneal_likelihood))
-                if prev_sample.log_prob > best_anneal_likelihood:
-                    best_anneal_likelihood = prev_sample.log_prob
-                    best_anneal_model = copy.deepcopy(models)
-                pcfg_replace_model(state_list, state_indices, models, pcfg_model)
-                # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
-        else:
-            logging.info("The log prob for this iter is {}".format(
-                prev_sample.log_prob))
+        if (iter <= anneal_length and anneal_length > 1) or anneal_length == 1: # if annealing is finished
+            logging.warn("number of iterations {} is larger than annealing length {}! Doing normal sampling!".format(iter, anneal_length))
+            logging.info("The log prob for this iter is {}".format(prev_sample.log_prob))
             pcfg_replace_model(state_list, state_indices, models, pcfg_model)
+        else:
+            ac_coeff = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
+                                                         final_anneal_likelihood, anneal_likelihood_phase)
+            # annealing control
+            if MAP:
+                next_ac_coeff = calc_simulated_annealing(cur_anneal_iter + 1, anneal_length, init_anneal_likelihood,
+                                                         final_anneal_likelihood, anneal_likelihood_phase)
+                if next_ac_coeff != ac_coeff:
+                    logging.info("The annealing coeff will jump from {} to {}".format(ac_coeff, next_ac_coeff))
+                    if prev_sample.log_prob > best_anneal_likelihood:
+                        best_anneal_likelihood = prev_sample.log_prob
+                        best_anneal_model = copy.deepcopy(models)
+                    logging.info("The best model at {} has likelihood of {} ".format(ac_coeff, best_anneal_likelihood))
+                    # real_model = unreanneal(best_anneal_model, ac_coeff, next_ac_coeff)
+                    real_model = best_anneal_model
+                    sample.models = real_model
+                    models = real_model
+                    best_anneal_likelihood = -np.inf
+                else:
+                    logging.info("The log prob for this iter is {} and the best anneal likelihood for this phase is {}".format(prev_sample.log_prob, best_anneal_likelihood))
+                    if prev_sample.log_prob > best_anneal_likelihood:
+                        best_anneal_likelihood = prev_sample.log_prob
+                        best_anneal_model = copy.deepcopy(models)
+                    pcfg_replace_model(state_list, state_indices, models, pcfg_model, ac_coeff=ac_coeff)
+                    # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
+            else:
+                logging.info("The log prob for this iter is {}".format(
+                    prev_sample.log_prob))
+                pcfg_replace_model(state_list, state_indices, models, pcfg_model, ac_coeff=ac_coeff)
             # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
-        # # anneal likelihood control
-        # if prev_anneal_likelihood == 1 and anneal_likelihood > 1:
-        #     prev_anneal_likelihood = anneal_likelihood
-        # if anneal_likelihood < prev_anneal_likelihood and iter != 0:
-        #     prev_anneal_likelihood = anneal_likelihood
-        #     models = best_anneal_model
-        #     sample.models = best_anneal_model
-        #     logging.info("Annealling jumps from {} to {}. The model is set to the model with the logprob of {}.".format\
-        #                      (prev_anneal_likelihood, anneal_likelihood, max_loglikelihood))
-        # elif anneal_likelihood == prev_anneal_likelihood and anneal_likelihood != 1:
-        #     if sample.log_prob > max_loglikelihood:
-        #         best_anneal_model = copy.deepcopy(models)
-        #         max_loglikelihood = sample.log_prob
-
 
         ## Update sentence indices for next batch:
         if end_ind == len(ev_seqs):
