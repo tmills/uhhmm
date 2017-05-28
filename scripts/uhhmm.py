@@ -533,12 +533,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     if prev_sample.log_prob > best_anneal_likelihood:
                         best_anneal_likelihood = prev_sample.log_prob
                         best_anneal_model = copy.deepcopy(models)
-                    pcfg_replace_model(state_list, state_indices, models, pcfg_model, ac_coeff=ac_coeff)
+                    pcfg_replace_model(state_list, state_indices, models, pcfg_model, ac_coeff=ac_coeff,
+                                       annealing_normalize=normalize_flag)
                     # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
             else:
                 logging.info("The log prob for this iter is {}".format(
                     prev_sample.log_prob))
-                pcfg_replace_model(state_list, state_indices, models, pcfg_model, ac_coeff=ac_coeff)
+                pcfg_replace_model(state_list, state_indices, models, pcfg_model, ac_coeff=ac_coeff, annealing_normalize=normalize_flag)
             # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
 
         ## Update sentence indices for next batch:
