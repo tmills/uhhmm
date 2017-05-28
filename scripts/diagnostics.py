@@ -166,8 +166,8 @@ if __name__ == '__main__':
     suffixes = ['p_fork_','p_j_', 'p_act_', 'p_awa_j0_', 'p_awa_j1_', 'p_pos_']
     # suffixes = ['p_lex_given_pos'] # too many dependent vars. too slow
     dir = sys.argv[1]
-    depth = sys.argv[2]
-    abp_domain_size = sys.argv[3]
+    depth = int(sys.argv[2])
+    abp_domain_size = int(sys.argv[3])
     plot_log_probs(dir)
     plot_depth2_branching(dir)
     depth = [depth,depth,depth,depth,depth,-1,-1]
