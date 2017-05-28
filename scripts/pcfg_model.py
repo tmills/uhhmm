@@ -1,5 +1,6 @@
 import nltk
 import numpy as np
+import logging
 
 class PCFG_model:
     def __init__(self, abp_domain_size, len_vocab):
@@ -32,6 +33,7 @@ class PCFG_model:
         self.alpha = alpha
 
     def sample(self, pcfg_counts): # used as the normal sampling procedure
+        logging.info("resample the pcfg model with alpha {}.".format(self.alpha))
         self._reset_counts()
         self._update_counts(pcfg_counts)
         sampled_pcfg = self._sample_model()
