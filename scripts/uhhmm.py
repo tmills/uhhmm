@@ -121,7 +121,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     gold_pos_dict_file = params.get("gold_pos_dict_file", '')
     MAP = int(params.get("MAP", 0))
     normalize_flag = int(params.get("normalize_flag", 0))
-    pcfg_alpha = float(params.get('pcfg_alpha', 1.0))
+    alpha_pcfg = float(params.get('alpha_pcfg', 1.0))
 
     if gold_pos_dict_file:
         gold_pos_dict  = {}
