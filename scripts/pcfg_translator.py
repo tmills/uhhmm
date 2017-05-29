@@ -6,7 +6,7 @@ from functools import reduce
 from init_pcfg_strategies import *
 import logging
 import math
-from pcfg_model import PCFG_model
+from pcfg_model import PCFG_model, normalize_a_tensor
 """
 this file is for translating sequences of states to pcfg counts and back to uhhmm counts
 the main function is translate_through_pcfg
@@ -299,8 +299,6 @@ def _calc_w_model(sampled_pcfg, abp_domain_size, lex_size, normalize=True):
         return normalize_a_tensor(w_model)
     return w_model
 
-def normalize_a_tensor(tensor):
-    return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-20)  # to supress zero division warning
 
 def _replace_model(model, ref_model, inc,add_noise=False, sigma=1):
     # mu = 0

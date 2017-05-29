@@ -1,7 +1,9 @@
 import nltk
 import numpy as np
 import logging
-from pcfg_translator import normalize_a_tensor
+
+def normalize_a_tensor(tensor):
+    return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-20)  # to supress zero division warning
 
 class PCFG_model:
     def __init__(self, abp_domain_size, len_vocab):
