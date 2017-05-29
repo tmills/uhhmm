@@ -205,7 +205,7 @@ def _calc_f_model_bp(gamma_stars, d, abp_domain_size, normalize=False):
         if depth == 0:
             f_model[0, 0, 0, 0] = 0
     if normalize:
-        return _normalize_a_tensor(f_model)
+        return normalize_a_tensor(f_model)
     return f_model
 
 def _calc_f_model(gamma_stars, d, abp_domain_size, normalize=True):
@@ -222,7 +222,7 @@ def _calc_f_model(gamma_stars, d, abp_domain_size, normalize=True):
         if depth == 0:
             f_model[0, 0, 0] = 0
     if normalize:
-        return _normalize_a_tensor(f_model)
+        return normalize_a_tensor(f_model)
     return f_model
 
 def _calc_j_model(gammas, gamma_stars, d, abp_domain_size, normalize=True):
@@ -238,7 +238,7 @@ def _calc_j_model(gammas, gamma_stars, d, abp_domain_size, normalize=True):
                 j_model[depth, rhs_left_index, :-1,  0] += gamma_A[depth][lhs][rhs] * \
                                                          gamma_star_plus[depth, :, lhs_index]
     if normalize:
-        return _normalize_a_tensor(j_model)
+        return normalize_a_tensor(j_model)
     return j_model
 
 def _calc_a_model(gammas, gamma_stars, d, abp_domain_size, normalize=True):
@@ -253,7 +253,7 @@ def _calc_a_model(gammas, gamma_stars, d, abp_domain_size, normalize=True):
                 a_model[depth, :-1, rhs_left_index, lhs_index] += gamma_star_plus[depth, :, lhs_index] * \
                                                                   gamma_A[depth][lhs][rhs]
     if normalize:
-        return _normalize_a_tensor(a_model)
+        return normalize_a_tensor(a_model)
     return a_model
 
 def _calc_b_models(gammas, d, abp_domain_size, normalize=True):
@@ -270,7 +270,7 @@ def _calc_b_models(gammas, d, abp_domain_size, normalize=True):
                 b_j0_model[depth, lhs_index, rhs_left_index, rhs_right_index] = gamma_A[depth][lhs][rhs]
                 b_j1_model[depth, lhs_index, rhs_left_index, rhs_right_index] = gamma_B[depth][lhs][rhs]
     if normalize:
-        return _normalize_a_tensor(b_j0_model), _normalize_a_tensor(b_j1_model)
+        return normalize_a_tensor(b_j0_model), normalize_a_tensor(b_j1_model)
     return b_j0_model, b_j1_model
 
 def _calc_p_model(gamma_stars, d, abp_domain_size, normalize=True):
@@ -283,7 +283,7 @@ def _calc_p_model(gamma_stars, d, abp_domain_size, normalize=True):
                 # p_model[depth, lhs, rhs] = (gamma_star_plus[depth][lhs][rhs]) * preterm_marginal_distr[rhs]
                 p_model[lhs, rhs] += (gamma_star_plus[depth][lhs][rhs]) * preterm_marginal_distr[rhs]
     if normalize:
-        return _normalize_a_tensor(p_model)
+        return normalize_a_tensor(p_model)
     return p_model
 
 def _calc_w_model(sampled_pcfg, abp_domain_size, lex_size, normalize=True):
@@ -296,10 +296,10 @@ def _calc_w_model(sampled_pcfg, abp_domain_size, lex_size, normalize=True):
             elif all([nltk.grammar.is_terminal(x) for x in rhs]) and len(rhs) == 1 and rhs[0] == '-ROOT-':
                 w_model[lhs_index][0] = sampled_pcfg[lhs][rhs]
     if normalize:
-        return _normalize_a_tensor(w_model)
+        return normalize_a_tensor(w_model)
     return w_model
 
-def _normalize_a_tensor(tensor):
+def normalize_a_tensor(tensor):
     return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-20)  # to supress zero division warning
 
 def _replace_model(model, ref_model, inc,add_noise=False, sigma=1):

@@ -1,7 +1,7 @@
 import nltk
 import numpy as np
 import logging
-from pcfg_translator import _normalize_a_tensor
+from pcfg_translator import normalize_a_tensor
 
 class PCFG_model:
     def __init__(self, abp_domain_size, len_vocab):
@@ -33,11 +33,10 @@ class PCFG_model:
     def set_alpha(self, alpha):
         self.alpha = alpha
 
-    def sample(self, pcfg_counts, annealing_coeff=1, normalize = False): # used as the normal sampling procedure
-        logging.info("resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha, annealing_coeff))
+    def sample(self, pcfg_counts, annealing_coeff=1.0, normalize = False): # used as the normal sampling procedure
         self._reset_counts()
         self._update_counts(pcfg_counts)
-        sampled_pcfg = self._sample_model(annealing_coeff, normalize = False)
+        sampled_pcfg = self._sample_model(annealing_coeff, normalize = normalize)
         sampled_pcfg = self._translate_model_to_pcfg(sampled_pcfg)
         return sampled_pcfg
 
@@ -51,10 +50,11 @@ class PCFG_model:
                 index = self[(parent, children)]
                 self.counts[parent][index] += pcfg_counts[parent][children]
 
-    def _sample_model(self, annealing_coeff=1, normalize=False):
+    def _sample_model(self, annealing_coeff=1.0, normalize=False):
+        logging.info("resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha, annealing_coeff))
         dists = {x:np.random.dirichlet(self.counts[x]) ** annealing_coeff for x in self.counts}
         if normalize:
-            dists = {x:_normalize_a_tensor(dists[x]) for x in dists}
+            dists = {x:normalize_a_tensor(dists[x]) for x in dists}
         return dists
 
     def _translate_model_to_pcfg(self, dists):
