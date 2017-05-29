@@ -506,7 +506,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         # anneal_alphas = calc_anneal_alphas(models, iter, burnin, init_anneal_alpha, total_sent_lens)
         cur_anneal_iter = iter - random_restarts
-        if (iter <= anneal_length and anneal_length > 1) or anneal_length == 1: # if annealing is finished
+        if (cur_anneal_iter >= anneal_length and anneal_length > 1) or anneal_length == 1: # if annealing is finished
             logging.warn("number of iterations {} is larger than annealing length {}! Doing normal sampling!".format(iter, anneal_length))
             logging.info("The log prob for this iter is {}".format(prev_sample.log_prob))
             pcfg_replace_model(state_list, state_indices, models, pcfg_model)
