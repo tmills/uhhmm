@@ -416,7 +416,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             pass
 
         # incrementing counts in the pair counts tables of the models
-        pcfg_replace_model(state_list, state_indices, models, pcfg_model)
+        # pcfg_replace_model(state_list, state_indices, models, pcfg_model)
 
         if num_processed < (end_ind - start_ind):
             logging.warning("Didn't receive the correct number of parses at iteration %d" % iter)
