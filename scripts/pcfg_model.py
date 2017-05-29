@@ -34,7 +34,7 @@ class PCFG_model:
         self.alpha = alpha
 
     def sample(self, pcfg_counts, annealing_coeff=1, normalize = False): # used as the normal sampling procedure
-        logging.info("resample the pcfg model with alpha {}.".format(self.alpha))
+        logging.info("resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha, annealing_coeff))
         self._reset_counts()
         self._update_counts(pcfg_counts)
         sampled_pcfg = self._sample_model(annealing_coeff, normalize = False)
