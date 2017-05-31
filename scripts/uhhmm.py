@@ -539,8 +539,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
             else:
                 logprob = sample.log_prob if sample.log_prob != 0 else prev_sample.log_prob
-                logging.info("The log prob for this iter is {}".format(
-                    prev_sample.log_prob))
+                logging.info("The log prob for this iter is {}".format(log_prob))
                 pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff, annealing_normalize=normalize_flag)
             # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
 
