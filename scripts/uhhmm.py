@@ -260,6 +260,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     best_anneal_model = None
     best_anneal_likelihood = -np.inf
     prev_anneal_coeff = -np.inf
+    acc_logprob = 0
     ### Start doing actual sampling:
     while num_samples < max_samples:
         sample.iter = iter
@@ -387,6 +388,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     raise
                 sample.log_prob += parse.log_prob
             hid_seqs[parse.index] = parse.state_list
+        acc_logprob += sample.log_prob
 
         # random restarts control
         if iter < random_restarts - 1:
@@ -509,7 +511,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         cur_anneal_iter = iter - random_restarts
         if (cur_anneal_iter >= anneal_length and anneal_length > 1) or anneal_length == 1: # if annealing is finished
             logging.warn("number of iterations {} is larger than annealing length {}! Doing normal sampling!".format(iter, anneal_length))
-            logging.info("The log prob for this iter is {}".format(prev_sample.log_prob))
+            logging.info("The log prob for this iter is {}".format(acc_logprob))
             pcfg_replace_model(state_list, state_indices, models, pcfg_model)
         else:
             ac_coeff = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
@@ -520,8 +522,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                                                          final_anneal_likelihood, anneal_likelihood_phase)
                 if next_ac_coeff != ac_coeff:
                     logging.info("The annealing coeff will jump from {} to {}".format(ac_coeff, next_ac_coeff))
-                    if prev_sample.log_prob > best_anneal_likelihood:
-                        best_anneal_likelihood = prev_sample.log_prob
+                    if acc_logprob > best_anneal_likelihood:
+                        best_anneal_likelihood = acc_logprob
                         best_anneal_model = copy.deepcopy(models)
                     logging.info("The best model at {} has likelihood of {} ".format(ac_coeff, best_anneal_likelihood))
                     # real_model = unreanneal(best_anneal_model, ac_coeff, next_ac_coeff)
@@ -532,17 +534,16 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 else:
                     logging.info("The log prob for this iter is {} and the best anneal likelihood for this phase is {}".format(prev_sample.log_prob, best_anneal_likelihood))
                     if prev_sample.log_prob > best_anneal_likelihood:
-                        best_anneal_likelihood = prev_sample.log_prob
+                        best_anneal_likelihood = acc_logprob
                         best_anneal_model = copy.deepcopy(models)
                     pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff,
                                        annealing_normalize=normalize_flag)
                     # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
             else:
-                logprob = sample.log_prob if sample.log_prob != 0 else prev_sample.log_prob
-                logging.info("The log prob for this iter is {}".format(log_prob))
+                logging.info("The log prob for this iter is {}".format(acc_logprob))
                 pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff, annealing_normalize=normalize_flag)
             # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
-
+        acc_logprob = 0
         ## Update sentence indices for next batch:
         if end_ind == len(ev_seqs):
             start_ind = 0
