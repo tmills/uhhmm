@@ -120,7 +120,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     always_sample = int(params.get("always_sample", 0))
     gold_pos_dict_file = params.get("gold_pos_dict_file", '')
     MAP = int(params.get("MAP", 0))
-    normalize_flag = int(params.get("normalize_flag", 0))
+    normalize_flag = int(params.get("normalize_flag", 1))
     alpha_pcfg = float(params.get('alpha_pcfg', 1.0))
 
     if gold_pos_dict_file:
@@ -198,7 +198,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                                       , gold_pos_dict = gold_pos_dict)
             else:
                 raise Exception("strategy {} not found!".format(init_strategy))
-        pcfg_replace_model(None, None, models, pcfg_model)
+        else:
+            pcfg_replace_model(None, None, models, pcfg_model)
 
         sample.models = models
         iter = 0
@@ -533,13 +534,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     if prev_sample.log_prob > best_anneal_likelihood:
                         best_anneal_likelihood = prev_sample.log_prob
                         best_anneal_model = copy.deepcopy(models)
-                    pcfg_replace_model(state_list, state_indices, models, pcfg_model, ac_coeff=ac_coeff,
+                    pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff,
                                        annealing_normalize=normalize_flag)
                     # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
             else:
                 logging.info("The log prob for this iter is {}".format(
                     prev_sample.log_prob))
-                pcfg_replace_model(state_list, state_indices, models, pcfg_model, ac_coeff=ac_coeff, annealing_normalize=normalize_flag)
+                pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff, annealing_normalize=normalize_flag)
             # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
 
         ## Update sentence indices for next batch:
@@ -562,16 +563,16 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         lex_counts = models.lex.pairCounts[:].sum()
         logging.info("Have %d pos counts, %d lex counts after sample " % (pos_counts, lex_counts) )
 
-        ## remove the counts from these sentences
-        if batch_size < num_sents:
-            logging.info("Decrementing counts for sentence indices %d-%d" % (start_ind, end_ind) )
-            decrement_sentence_counts(hid_seqs, ev_seqs, models, start_ind, end_ind)
-        else:
-            logging.info("Resetting all counts to zero for next iteration")
-            models.resetAll()
-            pos_counts = models.pos.pairCounts[:].sum()
-            lex_counts = models.lex.pairCounts[:].sum()
-            assert pos_counts == 0 and lex_counts == 0
+        # ## remove the counts from these sentences
+        # if batch_size < num_sents:
+        #     logging.info("Decrementing counts for sentence indices %d-%d" % (start_ind, end_ind) )
+        #     decrement_sentence_counts(hid_seqs, ev_seqs, models, start_ind, end_ind)
+        # else:
+        #     logging.info("Resetting all counts to zero for next iteration")
+        #     models.resetAll()
+        #     pos_counts = models.pos.pairCounts[:].sum()
+        #     lex_counts = models.lex.pairCounts[:].sum()
+        #     assert pos_counts == 0 and lex_counts == 0
 
         iter += 1
 

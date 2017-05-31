@@ -323,21 +323,21 @@ def _replace_model(model, ref_model, inc,add_noise=False, sigma=1):
         #     model.pairCounts += noise
         #     model.pairCounts = np.absolute(model.pairCounts)
 
-def pcfg_replace_model(hid_seq, sent, models, pcfg_model, inc=1, J=25, normalize=True, gold_pcfg_file=None,
+def pcfg_replace_model(hid_seq, ev_seq, models, pcfg_model, inc=1, J=25, normalize=True, gold_pcfg_file=None,
                        add_noise=False, noise_sigma = 0, strategy=None, ints_seqs=None, gold_pos_dict = None,
                        ac_coeff = 1.0, annealing_normalize=False):
     d = len(models.A)
     d = d + 1  # calculate d+1 depth models for all pseudo count models, but not using them in _inc_counts
     abp_domain_size = models.A[0].dist.shape[0] - 2
     lex_size = models.lex.dist.shape[-1]
-    if not hid_seq and not sent:
+    if not hid_seq and not ev_seq: # initialization without any parses
         pcfg_counts = {}
-    elif not gold_pcfg_file and not strategy:
-        mixed_seqs = zip(hid_seq, sent)
+    elif not gold_pcfg_file and not strategy: # normal sampling
+        mixed_seqs = zip(hid_seq, ev_seq)
         _, pcfg_counts = translate_through_pcfg(mixed_seqs, d, abp_domain_size)
-    elif gold_pcfg_file:
+    elif gold_pcfg_file:  # with a gold pcfg file
         _, pcfg_counts = load_gold_trees(gold_pcfg_file,abp_domain_size)
-    elif ints_seqs and strategy:
+    elif ints_seqs and strategy:  # with a init strategy
         _, pcfg_counts = init_with_strategy(ints_seqs, strategy, abp_domain_size, gold_pos_dict)
     else:
         raise Exception("bad combination of initialization options!")
