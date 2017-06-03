@@ -35,12 +35,12 @@ class PCFG_model:
     def init_counts(self):
         self.counts = {x:np.zeros(len(self.indices_keys[x])) + self.alpha for x in self.indices_keys}
 
-    def set_alpha(self, alpha_range, alpha=None):
+    def set_alpha(self, alpha_range, alpha=0.0):
         if isinstance(alpha_range, list):
             self.alpha_range = alpha_range
         else:
             self.alpha_range = [float(x) for x in alpha_range.split(',')]
-        if alpha is not None:
+        if alpha != 0.0:
             assert alpha >= alpha_range[0] and alpha <= alpha_range[1]
             self.alpha = alpha
         else:
