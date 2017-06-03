@@ -92,12 +92,14 @@ class PCFG_model:
     def _sample_model(self, annealing_coeff=1.0, normalize=False):
         logging.info("resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha, annealing_coeff))
         self.unannealed_dists = {x:np.random.dirichlet(self.counts[x]) for x in self.counts}
-        # print(dists)
+        dists = {}
         if annealing_coeff != 1.0:
             for x in dists:
-                dists[x] = dists[x] ** annealing_coeff
+                dists[x] = self.unannealed_dists[x] ** annealing_coeff
             if normalize:
                 dists = {x:normalize_a_tensor(dists[x]) for x in dists}
+        else:
+            dists = self.unannealed_dists
         # print(dists)
         # print(np.sum(dists[nltk.grammar.Nonterminal('1')], axis=0))
         return dists
