@@ -63,7 +63,7 @@ class PCFG_model:
                 index = self[(parent, children)]
                 self.counts[parent][index] += pcfg_counts[parent][children]
 
-    def _sample_alpha(self, dists, step_size = 0.05): # sampling the hyperparamter for the dirichlets
+    def _sample_alpha(self, dists, step_size = 0.01): # sampling the hyperparamter for the dirichlets
 
         old_f_val = 1.0
         new_f_val = 1.0
