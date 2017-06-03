@@ -1,16 +1,19 @@
 import nltk
 import numpy as np
 import logging
-
+from scipy.stats import dirichlet
 def normalize_a_tensor(tensor):
     return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-20)  # to supress zero division warning
 
 class PCFG_model:
     def __init__(self, abp_domain_size, len_vocab):
+        self.abp_domain_size = abp_domain_size
+        self.len_vocab = len_vocab
         self.nonterms = [nltk.grammar.Nonterminal(str(x)) for x in range(abp_domain_size + 1)]
         self.indices_keys, self.keys_indices = self.build_pcfg_indices(abp_domain_size, len_vocab)
         self.size = len(self.indices_keys)
-        self.alpha = 1.0
+        self.alpha_range = []
+        self.alpha = 0
         self.init_counts()
 
     def __getitem__(self, item):
@@ -32,8 +35,16 @@ class PCFG_model:
     def init_counts(self):
         self.counts = {x:np.zeros(len(self.indices_keys[x])) + self.alpha for x in self.indices_keys}
 
-    def set_alpha(self, alpha):
-        self.alpha = alpha
+    def set_alpha(self, alpha_range, alpha=None):
+        if isinstance(alpha_range, list):
+            self.alpha_range = alpha_range
+        else:
+            self.alpha_range = [float(x) for x in alpha_range.split(',')]
+        if alpha is not None:
+            assert alpha >= alpha_range[0] and alpha <= alpha_range[1]
+            self.alpha = alpha
+        else:
+            self.alpha = sum(alpha_range) / len(alpha_range)
 
     def sample(self, pcfg_counts, annealing_coeff=1.0, normalize = False): # used as the normal sampling procedure
         self._reset_counts()
@@ -52,10 +63,34 @@ class PCFG_model:
                 index = self[(parent, children)]
                 self.counts[parent][index] += pcfg_counts[parent][children]
 
+    def _sample_alpha(self, dists, step_size = 0.01): # sampling the hyperparamter for the dirichlets
+        alpha_vec = np.zeros(abp_domain_size)
+        alpha_vec.fill(self.alpha)
+        old_f_val = 0
+        new_f_val = 0
+        for dist in dists.values():
+            old_f_val += dirichlet.logpdf(dist, alpha_vec)
+        new_alpha = 0
+        while new_alpha < self.alpha_range[0] or new_alpha > self.alpha_range[1]:
+            new_alpha = self.alpha + np.random.normal(0.0, step_size)
+        alpha_vec.fill(new_alpha)
+        for dist in dists.values():
+            new_f_val += dirichlet.logpdf(dist, alpha_vec)
+        acceptance_thres = np.random.uniform(0.0, 1.0)
+        mh_ratio = new_f_val/old_f_val
+        if mh_ratio > acceptance_thres:
+            self.alpha = new_alpha
+            logging.info('pcfg alpha samples a new value {} with ratio {}/{}'.format(new_alpha, mh_ratio, acceptance_thres))
+
+
     def _sample_model(self, annealing_coeff=1.0, normalize=False):
         logging.info("resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha, annealing_coeff))
-        dists = {x:np.random.dirichlet(self.counts[x]) ** annealing_coeff for x in self.counts}
+        dists = {x:np.random.dirichlet(self.counts[x]) for x in self.counts}
+        self._sample_alpha(dists)
         # print(dists)
+        if annealing_coeff != 1.0:
+            for x in dists:
+                dists[x] = dists[x] ** annealing_coeff
         if normalize:
             dists = {x:normalize_a_tensor(dists[x]) for x in dists}
         # print(dists)
