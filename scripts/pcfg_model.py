@@ -63,19 +63,22 @@ class PCFG_model:
                 index = self[(parent, children)]
                 self.counts[parent][index] += pcfg_counts[parent][children]
 
-    def _sample_alpha(self, dists, step_size = 0.01): # sampling the hyperparamter for the dirichlets
-        alpha_vec = np.zeros(self.abp_domain_size)
-        alpha_vec.fill(self.alpha)
-        old_f_val = 0
-        new_f_val = 0
+    def _sample_alpha(self, dists, step_size = 0.05): # sampling the hyperparamter for the dirichlets
+
+        old_f_val = 1.0
+        new_f_val = 1.0
         for dist in dists.values():
-            old_f_val += dirichlet.logpdf(dist, alpha_vec)
+            alpha_vec = np.zeros_like(dist)
+            alpha_vec.fill(self.alpha)
+            old_f_val *= dirichlet.pdf(dist, alpha_vec)
         new_alpha = 0
         while new_alpha < self.alpha_range[0] or new_alpha > self.alpha_range[1]:
             new_alpha = self.alpha + np.random.normal(0.0, step_size)
         alpha_vec.fill(new_alpha)
         for dist in dists.values():
-            new_f_val += dirichlet.logpdf(dist, alpha_vec)
+            alpha_vec = np.zeros_like(dist)
+            alpha_vec.fill(new_alpha)
+            new_f_val *= dirichlet.pdf(dist, alpha_vec)
         acceptance_thres = np.random.uniform(0.0, 1.0)
         mh_ratio = new_f_val/old_f_val
         if mh_ratio > acceptance_thres:
