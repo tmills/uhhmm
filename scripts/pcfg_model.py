@@ -55,8 +55,11 @@ class PCFG_model:
     def _sample_model(self, annealing_coeff=1.0, normalize=False):
         logging.info("resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha, annealing_coeff))
         dists = {x:np.random.dirichlet(self.counts[x]) ** annealing_coeff for x in self.counts}
+        # print(dists)
         if normalize:
             dists = {x:normalize_a_tensor(dists[x]) for x in dists}
+        # print(dists)
+        # print(np.sum(dists[nltk.grammar.Nonterminal('1')], axis=0))
         return dists
 
     def _translate_model_to_pcfg(self, dists):
@@ -108,6 +111,6 @@ if __name__ == '__main__':
     pcfg_model._reset_counts()
     print(pcfg_model.counts)
     pcfg_model._update_counts(pcfg_counts_model)
-    pcfg_model_dict = pcfg_model.sample(pcfg_counts_model)
-    print(pcfg_model.sample(pcfg_counts_model)[nltk.grammar.Nonterminal('1')][(nltk.grammar.Nonterminal('1'), nltk.grammar.Nonterminal('3'))])
-    print(pcfg_model_dict[nltk.grammar.Nonterminal('0')])
+    pcfg_model_dict = pcfg_model.sample(pcfg_counts_model, annealing_coeff=0.5, normalize=True)
+    print(pcfg_model_dict[nltk.grammar.Nonterminal('1')][(nltk.grammar.Nonterminal('1'), nltk.grammar.Nonterminal('3'))])
+    print(pcfg_model_dict[nltk.grammar.Nonterminal('1')])

@@ -512,7 +512,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if (cur_anneal_iter >= anneal_length and anneal_length > 1) or anneal_length == 1: # if annealing is finished
             logging.warn("number of iterations {} is larger than annealing length {}! Doing normal sampling!".format(iter, anneal_length))
             logging.info("The log prob for this iter is {}".format(acc_logprob))
-            pcfg_replace_model(state_list, state_indices, models, pcfg_model)
+            pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model)
         else:
             ac_coeff = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
                                                          final_anneal_likelihood, anneal_likelihood_phase)
