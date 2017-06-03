@@ -89,7 +89,7 @@ class PCFG_model:
     def _sample_model(self, annealing_coeff=1.0, normalize=False):
         logging.info("resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha, annealing_coeff))
         dists = {x:np.random.dirichlet(self.counts[x]) for x in self.counts}
-        self._sample_alpha(dists)
+        # self._sample_alpha(dists)
         # print(dists)
         if annealing_coeff != 1.0:
             for x in dists:
