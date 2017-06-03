@@ -64,7 +64,7 @@ class PCFG_model:
                 self.counts[parent][index] += pcfg_counts[parent][children]
 
     def _sample_alpha(self, dists, step_size = 0.01): # sampling the hyperparamter for the dirichlets
-        alpha_vec = np.zeros(abp_domain_size)
+        alpha_vec = np.zeros(self.abp_domain_size)
         alpha_vec.fill(self.alpha)
         old_f_val = 0
         new_f_val = 0
