@@ -121,7 +121,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     gold_pos_dict_file = params.get("gold_pos_dict_file", '')
     MAP = int(params.get("MAP", 0))
     normalize_flag = int(params.get("normalize_flag", 1))
-    alpha_pcfg_range = float(params.get('alpha_pcfg_range', '0.1,1.0'))  # a comma separated list of lower and upper bounds of alpha-pcfg
+    alpha_pcfg_range = params.get('alpha_pcfg_range', [0.1, 1.0])  # a comma separated list of lower and upper bounds of alpha-pcfg
     init_alpha = float(params.get("init_alpha", None))
 
     if gold_pos_dict_file:
