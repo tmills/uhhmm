@@ -65,12 +65,12 @@ class PCFG_model:
 
     def _sample_alpha(self, dists, step_size = 0.01): # sampling the hyperparamter for the dirichlets
 
-        old_f_val = 1.0
-        new_f_val = 1.0
+        old_f_val = 0.0
+        new_f_val = 0.0
         for dist in dists.values():
             alpha_vec = np.zeros_like(dist)
             alpha_vec.fill(self.alpha)
-            old_f_val *= dirichlet.pdf(dist, alpha_vec)
+            old_f_val += dirichlet.logpdf(dist, alpha_vec)
         new_alpha = 0
         while new_alpha < self.alpha_range[0] or new_alpha > self.alpha_range[1]:
             new_alpha = self.alpha + np.random.normal(0.0, step_size)
@@ -78,24 +78,24 @@ class PCFG_model:
         for dist in dists.values():
             alpha_vec = np.zeros_like(dist)
             alpha_vec.fill(new_alpha)
-            new_f_val *= dirichlet.pdf(dist, alpha_vec)
-        acceptance_thres = np.random.uniform(0.0, 1.0)
-        mh_ratio = new_f_val/old_f_val
+            new_f_val += dirichlet.logpdf(dist, alpha_vec)
+        acceptance_thres = np.log(np.random.uniform(0.0, 1.0))
+        mh_ratio = new_f_val - old_f_val
         if mh_ratio > acceptance_thres:
             self.alpha = new_alpha
-            logging.info('pcfg alpha samples a new value {} with ratio {}/{}'.format(new_alpha, mh_ratio, acceptance_thres))
+            logging.info('pcfg alpha samples a new value {} with log ratio {}/{}'.format(new_alpha, mh_ratio, acceptance_thres))
 
 
     def _sample_model(self, annealing_coeff=1.0, normalize=False):
         logging.info("resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha, annealing_coeff))
         dists = {x:np.random.dirichlet(self.counts[x]) for x in self.counts}
-        # self._sample_alpha(dists)
+        self._sample_alpha(dists)
         # print(dists)
         if annealing_coeff != 1.0:
             for x in dists:
                 dists[x] = dists[x] ** annealing_coeff
-        if normalize:
-            dists = {x:normalize_a_tensor(dists[x]) for x in dists}
+            if normalize:
+                dists = {x:normalize_a_tensor(dists[x]) for x in dists}
         # print(dists)
         # print(np.sum(dists[nltk.grammar.Nonterminal('1')], axis=0))
         return dists
