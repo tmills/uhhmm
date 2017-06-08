@@ -123,6 +123,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     normalize_flag = int(params.get("normalize_flag", 1))
     alpha_pcfg_range = params.get('alpha_pcfg_range', [0.1, 1.0])  # a comma separated list of lower and upper bounds of alpha-pcfg
     init_alpha = float(params.get("init_alpha", 0.0))
+    sample_alpha_flag = int(params.get("sample_alpha_flag",0))
 
     if gold_pos_dict_file:
         gold_pos_dict  = {}
@@ -513,7 +514,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if (cur_anneal_iter >= anneal_length and anneal_length > 1) or anneal_length == 1: # if annealing is finished
             logging.warn("number of iterations {} is larger than annealing length {}! Doing normal sampling!".format(iter, anneal_length))
             logging.info("The log prob for this iter is {}".format(acc_logprob))
-            pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model)
+            pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, sample_alpha_flag=sample_alpha_flag)
         else:
             ac_coeff = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
                                                          final_anneal_likelihood, anneal_likelihood_phase)
@@ -538,11 +539,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                         best_anneal_likelihood = acc_logprob
                         best_anneal_model = copy.deepcopy(models)
                     pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff,
-                                       annealing_normalize=normalize_flag)
+                                       annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
                     # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
             else:
                 logging.info("The log prob for this iter is {}".format(acc_logprob))
-                pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff, annealing_normalize=normalize_flag)
+                pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff, annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
             # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
         acc_logprob = 0
         ## Update sentence indices for next batch:

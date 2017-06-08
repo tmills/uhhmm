@@ -47,8 +47,9 @@ class PCFG_model:
         else:
             self.alpha = sum(alpha_range) / len(alpha_range)
 
-    def sample(self, pcfg_counts, annealing_coeff=1.0, normalize = False): # used as the normal sampling procedure
-        self._sample_alpha()
+    def sample(self, pcfg_counts, annealing_coeff=1.0, normalize = False, sample_alpha_flag=False): # used as the normal sampling procedure
+        if sample_alpha_flag:
+            self._sample_alpha()
         self._reset_counts()
         self._update_counts(pcfg_counts)
         sampled_pcfg = self._sample_model(annealing_coeff, normalize = normalize)
