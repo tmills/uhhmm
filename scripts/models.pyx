@@ -15,10 +15,29 @@ cdef class Model:
         self.name = name
         self.corpus_shape = corpus_shape
 
+## shape: shape of pos x tokens. shape[0]*shape[1] is the number of Gaussian
+## parameters we need to store for the model.
+## embeddings: the word embeddings for all the word types in this corpus
+cdef class GaussianModel(Model):
+    def __init__(self, shape, embeddings, corpus_shape=(1,1), name="Gaussian"):
+        Model.__init__(self, shape, corpus_shape, name)
+        self.shape = shape
+        self.pairCounts = np.zeros(shape, dtype=np.float32)
+        self.condCounts = np.zeros(shape[0], dtype=np.int)
+        ## Initialize distributions:
 
+    def count(self, pos_ind, token_ind, val):
+        ## we've seen a count of pos tag cond pos_ind and word index token_ind
+        ## Go through embeddings matrix to create pair counts for each dimensions
+        self.condCounts[pos_ind] += val
+        for dim in self.embeddings.shape[1]:
+            self.pairCounts
+
+    def sampleGaussian(self):
+        
 cdef class CategoricalModel(Model):
-
-    def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, name="Categorical"):
+    def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, corpus_shape=(1,1), name="Categorical"):
+        Model.__init__(self, shape, corpus_shape, name)
         self.shape = shape
         self.pairCounts = np.zeros(shape, dtype=np.int)
         self.globalPairCounts = np.zeros(shape, dtype=np.int)
@@ -154,7 +173,7 @@ cdef class Models:
     def __init__(self):
         self.models = []
 
-    def initialize_as_fjabp(self, max_output, params, corpus_shape, depth, a_max, b_max, g_max):
+    def initialize_as_fjabp(self, max_output, params, corpus_shape, depth, a_max, b_max, g_max, lex=None):
 
         ## FJ model:
         self.fj = [None] * depth
@@ -189,13 +208,13 @@ cdef class Models:
         ## one pos model:
         self.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape, name="POS")
 
-        ## one lex model:
-        #self.lex = Model((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
-        self.lex = []
-        for i in range(g_max):
-            self.lex.append([])
-            for dim in range(dims):
-                self.lex[i].append(scipy.stats.norm(0.0, 1.0))
+        if lex is None:
+            ## one lex model (categorical default)
+            self.lex = CategoricalModel((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
+        else:
+            ## Let the calling entity worry about the lex model.
+            self.lex = lex
+
 
         self.append(self.fj)
         self.append(self.act)

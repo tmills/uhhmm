@@ -19,4 +19,5 @@ cdef class CategoricalModel(Model):
     cdef public trans_prob
 
 cdef class GaussianModel(Model):
-    pass
+    cdef public tuple shape
+    cdef public np.ndarray pairCounts, embeddings
