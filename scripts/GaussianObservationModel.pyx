@@ -28,7 +28,7 @@ cdef class GaussianObservationModel(PosDependentObservationModel.PosDependentObs
         for g in range(1,g_max):
             prob = 1.0
             for ind in range(len(token)):
-                prob *= self.models.lex[g][ind].pdf(token[ind])
+                prob *= self.models.lex.dist[g][ind].pdf(token[ind])
             retVec.append(prob)
 
         retVec.append(0.0)
