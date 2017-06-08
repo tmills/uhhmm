@@ -20,7 +20,7 @@ cdef class Model:
 ## embeddings: the word embeddings for all the word types in this corpus
 cdef class GaussianModel(Model):
     def __init__(self, shape, embeddings, corpus_shape=(1,1), name="Gaussian"):
-        Model.__init__(self, shape, corpus_shape, name)
+        Model.__init__(self, corpus_shape, name)
         self.shape = shape
         self.pairCounts = np.zeros(shape, dtype=np.float32)
         self.condCounts = np.zeros(shape[0], dtype=np.int)
@@ -34,17 +34,18 @@ cdef class GaussianModel(Model):
             self.pairCounts
 
     def sampleGaussian(self):
+        pass
         
 cdef class CategoricalModel(Model):
     def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, corpus_shape=(1,1), name="Categorical"):
-        Model.__init__(self, shape, corpus_shape, name)
+        Model.__init__(self, corpus_shape, name)
         self.shape = shape
         self.pairCounts = np.zeros(shape, dtype=np.int)
         self.globalPairCounts = np.zeros(shape, dtype=np.int)
         self.dist = np.random.random(shape)
         self.dist /= self.dist.sum(1, keepdims=True)
         self.dist = np.log10(self.dist)
-        self.trans_prob = lil_matrix(corpus_shape)
+        self.trans_prob = lil_matrix(self.corpus_shape)
         self.alpha = alpha
         if beta != None:
             self.beta = beta
@@ -99,7 +100,7 @@ cdef class CategoricalModel(Model):
         d['alpha'] = self.alpha
         d['name'] = self.name
 
-        return (Model, (self.shape, self.alpha, self.beta, self.corpus_shape, self.name), d)
+        return (CategoricalModel, (self.shape, self.alpha, self.beta, self.corpus_shape, self.name), d)
 
     def __setstate__(self, d):
         #logging.info("Into set_state")
@@ -188,25 +189,25 @@ cdef class Models:
 
         for d in range(0, depth):
             ## One fork model:
-            self.fj[d] = Model((a_max, b_max, b_max, g_max, 4), alpha=float(params.get('alphafj')), name="FJ"+str(d))
+            self.fj[d] = CategoricalModel((a_max, b_max, b_max, g_max, 4), alpha=float(params.get('alphafj')), name="FJ"+str(d))
 
             ## One active model:
-            self.act[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|00_"+str(d))
+            self.act[d] = CategoricalModel((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|00_"+str(d))
 
-            self.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
+            self.root[d] = CategoricalModel((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
 
             ## four awaited self:
-            self.cont[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|11_"+str(d))
+            self.cont[d] = CategoricalModel((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|11_"+str(d))
 
-            self.exp[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|10_"+str(d))
+            self.exp[d] = CategoricalModel((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|10_"+str(d))
 
-            self.next[d] = Model((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|01_"+str(d))
+            self.next[d] = CategoricalModel((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|01_"+str(d))
 
-            self.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|00_"+str(d))
+            self.start[d] = CategoricalModel((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|00_"+str(d))
 
 
         ## one pos model:
-        self.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape, name="POS")
+        self.pos = CategoricalModel((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape, name="POS")
 
         if lex is None:
             ## one lex model (categorical default)
