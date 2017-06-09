@@ -331,7 +331,7 @@ cdef class Models:
         a_base =  self.root[0].alpha * self.root[0].beta + int(init)
         b_base = self.cont[0].alpha * self.cont[0].beta + int(init)
         g_base = self.pos.alpha * self.pos.beta + int(init)
-        #h_base = self.lex.alpha * self.lex.beta + int(init)
+        h_base = self.lex.alpha * self.lex.beta + int(init)
 
         for d in range(depth-1, -1, -1):
             self.fj[d].sampleDirichlet(fj_base if d == 0 else fj_base + self.fj[d-1].pairCounts * self.fj[d].alpha, decay, from_global_counts)
@@ -347,9 +347,9 @@ cdef class Models:
         #self.lex.dist[1:,0].fill(-np.inf)
 
         # Resample lex and make sure the null tag can only generate the null word
-        #self.lex.sampleDirichlet(h_base, decay, from_global_counts)
-        #self.lex.dist[0,0] = 0.0
-        #self.lex.dist[0,1:].fill(-np.inf)
+        self.lex.sampleDirichlet(h_base, decay, from_global_counts)
+        self.lex.dist[0,0] = 0.0
+        self.lex.dist[0,1:].fill(-np.inf)
 
     def increment_global_counts(self):
         depth = len(self.fj)
