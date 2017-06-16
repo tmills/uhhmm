@@ -22,20 +22,35 @@ cdef class GaussianModel(Model):
     def __init__(self, shape, embeddings, corpus_shape=(1,1), name="Gaussian"):
         Model.__init__(self, corpus_shape, name)
         self.shape = shape
+        self.embeddings = embeddings
         self.pairCounts = np.zeros(shape, dtype=np.float32)
         self.condCounts = np.zeros(shape[0], dtype=np.int)
         ## Initialize distributions:
-
+        self.dist = []
+        for pos_ind in range(shape[0]):
+            self.dist.append([])
+            for dim in range(shape[1]):
+                self.dist[-1].append(scipy.stats.norm())
+                
     def count(self, pos_ind, token_ind, val):
         ## we've seen a count of pos tag cond pos_ind and word index token_ind
         ## Go through embeddings matrix to create pair counts for each dimensions
         self.condCounts[pos_ind] += val
         for dim in self.embeddings.shape[1]:
-            self.pairCounts
+            self.pairCounts[pos_ind, dim] += val * self.embeddings[token_ind][dim]
 
     def sampleGaussian(self):
-        pass
-        
+        for pos_ind in range(self.pairCounts.shape[0]):
+            for dim in range(self.pairCounts.shape[1]):
+                mean_sample_dist = scipy.stats.norm(self.pairCounts[pos_ind][dim] / self.condCounts[pos_ind])
+                self.dist[pos_ind][dim] = scipy.stats.norm(mean_sample_dist.rvs())
+
+    def resetCounts(self):
+        for pos_ind in range(self.pairCounts.shape[0]):
+            self.condCounts[pos_ind] = 0
+            for dim in range(self.pairCounts.shape[1]):
+                self.pairCounts[pos_ind,dim] = 0
+                
 cdef class CategoricalModel(Model):
     def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, corpus_shape=(1,1), name="Categorical"):
         Model.__init__(self, corpus_shape, name)
@@ -331,7 +346,6 @@ cdef class Models:
         a_base =  self.root[0].alpha * self.root[0].beta + int(init)
         b_base = self.cont[0].alpha * self.cont[0].beta + int(init)
         g_base = self.pos.alpha * self.pos.beta + int(init)
-        h_base = self.lex.alpha * self.lex.beta + int(init)
 
         for d in range(depth-1, -1, -1):
             self.fj[d].sampleDirichlet(fj_base if d == 0 else fj_base + self.fj[d-1].pairCounts * self.fj[d].alpha, decay, from_global_counts)
@@ -346,11 +360,18 @@ cdef class Models:
         self.pos.sampleDirichlet(g_base, decay, from_global_counts)
         #self.lex.dist[1:,0].fill(-np.inf)
 
-        # Resample lex and make sure the null tag can only generate the null word
-        self.lex.sampleDirichlet(h_base, decay, from_global_counts)
-        self.lex.dist[0,0] = 0.0
-        self.lex.dist[0,1:].fill(-np.inf)
 
+        # Resample lex and make sure the null tag can only generate the null word
+        if type(self.lex).__name__ == 'CategoricalModel':
+            h_base = self.lex.alpha * self.lex.beta + int(init)
+            self.lex.sampleDirichlet(h_base, decay, from_global_counts)
+            self.lex.dist[0,0] = 0.0
+            self.lex.dist[0,1:].fill(-np.inf)
+        elif type(self.lex).__name__ == 'GaussianModel':
+            self.lex.sampleGaussian()
+        else:
+            logging.error("The type of the lexical model is not understood: %s" % type(self.lex).__name__)
+            
     def increment_global_counts(self):
         depth = len(self.fj)
         for d in range(depth-1, -1, -1):

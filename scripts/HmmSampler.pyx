@@ -76,9 +76,9 @@ cdef class HmmSampler(Sampler.Sampler):
         self.depth = len(self.models.fj)
         self.indexer = Indexer.Indexer(self.models)
 
-        g_len = self.models.pos.dist.shape[1]
-        w_len = self.models.lex.dist.shape[1]
-        lexMultiplier = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, self.indexer.get_state_size() // g_len)))
+        #g_len = self.models.pos.dist.shape[1]
+        #w_len = self.models.lex.dist.shape[1]
+        #lexMultiplier = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, self.indexer.get_state_size() // g_len)))
         #self.data = lexMultiplier.data
         #self.indices = lexMultiplier.indices
         #self.indptr = lexMultiplier.indptr
@@ -317,4 +317,6 @@ def unlog_models(models):
         models.start[d].dist = 10**models.start[d].dist
 
     models.pos.dist = 10**models.pos.dist
-    models.lex.dist = 10**models.lex.dist
+    if type(models.lex.dist).__name__ == 'ndarray':
+        models.lex.dist = 10**models.lex.dist
+        

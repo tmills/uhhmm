@@ -25,7 +25,7 @@ import DepthOneInfiniteSampler
 import DistributedModelCompiler
 import HmmSampler
 from dahl_split_merge import perform_split_merge_operation
-from models import Model, Models
+from models import Model, Models, GaussianModel
 from workers import start_local_workers_with_distributer, start_cluster_workers
 
 # Has a state for every word in the corpus
@@ -131,7 +131,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         b_max = start_b+2
         g_max = start_g+2
 
-        models.initialize_as_fjabp(max_output, params, (len(ev_seqs), maxLen), depth, a_max, b_max, g_max)
+        lex = None
+        if not word_vecs is None:
+            lex = GaussianModel((g_max, word_vecs.shape[1]), word_vecs, name="Lex")
+        models.initialize_as_fjabp(max_output, params, (len(ev_seqs), maxLen), depth, a_max, b_max, g_max, lex=lex)
+            
         if input_seqs_file is None:
             hid_seqs = [None] * len(ev_seqs)
         else:
