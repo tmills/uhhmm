@@ -59,12 +59,8 @@ class Stats:
 # mapped to ints).
 def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_dir, pickle_file=None, gold_seqs=None, input_seqs_file=None):
 
-    global start_a, start_b, start_g
-    global a_max, b_max, g_max
-    start_a = int(params.get('starta'))
-    start_b = int(params.get('startb'))
-    start_g = int(params.get('startg'))
-    assert start_a == start_b and start_b == start_g, "A, B and G must have the same domain size!"
+    global start_abp
+    start_abp = int(params.get('startabp'))
     sent_lens = list(map(len, ev_seqs))
     total_sent_lens = sum(sent_lens)
     maxLen = max(map(len, ev_seqs))
@@ -122,7 +118,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     MAP = int(params.get("MAP", 0))
     normalize_flag = int(params.get("normalize_flag", 1))
     alpha_pcfg_range = params.get('alpha_pcfg_range', [0.1, 1.0])  # a comma separated list of lower and upper bounds of alpha-pcfg
-    init_alpha = float(params.get("init_alpha", 0.0))
+    init_alpha = float(params.get("init_alpha", 0.2))
     sample_alpha_flag = int(params.get("sample_alpha_flag",0))
 
     if gold_pos_dict_file:
@@ -159,11 +155,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
     if pickle_file is None:
         ## Add 1 to every start value for "Null/start" state
-        a_max = start_a+2
-        b_max = start_b+2
-        g_max = start_g+2
+        inflated_num_abp = start_abp + 2
 
-        models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, a_max, b_max, g_max)
+        models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, inflated_num_abp)
         if input_seqs_file is None:
             hid_seqs = [None] * len(ev_seqs)
         else:
@@ -172,21 +166,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             max_state_check(hid_seqs, models, "initialization")
 
         sample = Sample()
-        sample.alpha_f = models.F[0].alpha
-        sample.alpha_j = models.J[0].alpha
-        sample.alpha_a = models.A[0].alpha
-        sample.alpha_b = models.B_J0[0].alpha
-        sample.alpha_g = models.pos.alpha
-        sample.alpha_h = models.lex.alpha
-        
-        sample.beta_f = models.F[0].beta
-        sample.beta_j = models.J[0].beta
-        sample.beta_a = models.A[0].beta
-        sample.beta_b = models.B_J0[0].beta
-        sample.beta_g = models.pos.beta
-        sample.beta_h = models.lex.beta
-        sample.gamma = float(params.get('gamma'))
-        sample.discount = float(params.get('discount'))
         sample.ev_seqs = ev_seqs
 
         # initialization: a few controls:
@@ -216,11 +195,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         pos_counts = models.pos.pairCounts[:].sum()
         lex_counts = models.lex.pairCounts[:].sum()
 
-        a_max = models.A[0].dist.shape[-1]
-        b_max = models.B_J0[0].dist.shape[-1]
-        g_max = models.pos.dist.shape[-1]
-
-        models.resetAll()
+        inflated_num_abp = models.A[0].dist.shape[-1]
 
         iter = sample.iter+1
 
@@ -232,8 +207,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     #     pickle.dump(models, open(fixed_model, 'wb'))
 
     indexer = Indexer(models)
-    if not finite:
-        collect_trans_probs(hid_seqs, models, 0, num_sents)
 
     stats = Stats()
     inf_procs = list()
@@ -285,50 +258,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             else:
                 logging.info("Performing standard finite sample")
 
-        if iter > 0 and not finite:
-
-            ## now that we've resampled models, store the transition probabilities that
-            ## the new model assigned to all the transitions
-            models.pos.u =  models.pos.trans_prob +  np.log10(np.random.random((len(ev_seqs), maxLen)) )
-            models.root[0].u = models.root[0].trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)) )
-            models.cont[0].u = models.cont[0].trans_prob + np.log10(np.random.random((len(ev_seqs), maxLen)) )
-
-            ## Break off the beta sticks before actual processing -- instead of determining during
-            ## inference whether to create a new state we use an auxiliary variable u to do it
-            ## ahead of time, but note there is no guarantee we will ever use it.
-            ## TODO: Resample beta, which will allow for unused probability mass to go to the end again?
-            while a_max < 20 and models.root[0].u.min() < max(models.root[0].dist[...,-1].max(),models.act[0].dist[...,-1].max()):
-                logging.info('Breaking a stick')
-                break_a_stick(models, sample, params)
-                a_max = models.act[0].dist.shape[-1]
-
-            if a_max >= 20:
-                logging.warning('Stick-breaking (a) terminated due to hard limit and not gracefully.')
-
-            while b_max < 20 and models.cont[0].u.min() < max(models.cont[0].dist[...,-1].max(), models.start[0].dist[...,-1].max()):
-                logging.info('Breaking b stick')
-                break_b_stick(models, sample, params)
-                b_max = models.cont[0].dist.shape[-1]
-
-            if b_max >= 50:
-                logging.warning('Stick-breaking (b) terminated due to hard limit and not gracefully.')
-
-            while g_max < 50 and models.pos.u.min() < models.pos.dist[...,-1].max():
-                logging.info('Breaking g stick')
-                break_g_stick(models, sample, params)
-                g_max = models.pos.dist.shape[-1]
-                if np.argwhere(np.isnan(models.pos.dist)).size > 0:
-                    logging.error("Breaking the g stick resulted in a nan in the output distribution")
-
-            if g_max >= 50:
-                logging.warning('Stick-breaking (g) terminated due to hard limit and not gracefully.')
-
 
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
-        a_max = models.A[0].dist.shape[-1]
-        b_max = models.B_J0[0].dist.shape[-1]
-        g_max = models.pos.dist.shape[-1]
+        inflated_num_abp = models.A[0].dist.shape[-1]
 
         ## How many total states are there?
         ## 2*2*|Act|*|Awa|*|G|
@@ -343,8 +276,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if finite:
             DistributedModelCompiler.DistributedModelCompiler(depth, workDistributer, gpu, limit_depth=init_depth).compile_and_store_models(models, working_dir)
 #            FullDepthCompiler.FullDepthCompiler(depth).compile_and_store_models(models, working_dir)
-        else:
-            NoopCompiler.NoopCompiler().compile_and_store_models(models, working_dir)
         t1 = time.time()
         workDistributer.submitSentenceJobs(start_ind, end_ind)
 
@@ -353,15 +284,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         logging.info("Sampling time of iteration %d: Model compilation: %d s; Sentence sampling: %d s" % (iter, t1-t0, t2-t1))
 
-
-        ## Read the output and put it in a map -- use a map because sentences will
-        ## finish asynchronously -- keep the sentence index so we can extract counts
-        ## in whatever order we want (without aligning to sentences) but then order
-        ## the samples so that when we print them out they align for inspection.
         t0 = time.time()
         num_processed = 0
         parses = workDistributer.get_parses()
-        sample_map = dict()
 
         state_list = []
         state_indices = []
@@ -420,22 +345,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         else:
             pass
 
-        # incrementing counts in the pair counts tables of the models
-        # pcfg_replace_model(state_list, state_indices, models, pcfg_model)
-
         if num_processed < (end_ind - start_ind):
             logging.warning("Didn't receive the correct number of parses at iteration %d" % iter)
-        #
-        # logging.info("Parsed %d sentences this batch -- now have %d parses" % (end_ind-start_ind, end_ind ) )
-        # max_state_check(hid_seqs, models, "parses")
-        #
-        # pos_counts = models.pos.pairCounts[:].sum()
-        # lex_counts = models.lex.pairCounts[:].sum()
-        # if not pos_counts == lex_counts:
-        #     logging.warn("This iteration has %d pos counts for %d lex counts" % (pos_counts, lex_counts))
-        #
-        # if not pos_counts == num_tokens:
-        #     logging.warn("This iteration has %d pos counts for %d tokens" % (pos_counts, num_tokens) )
 
         t1 = time.time()
         logging.info("Building counts tables took %d s" % (t1-t0))
@@ -463,36 +374,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 num_samples += 1
                 ready_for_sample = False
 
-            if split_merge:
-                logging.info("Starting split/merge operation")
-                models, sample = perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=True)
-                hid_seqs = sample.hid_seqs
-                max_state_check(hid_seqs, models, "split-merge")
-                logging.info("Done with split/merge operation")
-                report_function(sample)
-                split_merge = False
-                logging.debug("After split-merge the shape of root is %s and exp is %s \n" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
-
             next_sample = Sample()
             #next_sample.hid_seqs = hid_seqs
 
             logging.info("Sampling hyperparameters")
-            ## This is, e.g., where we might add categories to the a,b,g variables with
-            ## stick-breaking. Without that, the values will stay what they were
-            next_sample.alpha_f = sample.alpha_f
-            next_sample.alpha_j = sample.alpha_j
-            next_sample.alpha_a = models.A[0].alpha
-            next_sample.alpha_b = models.B_J1[0].alpha
-            next_sample.alpha_g = models.pos.alpha
-            next_sample.alpha_h = models.lex.alpha
-            
-            next_sample.beta_f = sample.beta_f
-            next_sample.beta_j = sample.beta_j
-            next_sample.beta_a = models.A[0].beta
-            next_sample.beta_b = models.B_J1[0].beta
-            next_sample.beta_g = models.pos.beta
-            next_sample.beta_h = models.lex.beta
-            next_sample.gamma = sample.gamma
+
             next_sample.ev_seqs = ev_seqs
 
             prev_sample = sample
@@ -502,14 +388,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         t0 = time.time()
 
-        ## Sample distributions for all the model params and emissions params
-        ## TODO -- make the Models class do this in a resample_all() method
-        ## After stick-breaking we probably need to re-sample all the models:
-        #remove_unused_variables(models, hid_seqs)
-        if split_merge:
-            resample_beta_g(models, sample.gamma)
-
-        # anneal_alphas = calc_anneal_alphas(models, iter, burnin, init_anneal_alpha, total_sent_lens)
         cur_anneal_iter = iter - random_restarts
         if (cur_anneal_iter >= anneal_length and anneal_length > 1) or anneal_length == 1: # if annealing is finished
             logging.warn("number of iterations {} is larger than annealing length {}! Doing normal sampling!".format(iter, anneal_length))
@@ -558,25 +436,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         sample.models = models
 
-        if not finite and return_to_finite:
-            finite = True
-            return_to_finite = False
-
-        pos_counts = models.pos.pairCounts[:].sum()
-        lex_counts = models.lex.pairCounts[:].sum()
-        logging.info("Have %d pos counts, %d lex counts after sample " % (pos_counts, lex_counts) )
-
-        # ## remove the counts from these sentences
-        # if batch_size < num_sents:
-        #     logging.info("Decrementing counts for sentence indices %d-%d" % (start_ind, end_ind) )
-        #     decrement_sentence_counts(hid_seqs, ev_seqs, models, start_ind, end_ind)
-        # else:
-        #     logging.info("Resetting all counts to zero for next iteration")
-        #     models.resetAll()
-        #     pos_counts = models.pos.pairCounts[:].sum()
-        #     lex_counts = models.lex.pairCounts[:].sum()
-        #     assert pos_counts == 0 and lex_counts == 0
-
         iter += 1
 
     logging.debug("Ending sampling")
@@ -603,14 +462,6 @@ def max_state_check(hid_seqs, models, location):
         "Too many states in hid_seqs: max state of hid_seqs is %s, pos dist size is %s" % (ms, models.pos.dist.shape[1])
     if (ms < models.pos.dist.shape[1]-2):
       logging.warning("Too few states in hid_seqs: there is at least one state that is never used during inference.")
-
-def remove_unused_variables(models, hid_seqs):
-    ## Have to check if it's greater than 2 -- empty state (0) and final state (-1) are not supposed to have any counts:
-    while sum(models.pos.pairCounts.sum(0)==0) > 2:
-        pos = np.where(models.pos.pairCounts.sum(0)==0)[0][1]
-        remove_pos_from_models(models, pos)
-        remove_pos_from_hid_seqs(hid_seqs, pos)
-    max_state_check(hid_seqs, models, "removing unused variables")
 
 def remove_pos_from_hid_seqs(hid_seqs, pos):
     for a in hid_seqs:
@@ -687,248 +538,44 @@ def add_model_row_simple(model, base):
     if np.argwhere(np.isnan(model.dist)).size > 0:
         logging.error("Addition of column resulted in nan!")
 
-def break_beta_stick(model, gamma):
-    beta_end = model.beta[-1]
-    model.beta = np.append(model.beta, np.zeros(1))
-    old_portion = new_portion = 0
-
-    while old_portion == 0 or new_portion == 0:
-        old_group_fraction = np.random.beta(1, gamma)
-        old_portion = old_group_fraction * beta_end
-        new_portion = (1-old_group_fraction) * beta_end
-
-    model.beta[-2] = old_portion
-    model.beta[-1] = new_portion
-
-def break_a_stick(models, sample, params):
-
-    a_max = models.root[0].dist.shape[-1]
-    b_max = models.cont[0].dist.shape[-1]
-
-    ## Break the a stick (stored in root by convention -- TODO --  move this out to its own class later)
-    break_beta_stick(models.root[0], sample.gamma)
-    models.act[0].beta = models.root[0].beta
-
-    ## Add a column to each of the out distributions (ACT and ROOT)
-    add_model_column(models.root[0])
-    add_model_column(models.act[0])
-
-    ## For boolean variables can't do the simple row add:
-    models.reduce[0].pairCounts = np.append(models.reduce[0].pairCounts, np.zeros((1,b_max,2)), 0)
-    new_dist = np.log10(np.zeros((1,b_max,2)) + 0.5)
-    models.reduce[0].dist = np.append(models.reduce[0].dist, new_dist, 0)
-
-    ## Add row to the 1st dimension of act model:
-    models.act[0].pairCounts = np.append(models.act[0].pairCounts, np.zeros((1, b_max, a_max+1)), 0)
-    models.act[0].dist = np.append(models.act[0].dist, np.zeros((1, b_max, a_max+1)), 0)
-    models.act[0].dist[a_max,...] = sampler.sampleDirichlet(models.act[0].pairCounts[a_max,...], models.act[0].alpha * models.act[0].beta)
-
-    ## Add row to the 2nd dimension of exp model:
-    models.exp[0].pairCounts = np.append(models.exp[0].pairCounts, np.zeros((g_max, 1, b_max)), 1)
-    models.exp[0].dist = np.append(models.exp[0].dist, np.zeros((g_max, 1, b_max)), 1)
-    models.exp[0].dist[:, a_max, :] = sampler.sampleDirichlet(models.exp[0].pairCounts[:, a_max, :], sample.alpha_b * sample.beta_b)
-
-    ## Add row to the 2nd dimension of next model:
-    models.next[0].pairCounts = np.append(models.next[0].pairCounts, np.zeros((b_max, 1, b_max)), 1)
-    models.next[0].dist = np.append(models.next[0].dist, np.zeros((b_max, 1, b_max)), 1)
-    models.next[0].dist[:, a_max, :] = sampler.sampleDirichlet(models.next[0].pairCounts[:, a_max, :], sample.alpha_b * sample.beta_b)
-
-    ## Add a row to both dimensions of the model input
-    ## need to modify shape to do appends so we'll make it a list from a tuple:
-    ## Resize the distributions in the same way but we'll also need to initialize
-    ## them to non-zero values
-    models.start[0].pairCounts = np.append(models.start[0].pairCounts, np.zeros((1,a_max,b_max)), 0)
-    models.start[0].dist = np.append(models.start[0].dist, np.zeros((1,a_max,b_max)), 0)
-    models.start[0].dist[a_max,...] = sampler.sampleDirichlet(models.start[0].pairCounts[a_max,...], sample.alpha_b * sample.beta_b)
-
-    models.start[0].pairCounts = np.append(models.start[0].pairCounts, np.zeros((a_max+1,1,b_max)), 1)
-    models.start[0].dist = np.append(models.start[0].dist, np.zeros((a_max+1,1,b_max)), 1)
-    models.start[0].dist[:,a_max,:] = sampler.sampleDirichlet(models.start[0].pairCounts[:,a_max,:], sample.alpha_b * sample.beta_b)
-
-def break_b_stick(models, sample, params):
-
-    b_max = models.cont[0].dist.shape[-1]
-    g_max = models.pos.dist.shape[-1]
-
-    ## Keep the stick with cont and copy it over to beta
-    break_beta_stick(models.cont[0], sample.gamma)
-    models.start[0].beta = models.cont[0].beta
-    models.exp[0].beta = models.cont[0].beta
-    models.next[0].beta = models.cont[0].beta
-
-    ## Add a column to both output distributions:
-    add_model_column(models.cont[0])
-    add_model_column(models.start[0])
-    add_model_column(models.exp[0])
-    add_model_column(models.next[0])
-
-    ## Add a row to the POS output distribution which depends only on b:
-    add_model_row_simple(models.pos, models.pos.alpha * models.pos.beta[1:])
-
-    ## Boolean models:
-    models.fork[0].pairCounts = np.append(models.fork[0].pairCounts, np.zeros((1,g_max,2)), 0)
-    models.fork[0].dist = np.append(models.fork[0].dist, np.zeros((1,g_max,2)), 0)
-    models.fork[0].dist[b_max,...] = sampler.sampleBernoulli(models.fork[0].pairCounts[b_max,...], sample.alpha_f * sample.beta_f)
-
-    models.trans[0].pairCounts = np.append(models.trans[0].pairCounts, np.zeros((1,g_max,2)), 0)
-    models.trans[0].dist = np.append(models.trans[0].dist, np.zeros((1,g_max,2)), 0)
-    models.trans[0].dist[b_max,...] = sampler.sampleBernoulli(models.trans[0].pairCounts[b_max,...], sample.alpha_j * sample.beta_j)
-
-    models.reduce[0].pairCounts = np.append(models.reduce[0].pairCounts, np.zeros((a_max,1,2)), 1)
-    models.reduce[0].dist = np.append(models.reduce[0].dist, np.zeros((a_max,1,2)), 1)
-    models.reduce[0].dist[:,b_max,:] = sampler.sampleBernoulli(models.reduce[0].pairCounts[:,b_max,:], sample.alpha_j * sample.beta_j)
-
-    ## Active models:
-    models.act[0].pairCounts = np.append(models.act[0].pairCounts, np.zeros((a_max, 1, a_max)), 1)
-    models.act[0].dist = np.append(models.act[0].dist, np.zeros((a_max, 1, a_max)), 1)
-    models.act[0].dist[:,b_max,:] = sampler.sampleDirichlet(models.act[0].pairCounts[:,b_max,:], models.act[0].alpha * models.act[0].beta)
-
-    models.root[0].pairCounts = np.append(models.root[0].pairCounts, np.zeros((1, g_max, a_max)), 0)
-    models.root[0].dist = np.append(models.root[0].dist, np.zeros((1, g_max, a_max)), 0)
-    models.root[0].dist[b_max,:,:] = sampler.sampleDirichlet(models.root[0].pairCounts[b_max,:,:], models.root[0].alpha * models.root[0].beta)
-
-    ## Awaited models with b as condition
-    models.cont[0].pairCounts = np.append(models.cont[0].pairCounts, np.zeros((1,g_max,b_max+1)), 0)
-    models.cont[0].dist = np.append(models.cont[0].dist, np.zeros((1,g_max,b_max+1)),0)
-    models.cont[0].dist[b_max,...] = sampler.sampleDirichlet(models.cont[0].pairCounts[b_max,...], models.cont[0].alpha * models.cont[0].beta)
-
-    models.next[0].pairCounts = np.append(models.next[0].pairCounts, np.zeros((1,a_max,b_max+1)), 0)
-    models.next[0].dist = np.append(models.next[0].dist, np.zeros((1,a_max,b_max+1)), 0)
-    models.next[0].dist[b_max,...] = sampler.sampleDirichlet(models.next[0].pairCounts[b_max,...], models.next[0].alpha * models.next[0].beta)
-
-def break_g_stick(models, sample, params):
-
-    b_max = models.cont[0].dist.shape[-1]
-    g_max = models.pos.dist.shape[-1]
-    depth = len(models.fork)
-
-    ## Resample beta when the stick is broken:
-    break_beta_stick(models.pos, sample.gamma)
-
-    if models.pos.beta[-1] == 0.0:
-        logging.error("This shouldn't be 0!")
-
-    ## Add a column to the distribution that outputs POS tags:
-    add_model_column(models.pos)
-
-    ## Add a row to the lexical distribution for this new POS tag:
-    add_model_row_simple(models.lex, params['h'][0,1:])
-
-    for d in range(0, depth):
-        models.fork[d].pairCounts = np.append(models.fork[d].pairCounts, np.zeros((b_max,1,2)), 1)
-        models.fork[d].dist = np.append(models.fork[d].dist, np.zeros((b_max,1,2)), 1)
-        models.fork[d].dist[:,g_max,:] = sampler.sampleBernoulli(models.fork[d].pairCounts[:,g_max,:], sample.alpha_f * sample.beta_f)
-
-        models.trans[d].pairCounts = np.append(models.trans[d].pairCounts, np.zeros((b_max,1,2)), 1)
-        models.trans[d].dist = np.append(models.trans[d].dist, np.zeros((b_max,1,2)), 1)
-        models.trans[d].dist[:,g_max,:] = sampler.sampleBernoulli(models.trans[d].pairCounts[:,g_max,:], sample.alpha_f * sample.beta_f)
-
-        ## One active model uses g as a condition:
-        models.root[d].pairCounts = np.append(models.root[d].pairCounts, np.zeros((b_max,1,a_max)), 1)
-        models.root[d].dist = np.append(models.root[d].dist, np.zeros((b_max,1,a_max)), 1)
-        models.root[d].dist[:,g_max,:] = sampler.sampleDirichlet(models.root[d].pairCounts[:,g_max,:], models.root[d].alpha * models.root[d].beta)
-
-        ## Two awaited models use g as a condition:
-        models.cont[d].pairCounts = np.append(models.cont[d].pairCounts, np.zeros((b_max,1,b_max)), 1)
-        models.cont[d].dist = np.append(models.cont[d].dist, np.zeros((b_max,1,b_max)), 1)
-        models.cont[d].dist[:,g_max,:] = sampler.sampleDirichlet(models.cont[d].pairCounts[:,g_max,:], models.cont[d].alpha * models.cont[d].beta)
-
-        models.exp[d].pairCounts = np.append(models.exp[d].pairCounts, np.zeros((1, a_max, b_max)), 0)
-        models.exp[d].dist = np.append(models.exp[d].dist, np.zeros((1, a_max, b_max)), 0)
-        models.exp[d].dist[g_max,...] = sampler.sampleDirichlet(models.exp[d].pairCounts[g_max,...], models.exp[d].alpha * models.exp[d].beta)
-
-def resample_beta_g(models, gamma):
-    logging.info("Resampling beta g")
-    b_max = models.cont[0].dist.shape[-1]
-    g_max = models.pos.dist.shape[-1]
-    m = np.zeros((b_max,g_max-1))
-
-    for b in range(0, b_max):
-        for g in range(0, g_max-1):
-            if models.pos.pairCounts[b][g] == 0:
-                m[b][g] = 0
-
-            ## (rand() < (ialpha0 * ibeta(k)) / (ialpha0 * ibeta(k) + l - 1));
-            else:
-                for l in range(1, int(models.pos.pairCounts[b][g])+1):
-                    dart = np.random.random()
-                    alpha_beta = models.pos.alpha * models.pos.beta[g]
-                    m[b][g] += (dart < (alpha_beta / (alpha_beta + l - 1)))
-
-    if 0 in m.sum(0)[1:]:
-        logging.warning("There seems to be an illegal value here:")
-
-    params = np.append(m.sum(0)[1:], gamma)
-    models.pos.beta[1:] = 0
-    models.pos.beta[1:] += sampler.sampleSimpleDirichlet(params)
-    #logging.info("New beta value is %s" % model.pos.beta)
-
-def initialize_models(models, max_output, params, corpus_shape, depth, a_max, b_max, g_max):
+def initialize_models(models, max_output, params, corpus_shape, depth, inflated_num_abp):
     ## F model:
     models.F = [None] * depth
     ## J models:
     models.J = [None] * depth
-    # models.reduce = [None] * depth
     ## Active models:
     models.A = [None] * depth
-    # models.root = [None] * depth
     ## Reduce models:
     models.B_J1 = [None] * depth
     models.B_J0 = [None] * depth
-    # models.next = [None] * depth
-    # models.start = [None] * depth
+
 
     for d in range(0, depth):
         ## One fork model:
-        models.F[d] = Model((b_max, 2), alpha=float(params.get('alphaf')), name="Fork"+str(d))
-        models.F[d].beta = np.ones(2)
+        models.F[d] = Model((inflated_num_abp, 2), alpha=float(params.get('init_alpha')), name="Fork" + str(d))
 
-        ## Two join models:
-        models.J[d] = Model((b_max, g_max, 2), alpha=float(params.get('alphaj')), name="Join"+str(d))
-        models.J[d].beta = np.ones(2)
-        
-        # models.reduce[d] = Model((a_max, b_max, 2), alpha=float(params.get('alphaj')), name="J|F0_"+str(d))
-        # models.reduce[d].beta = np.ones(2) / 2
+        ## One join models:
+        models.J[d] = Model((inflated_num_abp, inflated_num_abp, 2), alpha=float(params.get('init_alpha')), name="Join" + str(d))
 
-        ## TODO -- set d > 0 beta to the value of the model at d (can probably do this later)
         ## One active model:
-        models.A[d] = Model((a_max, b_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="Act"+str(d))
-        models.A[d].beta = np.ones(a_max)
-        
-        # models.root[d] = Model((b_max, g_max, a_max), alpha=float(params.get('alphaa')), corpus_shape=corpus_shape, name="A|10_"+str(d))
-        # models.root[d].beta = np.ones(a_max) / a_max
+        models.A[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp), alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="Act" + str(d))
 
-        ## four awaited models:
-        models.B_J1[d] = Model((b_max, g_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|J1_"+str(d))
-        models.B_J1[d].beta = np.ones(b_max)
-        
-        models.B_J0[d] = Model((g_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|J0_"+str(d))
-        models.B_J0[d].beta = models.B_J1[d].beta
-        #
-        # models.next[d] = Model((a_max, b_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|01_"+str(d))
-        # models.next[d].beta = models.cont[d].beta
-        #
-        # models.start[d] = Model((a_max, a_max, b_max), alpha=float(params.get('alphab')), corpus_shape=corpus_shape, name="B|00_"+str(d))
-        # models.start[d].beta = models.cont[d].beta
+        ## Two awaited models:
+        models.B_J1[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp), alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="B|J1_" + str(d))
+        models.B_J0[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp), alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="B|J0_" + str(d))
 
 
     ## one pos model:
-    models.pos = Model((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape, name="POS")
-    models.pos.beta = np.ones(g_max)
+    models.pos = Model((inflated_num_abp, inflated_num_abp), alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="POS")
 
     ## one lex model:
-    models.lex = Model((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
-    models.lex.beta = np.ones(max_output+1)
+    models.lex = Model((inflated_num_abp, max_output + 1), alpha=float(params.get('init_alpha')), name="Lex")
 
     models.append(models.F)
     models.append(models.J)
-    # models.append(models.reduce)
     models.append(models.A)
-    # models.append(models.root)
     models.append(models.B_J1)
-    # models.append(models.start)
     models.append(models.B_J0)
-    # models.append(models.next)
     models.append(models.pos)
     models.append(models.lex)
 
@@ -977,281 +624,11 @@ RANDOM_INIT=0
 RB_INIT=1
 LB_INIT=2
 
-def initialize_state(ev_seqs, models, max_depth, gold_seqs=None, strategy=RANDOM_INIT):
-    global a_max, b_max, g_max
-
-    max_gold_tags = max([max(el) for el in gold_seqs.values()]) if (not gold_seqs == None and not len(gold_seqs)==0) else 0
-    if not gold_seqs == None and max_gold_tags > g_max:
-        logging.warning("There are more gold tag types (%d) than the number of initial pos tag states (%d). Will randomly initialize any gold tags that are out of bounds" % (max_gold_tags, g_max))
-
-    state_seqs = list()
-    for sent_index,sent in enumerate(ev_seqs):
-        hid_seq = list()
-        if not gold_seqs == None and sent_index in gold_seqs.keys():
-          gold_tags=gold_seqs[sent_index]
-        else:
-          gold_tags=None
-        for index,word in enumerate(sent):
-            state = State.State(max_depth)
-            ## special case for first word
-            if index == 0:
-                state.f = 1
-                state.j = 0
-                state.a[0] = 0
-                state.b[0] = 0
-            else:
-                prev_depth = prev_state.max_awa_depth()
-                # if index == 1:
-                #     state.f = 1
-                #     state.j = 0
-                if strategy == RANDOM_INIT:
-                    if np.random.random() >= 0.5:
-                        state.f = 1
-                    else:
-                        state.f = 0
-                    ## j is deterministic in the middle of the sentence
-                    if prev_depth+1 == max_depth and state.f == 1:
-                        ## If we are at max depth and we forked, we must reduce
-                        state.j = 1
-                    elif prev_depth <= 0 and state.f == 0:
-                        ## If we are at 0 and we did not fork, we must not reduce
-                        state.j = 0
-                    else:
-                        state.j = state.f
-
-                elif strategy == RB_INIT:
-                    state.f = 1
-                    state.j = 1
-                elif strategy == LB_INIT:
-                    state.f = 0
-                    state.j = 0
-                else:
-                    logging.error("Unknown initialization strategy %d" % (strategy))
-                    raise Exception
-                if index == 1:
-                    state.j = 0
-
-                cur_depth = prev_depth - state.j
-                if prev_depth == -1:
-                    state.a[cur_depth] = np.random.randint(1, a_max-1)
-                elif state.f == 1 and state.j == 1:
-                    state.a[0:cur_depth] = prev_state.a[0:cur_depth]
-                    state.b[0:cur_depth] = prev_state.b[0:cur_depth]
-                    state.a[cur_depth] = prev_state.a[cur_depth]
-                elif state.f == 0 and state.j == 0:
-                    state.a[0:cur_depth] = prev_state.a[0:cur_depth]
-                    state.b[0:cur_depth] = prev_state.b[0:cur_depth]
-                    state.a[cur_depth] = np.random.randint(1,a_max-1)
-                elif state.f == 1 and state.j == 0:
-                    state.a[0:cur_depth] = prev_state.a[0:cur_depth]
-                    state.b[0:cur_depth] = prev_state.b[0:cur_depth]
-                    state.a[cur_depth] = np.random.randint(1,a_max-1)
-                elif state.f == 0 and state.j == 1:
-                    state.a[0:cur_depth] = prev_state.a[0:cur_depth]
-                    state.b[0:cur_depth] = prev_state.b[0:cur_depth]
-                    state.a[cur_depth] = prev_state.a[cur_depth]
-                else:
-                    raise Exception("Encountered unexpected condition in state initialization! f=%s, j=%s" % (state.f, state.j) )
-
-                state.b[cur_depth] = np.random.randint(1,b_max-1)
-
-            if gold_tags and gold_tags[index] < g_max:
-              state.g = gold_tags[index]
-            else:
-              state.g = np.random.randint(1,g_max-1)
-
-            prev_state = state
-
-            hid_seq.append(state)
-
-        pcfg_increment_counts(hid_seq, sent, models)
-        #increment_counts(hid_seq, sent, models)
-        state_seqs.append(hid_seq)
-
-    return state_seqs
-
-def collect_trans_probs(hid_seqs, models, start_ind, end_ind):
-    if end_ind-1 >= len(hid_seqs):
-        logging.error("Index of end_ind=%d passed in to sequence of length %d" % (end_ind, len(hid_seqs) ) )
-
-    for sent_index in range(start_ind, end_ind):
-        hid_seq = hid_seqs[sent_index]
-        if hid_seq is None:
-            logging.warning("collect_trans_probs() found a missing parse %d - skipping sentence." % (sent_index) )
-            continue
-
-        ## for every state transition in the sentence increment the count
-        ## for the condition and for the output
-        for index, state in enumerate(hid_seq):
-            d = 0
-
-            if index != 0:
-                if index == 1:
-                    models.root[0].trans_prob[sent_index, index] = models.root[0].dist[0, prev_state.g, state.a[0]]
-                    models.exp[0].trans_prob[sent_index, index] = models.exp[0].dist[prev_state.g, state.a[0], state.b[0]]
-                else:
-                    ## Fork and join don't have trans_probs because they are finite:
-                    if state.f == 0 and state.j == 0:
-                        models.act[d].trans_prob[sent_index, index] = models.root[d].trans_prob[sent_index, index] = models.act[d].dist[ prev_state.a[d], 0, state.a[d] ]
-                        models.start[d].trans_prob[sent_index, index] = models.cont[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.start[d].dist[ prev_state.a[d], state.a[d], state.b[d] ]
-                    elif state.f == 1 and state.j == 1:
-                        models.act[d].trans_prob[sent_index, index] = models.root[d].trans_prob[sent_index, index] = 0
-                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.cont[d].dist[ prev_state.b[d], prev_state.g, state.b[d] ]
-                    elif state.f == 1 and state.j == 0:
-                        models.root[d].trans_prob[sent_index, index] = models.act[d].trans_prob[sent_index, index]  = models.root[d].dist[ 0, prev_state.g, state.a[d] ]
-                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.exp[d].trans_prob[sent_index, index] = models.exp[0].dist[prev_state.g, state.a[d], state.b[d] ]
-                    elif state.f == 0 and state.j == 1:
-                        models.act[d-1].trans_prob[sent_index, index] = models.root[d-1].trans_prob[sent_index, index] = 0
-                        models.cont[d].trans_prob[sent_index, index] = models.start[d].trans_prob[sent_index, index] = models.cont[d-1].dist[ prev_state.b[d-1], prev_state.g, state.b[d] ]
-            models.pos.trans_prob[sent_index, index] = models.pos.dist[state.b[0], state.g]
-            prev_state = state
-
-def increment_counts(hid_seq, sent, models, inc=1):
-    ## for every state transition in the sentence increment the count
-    ## for the condition and for the output
-
-    # Create start state
-    max_depth = len(hid_seq[0].a)
-    prev_state = State.State(max_depth)
-    prev_state.f = 0
-    prev_state.j = 0
-    prev_state.a = np.asarray([0]*max_depth)
-    prev_state.b = np.asarray([0]*max_depth)
-    prev_state.g = 0
-    depth = -1
-
-    # Create end state
-    EOS = State.State(max_depth)
-    EOS.f = 0
-    EOS.j = 1
-    EOS.a = np.asarray([0]*max_depth)
-    EOS.b = np.asarray([0]*max_depth)
-    EOS.g = 0
-
-    # Append end state
-    sent = sent[:] + [0]
-    hid_seq = hid_seq[:] + [EOS]
-    logging.debug('now working on state sequence: '+'  '.join(some_state.unfiltered_str() for some_state in hid_seq))
-    for index,word in enumerate(sent):
-        state = hid_seq[index]
-        logging.debug("state {}: {}; word {}; prev_state {}".format(index, state.unfiltered_str(), word, prev_state.unfiltered_str()))
-        # Populate previous state conditional dependencies
-        prev_g = prev_state.g
-        if depth == -1:
-            prev_a = 0
-            prev_b = 0
-            prev_b_above = 0
-        else:
-            prev_a = prev_state.a[depth]
-            prev_b = prev_state.b[depth]
-            if depth == 0:
-                prev_b_above = 0
-            else:
-                prev_b_above = prev_state.b[depth-1]
-        prev_f = prev_state.f
-
-        # Count join decision
-        if index != 0:#  and index != len(sent) - 1:
-            if prev_f == 0:
-                if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
-                    print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
-                ## Final state is deterministic, don't include counts from final decisions:
-                # if word != 0:
-                models.J[max(0,depth)].count((prev_a, prev_b_above), state.j, inc)
-                logging.debug("J model inc count: {} {} -> {} at {}".format(prev_a, prev_b_above, state.j, max(0,depth)))
-            elif prev_f == 1:
-                if depth >= 0 and (prev_b == 0 and prev_g == 0):
-                    print('Collision check -- J model at depth >=0 has same conditions as at depth -1.')
-                if depth + prev_f < max_depth:
-                    models.J[max(0, depth+1)].count((prev_g, prev_b), state.j, inc)
-                    logging.debug("J model inc count: {} {} -> {} at {}".format(prev_g, prev_b, state.j, max(0, depth+1)))
-            else:
-                raise Exception("Unallowed value (%s) of the fork variable!" %state.f)
-
-        # Populate current state conditional dependencies
-        cur_depth = depth + prev_f - state.j
-        cur_g = state.g
-        if cur_depth == -1:
-            cur_a = 0
-            cur_b = 0
-            cur_b_above = 0
-        else:
-            cur_a = state.a[cur_depth]
-            cur_b = state.b[cur_depth]
-            if cur_depth == 0:
-                cur_b_above = 0
-            else:
-                cur_b_above = state.b[cur_depth-1]
-
-        ## Count A & B
-        if index != 0 and word != 0:
-            if prev_f == 0 and state.j == 0:
-                assert depth >= 0 or index == 0, "Found a non-initial -/- decision at depth -1 (should not be possible)."
-                if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
-                    print('Collision check -- A model at depth >=0 has same conditions as at depth -1.')
-                models.A[max(0,depth)].count((prev_b_above, prev_a), cur_a, inc)
-                logging.debug("A model inc count: {} {} -> {} at {}".format(prev_b_above, prev_a, cur_a, max(0,depth)))
-                if depth >= 0 and (prev_a == 0 and cur_a == 0):
-                    print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
-                models.B_J0[max(0,depth)].count((cur_a, prev_a), cur_b, inc)
-                logging.debug("B_J0 model inc count: {} {} -> {} at {}".format(cur_a, prev_a, cur_b, max(0,depth)))
-
-            elif prev_f == 1 and state.j == 1:
-                assert depth >= 0 or (len(sent) == 2 and index == 1), "Found an illegal +/+ transition at depth -1. %s %s" %(sent, index)
-                if depth >= 0 and (prev_b == 0 and prev_g == 0):
-                    print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
-                models.B_J1[max(0,depth)].count((prev_b, prev_g), cur_b, inc)
-                logging.debug("B_J1 model inc count: {} {} -> {} at {}".format(prev_b, prev_g, cur_b, max(0, depth)))
-
-            elif prev_f == 1 and state.j == 0:
-                assert depth <= max_depth, "Found a +/- decision at the maximum depth level."
-                if depth >= 0 and (prev_b == 0 and prev_g == 0):
-                    print('Collision check -- A model at depth >=0 has same conditions as at depth -1.')
-                models.A[depth+1].count((prev_b, prev_g), cur_a, inc)
-                logging.debug("A model inc count: {} {} -> {} at {}".format(prev_b, prev_g, cur_a, depth+1))
-                if depth >= 0 and (prev_g == 0 and cur_a == 0):
-                    print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
-                models.B_J0[depth+1].count((cur_a, prev_g), cur_b, inc)
-                logging.debug("B_J0 model inc count: {} {} -> {} at {}".format(cur_a, prev_g, cur_b, depth+1))
-
-            elif prev_f == 0 and state.j == 1:
-                assert depth > 0 or index == len(sent) - 1, "Found a -/+ decision at depth 0 prior to sentence end."
-                if depth >= 0 and (prev_a == 0 and prev_b_above == 0):
-                    print('Collision check -- B model at depth >=0 has same conditions as at depth -1.')
-                models.B_J1[max(0,depth-1)].count(( prev_b_above, prev_a), cur_b, inc)
-                logging.debug("B_J1 model inc count: {} {} -> {} at {}".format(prev_b_above, prev_a, cur_b, max(0, depth-1)))
-            else:
-                raise Exception("Unallowed value of f=%d and j=%d, index=%d" % (state.f, state.j, index) )
-
-        # Count fork decision
-        if cur_depth >= 0 and (cur_b == 0 and cur_g == 0) and index != 0:
-            print('Collision check -- F model at depth >=0 has same conditions as at depth -1.')
-        ## Final state is deterministic, don't include counts from final decisions:
-        if word != 0 and index != 0:# and index != len(sent) - 2:
-            models.F[max(0,depth)].count(cur_b, state.f, inc)
-            logging.debug("F model inc count: {} -> {} at {}".format(cur_b, state.f, max(0, depth)))
-
-        ## Count G
-        if word != 0 and state.f != 0:
-            models.pos.count(cur_b, cur_g, inc)
-            logging.debug("G model inc count: {} -> {}".format(cur_b, cur_g))
-        ## Count w
-        if word != 0:
-            models.lex.count(cur_g, word, inc)
-            logging.debug("W model inc count: {} -> {}".format(cur_g, word))
-
-        depth = state.max_awa_depth()
-        prev_state = state
-
 def decrement_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
-    # for ind in range(start_ind, end_ind):
         pcfg_increment_counts(hid_seqs[start_ind:end_ind], sents[start_ind:end_ind], models, -1)
-        #increment_counts(hid_seqs[ind], sents[ind], models, -1)
 
 def increment_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
-    # for ind in range(start_ind, end_ind):
         pcfg_increment_counts(hid_seqs[start_ind:end_ind], sents[start_ind:end_ind ], models, 1)
-        #increment_counts(hid_seqs[ind], sents[ind], models, 1)
 
 def handle_sigint(signum, frame, workers):
     logging.info("Master received quit signal... will terminate after cleaning up.")
@@ -1261,115 +638,6 @@ def handle_sigint(signum, frame, workers):
         logging.info("Joining worker %d" % (ind) )
         worker.join()
     sys.exit(0)
-
-def getGmax():
-    global g_max
-    return g_max
-
-def getAmax():
-    global a_max
-    return a_max
-
-def getBmax():
-    global b_max
-    return b_max
-
-def resample_all(models, sample, params, depth, anneal_alphas=0, ac_coeff=1, normalize_flag=0):
-    ## Sample distributions for all the model params and emissions params
-    ## TODO -- make the Models class do this in a resample_all() method
-    logging.info("Resampling all models with alpha_anneal {} and likelihood_anneal {}".format(anneal_alphas, ac_coeff))
-    if anneal_alphas == 0:
-        a_base = sample.alpha_a * sample.beta_a
-        b_base = sample.alpha_b * sample.beta_b
-        f_base = sample.alpha_f * sample.beta_f
-        j_base = sample.alpha_j * sample.beta_j
-        g_base = sample.alpha_g * sample.beta_g
-        h_base = sample.alpha_h * sample.beta_h
-    elif isinstance(anneal_alphas, dict):
-        a_base = (sample.alpha_a + anneal_alphas['A']) * sample.beta_a
-        b_base = (sample.alpha_b + anneal_alphas['B_J0'])* sample.beta_b
-        f_base = (sample.alpha_f + anneal_alphas['F'])* sample.beta_f
-        j_base = (sample.alpha_j + anneal_alphas['J']) * sample.beta_j
-        g_base = (sample.alpha_g + anneal_alphas['pos']) * sample.beta_g
-        h_base = (sample.alpha_h + anneal_alphas['lex']) * sample.beta_h
-    else:
-        raise Exception("Anneal alphas are neither 0 nor a dictionary!")
-
-    # Resample lex and make sure the null tag can only generate the null word
-    # print("here are the MODELS :")
-    # print("model W: W|P with base {}".format(h_base[0]))
-    # print(models.lex.pairCounts)
-    models.lex.sampleDirichlet(h_base)
-    models.lex.dist *= (ac_coeff)
-    if ac_coeff != 1 and normalize_flag:
-        models.lex.dist = normalize(models.lex.dist)
-    models.lex.dist[0,0] = 0.0
-    models.lex.dist[0,1:].fill(-np.inf)
-    # Resample pos
-    # print("model P: P|B with base {}".format(g_base[0]))
-    # print(models.pos.pairCounts)
-    models.pos.sampleDirichlet(g_base)
-    models.pos.dist *= (ac_coeff)
-    if np.argwhere(np.isnan(models.pos.dist)).size > 0:
-        logging.error("Resampling the pos dist resulted in a nan")
-    if ac_coeff != 1 and normalize_flag:
-        models.pos.dist = normalize(models.pos.dist)
-
-    logging.debug('printing out the pair counts for the models')
-    for d in range(depth-1, -1, -1):
-        # print('depth {} model B J1: B| (B A) or (B P) with base {}'.format(d,b_base[0]))
-        # print(models.B_J1[d].pairCounts)
-        models.B_J1[d].sampleDirichlet(b_base) # if d == 0 else b_base + models.B_J1[d-1].pairCounts * sample.alpha_b)
-        models.B_J1[d].dist *= (ac_coeff)
-        if ac_coeff != 1 and normalize_flag:
-            models.B_J1[d].dist = normalize(models.B_J1[d].dist)
-        # print('depth {} model B J0: B| (A A) or (A P) with base {}'.format(d,b_base[0]))
-        # print(models.B_J0[d].pairCounts)
-        models.B_J0[d].sampleDirichlet(b_base) # if d == 0 else b_base + models.B_J0[d-1].pairCounts * sample.alpha_b)
-        models.B_J0[d].dist *= (ac_coeff)
-        if ac_coeff != 1 and normalize_flag:
-            models.B_J0[d].dist = normalize(models.B_J0[d].dist)
-        # print("depth {} model A: A|(B A) or (B P) with base {}".format(d,a_base[0]))
-        # print(models.A[d].pairCounts)
-        models.A[d].sampleDirichlet(a_base) # if d == 0 else a_base + models.A[d-1].pairCounts * sample.alpha_a)
-        models.A[d].dist *= (ac_coeff)
-        if ac_coeff != 1 and normalize_flag:
-            models.A[d].dist = normalize(models.A[d].dist)
-        # print("depth {} model J: J|(A B) or (P B) with base {}".format(d,j_base[0]))
-        # print(models.J[d].pairCounts)
-        models.J[d].sampleDirichlet(j_base) # if d == 0 else j_base + models.J[d-1].pairCounts * sample.alpha_j)
-        models.J[d].dist *= (ac_coeff)
-        if ac_coeff != 1 and normalize_flag:
-            models.J[d].dist = normalize(models.J[d].dist)
-        # print("depth {} model F: F|B with base {}".format(d,f_base[0]))
-        # print(models.F[d].pairCounts)
-        models.F[d].sampleDirichlet(f_base) # if d == 0 else f_base + models.F[d-1].pairCounts * sample.alpha_f)
-        models.F[d].dist *= (ac_coeff)
-        if ac_coeff != 1 and normalize_flag:
-            models.F[d].dist = normalize(models.F[d].dist)
-
-def unreanneal(models, ac_coeff=1, next_ac_coeff=1):
-    logging.info("Unanneal all models with likelihood_anneal {}".format(ac_coeff))
-
-    models.lex.dist *= (next_ac_coeff/ac_coeff)
-    models.lex.dist = normalize(models.lex.dist)
-    models.lex.dist[0,0] = 0.0
-    models.lex.dist[0,1:].fill(-np.inf)
-    depth = len(models.A)
-    models.pos.dist *= (next_ac_coeff/ac_coeff)
-    models.pos.dist = normalize(models.pos.dist)
-    for d in range(depth-1, -1, -1):
-        models.B_J1[d].dist *= (next_ac_coeff/ac_coeff)
-        models.B_J1[d].dist = normalize(models.B_J1[d].dist)
-        models.B_J0[d].dist *= (next_ac_coeff/ac_coeff)
-        models.B_J0[d].dist = normalize(models.B_J0[d].dist)
-        models.A[d].dist *= (next_ac_coeff/ac_coeff)
-        models.A[d].dist = normalize(models.A[d].dist)
-        models.J[d].dist *= (next_ac_coeff/ac_coeff)
-        models.J[d].dist = normalize(models.J[d].dist)
-        models.F[d].dist *= (next_ac_coeff/ac_coeff)
-        models.F[d].dist = normalize(models.F[d].dist)
-    return models
 
 # normalize a logged matrix
 def normalize(matrix):
