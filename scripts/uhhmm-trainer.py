@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.4
 
 import sys
+
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit()
@@ -16,6 +17,7 @@ import pickle
 import logging
 import signal
 from random import randint
+
 
 def main(argv):
     if len(argv) < 1:
@@ -54,25 +56,28 @@ def main(argv):
 
     ## Read in input file to get sequence for X
     (pos_seq, word_seq) = io.read_input_file(input_file)
-    num_types = max(map(max,word_seq)) + 1
+    num_types = max(map(max, word_seq)) + 1
 
     params = read_params(config)
 
     ## Store tag sequences of gold tagged sentences
     gold_seq = dict()
     if 'num_gold_sents' in params and params['num_gold_sents'] == 'all':
-      for i in range(0, len(pos_seq)):
-        gold_seq[i] = pos_seq[i]
+        for i in range(0, len(pos_seq)):
+            gold_seq[i] = pos_seq[i]
     else:
-      while len(gold_seq) < int(params.get('num_gold_sents', 0)) and len(gold_seq) < len(word_seq):
-        rand = randint(0,len(word_seq)-1)
-        if rand not in gold_seq.keys():
-          gold_seq[rand]=pos_seq[rand]
+        while len(gold_seq) < int(params.get('num_gold_sents', 0)) and len(gold_seq) < len(word_seq):
+            rand = randint(0, len(word_seq) - 1)
+            if rand not in gold_seq.keys():
+                gold_seq[rand] = pos_seq[rand]
 
-    (samples, stats) = uhhmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq), lambda x: io.checkpoint(x,config), working_dir, pickle_file, gold_seq, input_seqs_file=input_seqs_file)
+    (samples, stats) = uhhmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq),
+                                         lambda x: io.checkpoint(x, config), working_dir, pickle_file, gold_seq,
+                                         input_seqs_file=input_seqs_file)
 
     if len(samples) > 0:
         io.write_output(samples[-1], stats, config, pos_seq)
+
 
 def read_params(config):
     params = {}
@@ -80,7 +85,6 @@ def read_params(config):
         params[key] = val
 
     return params
-
 
 
 if __name__ == "__main__":
