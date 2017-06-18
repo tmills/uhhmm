@@ -148,7 +148,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     start_ind = 0
     end_ind = min(num_sents, batch_size)
 
-    pcfg_model = PCFG_model(start_a, max_output)
+    pcfg_model = PCFG_model(start_abp, max_output)
     pcfg_model.set_alpha(alpha_pcfg_range, alpha=init_alpha)
 
     logging.info("Initializing state")
