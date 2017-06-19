@@ -63,7 +63,7 @@ class DistributedModelCompiler(FullDepthCompiler):
         index_data_indices = -1
         index_data_indices_full = -1
         for prevIndex in range(0,totalK):
-            if prevIndex % 10000 == 0:
+            if prevIndex % 500000 == 0:
                 logging.info("Model Compiler compiling row %d" % prevIndex)
             indptr[prevIndex+1] = indptr[prevIndex]
             if full_pi:
@@ -101,10 +101,10 @@ class DistributedModelCompiler(FullDepthCompiler):
             # assert data[-1] != 0. and indices[-1] != 0., '0 prob at the end of sparse Pi.'
         logging.info("Per state connection is %d" % (index_data_indices/totalK))
         logging.info("Size of PI/g will roughly be %.2f M" % ((index_data_indices * 2 + (totalK+1))*data_type_bytes / 1e6))
-        logging.info("Flattening sublists into main list")
+        # logging.info("Flattening sublists into main list")
         flat_indices = indices
         flat_data = data
-        logging.info('Last ptr %d; length of data: %d' % (indptr[-1], flat_data.shape[0]))
+        # logging.info('Last ptr %d; length of data: %d' % (indptr[-1], flat_data.shape[0]))
         logging.info("Creating csr transition matrix from sparse indices")
         if self.gpu == False:
             pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK / g_max), dtype=np.float64)
@@ -112,13 +112,13 @@ class DistributedModelCompiler(FullDepthCompiler):
                 pi_full = scipy.sparse.csr_matrix((data_full, indices_full, indptr_full), (totalK, totalK),
                                               dtype=np.float64)
         else:
-            logging.info("Dumping out the GPU version of PI.")
+            # logging.info("Dumping out the GPU version of PI.")
             pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK / g_max), dtype=np.float32)
             if full_pi:
                 pi_full = scipy.sparse.csr_matrix((data_full,indices_full,indptr_full), (totalK, totalK ), dtype=np.float32)
         fn = working_dir+'/models.bin'
         out_file = open(fn, 'wb')
-        logging.info("Transforming and writing csc model")
+        # logging.info("Transforming and writing csc model")
         # if gpu then dumping out two models, the one used by worker should be *.bin.gpu
         pi = pi.tocsc()
         row_indices = list(itertools.product(range(b_max), repeat=self.depth))
@@ -199,9 +199,9 @@ class DistributedModelCompiler(FullDepthCompiler):
 
             model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, corrected_pos_dist,
                                                         indexer.get_EOS_full()), self.depth)
-            logging.info("EOS index is "+str(indexer.get_EOS_full()))
+            # logging.info("EOS index is "+str(indexer.get_EOS_full()))
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
-            logging.info("Saving GPU models for use")
+            # logging.info("Saving GPU models for use")
             pickle.dump(model_gpu, gpu_out_file)
             gpu_out_file.close()
         relog_models(models, self.depth)

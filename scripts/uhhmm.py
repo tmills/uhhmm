@@ -10,11 +10,11 @@ import signal
 import socket
 import sys
 import tempfile
-from multiprocessing import Process,Queue,JoinableQueue
+from multiprocessing import Process, Queue, JoinableQueue
 import zmq
 from WorkDistributerServer import WorkDistributerServer
 from PyzmqMessage import *
-#from PyzmqWorker import PyzmqWorker
+# from PyzmqWorker import PyzmqWorker
 from State import sentence_string
 import State
 from Indexer import Indexer
@@ -32,6 +32,7 @@ import copy
 from init_pcfg_strategies import *
 from pcfg_model import PCFG_model
 
+
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
 class Sample:
@@ -39,6 +40,7 @@ class Sample:
         self.hid_seqs = []
         self.models = None
         self.log_prob = 0
+
 
 # Histogram of how many instances of each state you have random sampled
 # May be a field in Sample
@@ -53,12 +55,13 @@ class Stats:
         self.gamma = 0
         self.vi = 0
 
+
 # This is the main entry point for this module.
 # Arg 1: ev_seqs : a list of lists of integers, representing
 # the EVidence SEQuenceS seen by the user (e.g., words in a sentence
 # mapped to ints).
-def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_dir, pickle_file=None, gold_seqs=None, input_seqs_file=None):
-
+def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_dir, pickle_file=None, gold_seqs=None,
+                input_seqs_file=None, word_dict_file=None):
     global start_abp
     start_abp = int(params.get('startabp'))
     sent_lens = list(map(len, ev_seqs))
@@ -71,9 +74,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     num_samples = 0
     ## Set debug first so we can use it during config setting:
     debug = params.get('debug', 'INFO')
-    logfile = params.get('logfile','')
+    logfile = params.get('logfile', '')
     if logfile:
-        logging.basicConfig(level=getattr(logging, debug),filename=logfile)
+        logging.basicConfig(level=getattr(logging, debug), filename=logfile)
     else:
         logging.basicConfig(level=getattr(logging, debug), stream=sys.stdout)
 
@@ -86,7 +89,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     num_procs = int(params.get('num_procs', -1))
     if num_procs != -1:
         num_cpu_workers = num_procs
-        logging.warn("num_procs config is deprecated for cpu_workers and gpu_workers configs. Treating num_procs as num_cpu_workers=%d" % (num_cpu_workers))
+        logging.warn(
+            "num_procs config is deprecated for cpu_workers and gpu_workers configs. Treating num_procs as num_cpu_workers=%d" % (
+            num_cpu_workers))
 
     num_gpu_workers = int(params.get('gpu_workers', 0))
 
@@ -100,29 +105,36 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     gpu_batch_size = min(num_sents, int(params.get('gpu_batch_size', 32 if gpu == 1 else 1)))
     if gpu and num_gpu_workers < 1 and num_cpu_workers > 0:
         logging.warn("Inconsistent config: gpu flag set with %d gpu workers; setting gpu=False" % (num_gpu_workers))
-        gpu=False
+        gpu = False
 
-    # there are annealing parameters
+    # these are annealing parameters
     init_anneal_alpha = float(params.get('init_anneal_alpha', 0))
     init_anneal_likelihood = float(params.get("init_anneal_likelihood", 0))
     final_anneal_likelihood = float(params.get("final_anneal_likelihood", 1))
     anneal_length = int(params.get("anneal_length", 1))
     anneal_likelihood_phase = int(params.get("anneal_likelihood_phase", anneal_length))
-    random_restarts = int(params.get("random_restarts",0))
+    random_restarts = int(params.get("random_restarts", 0))
     gold_pcfg_file = params.get("gold_pcfg_file", '')
-    add_noise = int(params.get("add_noise",0))
+    add_noise = int(params.get("add_noise", 0))
     noise_sigma = float(params.get('noise_sigma', 0))
     init_strategy = params.get("init_strategy", '')
     always_sample = int(params.get("always_sample", 0))
     gold_pos_dict_file = params.get("gold_pos_dict_file", '')
     MAP = int(params.get("MAP", 0))
     normalize_flag = int(params.get("normalize_flag", 1))
-    alpha_pcfg_range = params.get('alpha_pcfg_range', [0.1, 1.0])  # a comma separated list of lower and upper bounds of alpha-pcfg
+    alpha_pcfg_range = params.get('alpha_pcfg_range',
+                                  [0.1, 1.0])  # a comma separated list of lower and upper bounds of alpha-pcfg
     init_alpha = float(params.get("init_alpha", 0.2))
-    sample_alpha_flag = int(params.get("sample_alpha_flag",0))
+    sample_alpha_flag = int(params.get("sample_alpha_flag", 0))
+
+    # super cooling
+    super_cooling = int(params.get("super_cooling", 0))
+    super_cooling_length = int(params.get("super_cooling_length", 500))
+    super_cooling_start_iter = int(params.get("super_cooling_start_iter", 2000))
+    super_cooling_target_ac = int(params.get("super_cooling_target_ac", 10))
 
     if gold_pos_dict_file:
-        gold_pos_dict  = {}
+        gold_pos_dict = {}
         with open(gold_pos_dict_file) as g:
             for line in g:
                 line = line.strip().split(' = ')
@@ -148,7 +160,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     start_ind = 0
     end_ind = min(num_sents, batch_size)
 
-    pcfg_model = PCFG_model(start_abp, max_output)
+    pcfg_model = PCFG_model(start_abp, max_output, log_dir=working_dir, word_dict_file = word_dict_file)
     pcfg_model.set_alpha(alpha_pcfg_range, alpha=init_alpha)
 
     logging.info("Initializing state")
@@ -162,21 +174,24 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             hid_seqs = [None] * len(ev_seqs)
         else:
             logging.info("Trainer was initialized with input sequences from a previous run.")
-            hid_seqs = initialize_and_load_state(ev_seqs, models, depth, uhhmm_io.read_input_states(input_seqs_file, depth))
+            hid_seqs = initialize_and_load_state(ev_seqs, models, depth,
+                                                 uhhmm_io.read_input_states(input_seqs_file, depth))
             max_state_check(hid_seqs, models, "initialization")
 
         sample = Sample()
         sample.ev_seqs = ev_seqs
-
+        pcfg_model.start_logging()
         # initialization: a few controls:
         if gold_pcfg_file:
             logging.info("Initializing the models with the gold PCFG file {}.".format(gold_pcfg_file))
-            pcfg_replace_model(None, None, models, gold_pcfg_file=gold_pcfg_file, add_noise=add_noise, noise_sigma=noise_sigma)
+            pcfg_replace_model(None, None, models, gold_pcfg_file=gold_pcfg_file, add_noise=add_noise,
+                               noise_sigma=noise_sigma)
         elif init_strategy:
             logging.info("Initialization strategy found \"{}\". Executing strategy.".format(init_strategy))
             if init_strategy in STRATEGY_STRINGS:
-                pcfg_replace_model(None, None, models, strategy=STRATEGY_STRINGS[init_strategy], ints_seqs=sample.ev_seqs
-                                      , gold_pos_dict = gold_pos_dict)
+                pcfg_replace_model(None, None, models, strategy=STRATEGY_STRINGS[init_strategy],
+                                   ints_seqs=sample.ev_seqs
+                                   , gold_pos_dict=gold_pos_dict)
             else:
                 raise Exception("strategy {} not found!".format(init_strategy))
         else:
@@ -195,9 +210,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         pos_counts = models.pos.pairCounts[:].sum()
         lex_counts = models.lex.pairCounts[:].sum()
 
+        pcfg_model.set_log_mode('a')
+        pcfg_model.start_logging()
+
         inflated_num_abp = models.A[0].dist.shape[-1]
 
-        iter = sample.iter+1
+        iter = sample.iter + 1
+        pcfg_model.iter = iter
 
     # import pickle
     # fixed_model = working_dir+'/fixed.models.bin'
@@ -212,21 +231,26 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     inf_procs = list()
 
     workDistributer = WorkDistributerServer(ev_seqs, working_dir)
-    logging.info("GPU is %s with %d workers and batch size %d" % (gpu, num_gpu_workers, gpu_batch_size) )
-    logging.info("Start a new worker with python3 scripts/workers.py %s %d %d %d %d %d %d" % (workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, int(gpu), gpu_batch_size))
+    logging.info("GPU is %s with %d workers and batch size %d" % (gpu, num_gpu_workers, gpu_batch_size))
+    logging.info("Start a new worker with python3 scripts/workers.py %s %d %d %d %d %d %d" % (
+    workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port,
+    maxLen + 1, int(gpu), gpu_batch_size))
 
     ## Initialize all the sub-processes with their input-output queues
     ## and dimensions of matrix they'll need
-    if num_cpu_workers+num_gpu_workers > 0:
-        inf_procs = start_local_workers_with_distributer(workDistributer, maxLen, num_cpu_workers, num_gpu_workers, gpu, gpu_batch_size)
-        signal.signal(signal.SIGINT, lambda x,y: handle_sigint(x,y, inf_procs))
+    if num_cpu_workers + num_gpu_workers > 0:
+        inf_procs = start_local_workers_with_distributer(workDistributer, maxLen, num_cpu_workers, num_gpu_workers, gpu,
+                                                         gpu_batch_size)
+        signal.signal(signal.SIGINT, lambda x, y: handle_sigint(x, y, inf_procs))
 
     elif cluster_cmd != None:
         start_cluster_workers(workDistributer, cluster_cmd, maxLen, gpu)
     else:
         master_config_file = './masterConfig.txt'
         with open(master_config_file, 'w') as c:
-            print(' '.join([str(x) for x in [workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port, maxLen+1, int(gpu), gpu_batch_size]]), file=c)
+            print(' '.join([str(x) for x in
+                            [workDistributer.host, workDistributer.jobs_port, workDistributer.results_port,
+                             workDistributer.models_port, maxLen + 1, int(gpu), gpu_batch_size]]), file=c)
             print('OK', file=c)
 
     logging.info("Starting workers")
@@ -239,14 +263,15 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     ### Start doing actual sampling:
     while num_samples < max_samples:
         sample.iter = iter
+        pcfg_model.iter = iter
 
         ## If user specified an init depth (i.e. less than the final depth), increment it after 1000 iterations.
         if init_depth < depth:
             if iter > 0 and iter % 1000 == 0:
-              init_depth += 1
+                init_depth += 1
 
         split_merge = False
-        if split_merge_iters > 0 and iter >= burnin and (iter-burnin) % split_merge_iters == 0:
+        if split_merge_iters > 0 and iter >= burnin and (iter - burnin) % split_merge_iters == 0:
             split_merge = True
 
         if finite:
@@ -258,7 +283,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             else:
                 logging.info("Performing standard finite sample")
 
-
         ## These values keep track of actual maxes not user-specified --
         ## so if user specifies 10 to start this will be 11 because of state 0 (init)
         inflated_num_abp = models.A[0].dist.shape[-1]
@@ -267,22 +291,25 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## 2*2*|Act|*|Awa|*|G|
         totalK = indexer.get_state_size()
 
-        logging.info("Number of a states=%d, b states=%d, g states=%d, total=%d, start_ind=%d, end_ind=%d" % (a_max-2, b_max-2, g_max-2, totalK, start_ind, end_ind))
+        # logging.info("Number of a states=%d, b states=%d, g states=%d, total=%d, start_ind=%d, end_ind=%d" % (a_max-2, b_max-2, g_max-2, totalK, start_ind, end_ind))
 
         ## Give the models to the model server. (Note: We used to pass them to workers via temp files which works when you create new
         ## workers but is harder when you need to coordinate timing of reading new models in every pass)
 
         t0 = time.time()
         if finite:
-            DistributedModelCompiler.DistributedModelCompiler(depth, workDistributer, gpu, limit_depth=init_depth).compile_and_store_models(models, working_dir)
-#            FullDepthCompiler.FullDepthCompiler(depth).compile_and_store_models(models, working_dir)
+            DistributedModelCompiler.DistributedModelCompiler(depth, workDistributer, gpu,
+                                                              limit_depth=init_depth).compile_and_store_models(models,
+                                                                                                               working_dir)
+        #            FullDepthCompiler.FullDepthCompiler(depth).compile_and_store_models(models, working_dir)
         t1 = time.time()
         workDistributer.submitSentenceJobs(start_ind, end_ind)
 
         ## Wait for server to finish distributing sentences for this iteration:
         t2 = time.time()
 
-        logging.info("Sampling time of iteration %d: Model compilation: %d s; Sentence sampling: %d s" % (iter, t1-t0, t2-t1))
+        logging.info("Sampling time of iteration %d: Model compilation: %d s; Sentence sampling: %d s" % (
+        iter, t1 - t0, t2 - t1))
 
         t0 = time.time()
         num_processed = 0
@@ -301,7 +328,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     # logging.info('The state sequence is ' + ' '.join([str(indexer.getStateIndex(x.j, x.a, x.b, x.f, x.g)) for x in parse.state_list]))
                     # logging.info(' '.join([x.str() for x in parse.state_list]))
 
-                    #increment_counts(parse.state_list, ev_seqs[parse.index], models)
+                    # increment_counts(parse.state_list, ev_seqs[parse.index], models)
 
                     # logging.info('Good parse:')
                     # logging.info(' '.join([x.str() for x in parse.state_list]))
@@ -309,14 +336,15 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 except:
                     logging.error('This parse is bad:')
                     logging.error('The sentence is ' + ' '.join([str(x) for x in ev_seqs[parse.index]]))
-                    logging.error('The state sequence is ' + ' '.join([str(indexer.getStateIndex(x.j, x.a, x.b, x.f, x.g)) for x in parse.state_list]))
+                    logging.error('The state sequence is ' + ' '.join(
+                        [str(indexer.getStateIndex(x.j, x.a, x.b, x.f, x.g)) for x in parse.state_list]))
                     logging.error(' '.join([x.str() for x in parse.state_list]))
                     logging.error('The index is %d' % parse.index)
                     raise
                 sample.log_prob += parse.log_prob
             hid_seqs[parse.index] = parse.state_list
         acc_logprob += sample.log_prob
-
+        pcfg_model.log_probs = acc_logprob
         # random restarts control
         if iter < random_restarts - 1:
             logging.info("The {} random restart has a loglikelihood of {}".format(iter, sample.log_prob))
@@ -337,9 +365,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             sample.models = best_init_model
             models = best_init_model
             logging.info("The {} random restart has a loglikelihood of {}".format(iter, sample.log_prob))
-            logging.info("The best init model has a loglikehood of {}. Will be using this for sampling.".format(max_loglikelihood))
+            logging.info("The best init model has a loglikehood of {}. Will be using this for sampling.".format(
+                max_loglikelihood))
             max_loglikelihood = -np.inf
             sample.log_prob = 0
+            acc_logprob = 0
             iter += 1
             continue
         else:
@@ -349,9 +379,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             logging.warning("Didn't receive the correct number of parses at iteration %d" % iter)
 
         t1 = time.time()
-        logging.info("Building counts tables took %d s" % (t1-t0))
+        # logging.info("Building counts tables took %d s" % (t1 - t0))
 
-        if iter >= burnin and (iter-burnin) % iters == 0:
+        if iter >= burnin and (iter - burnin) % iters == 0:
             logging.info("Performed enough batches to collect a sample -- waiting for complete pass to finish")
             ready_for_sample = True
 
@@ -367,17 +397,15 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 ready_for_sample = True
 
             if ready_for_sample:
-                logging.info("Collecting sample")
-                #samples.append(sample)
+                # logging.info("Collecting sample")
+                # samples.append(sample)
                 report_function(sample)
                 logging.info(".\n")
                 num_samples += 1
                 ready_for_sample = False
 
             next_sample = Sample()
-            #next_sample.hid_seqs = hid_seqs
-
-            logging.info("Sampling hyperparameters")
+            # next_sample.hid_seqs = hid_seqs
 
             next_sample.ev_seqs = ev_seqs
 
@@ -389,13 +417,22 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         t0 = time.time()
 
         cur_anneal_iter = iter - random_restarts
-        if (cur_anneal_iter >= anneal_length and anneal_length > 1) or anneal_length == 1: # if annealing is finished
-            logging.warn("number of iterations {} is larger than annealing length {}! Doing normal sampling!".format(iter, anneal_length))
+        if (cur_anneal_iter >= anneal_length and anneal_length > 1) or anneal_length == 1:  # if annealing is finished
+            logging.warn(
+                "number of iterations {} is larger than annealing length {}! Doing normal sampling!".format(iter,
+                                                                                                            anneal_length))
             logging.info("The log prob for this iter is {}".format(acc_logprob))
             pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, sample_alpha_flag=sample_alpha_flag)
+        elif super_cooling and super_cooling_start_iter >= iter:
+            cur_cooling_iter = iter - super_cooling_start_iter
+            ac_coeff = calc_simulated_annealing(cur_cooling_iter, super_cooling_length, 1,
+                                                super_cooling_target_ac)
+            logging.info("inside super cooling phase with current ac coeff {}".format(ac_coeff))
+            pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff,
+                               annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
         else:
             ac_coeff = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
-                                                         final_anneal_likelihood, anneal_likelihood_phase)
+                                                final_anneal_likelihood, anneal_likelihood_phase)
             # annealing control
             if MAP:
                 next_ac_coeff = calc_simulated_annealing(cur_anneal_iter + 1, anneal_length, init_anneal_likelihood,
@@ -412,7 +449,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     models = real_model
                     best_anneal_likelihood = -np.inf
                 else:
-                    logging.info("The log prob for this iter is {} and the best anneal likelihood for this phase is {}".format(prev_sample.log_prob, best_anneal_likelihood))
+                    logging.info(
+                        "The log prob for this iter is {} and the best anneal likelihood for this phase is {}".format(
+                            prev_sample.log_prob, best_anneal_likelihood))
                     if prev_sample.log_prob > best_anneal_likelihood:
                         best_anneal_likelihood = acc_logprob
                         best_anneal_model = copy.deepcopy(models)
@@ -421,8 +460,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
             else:
                 logging.info("The log prob for this iter is {}".format(acc_logprob))
-                pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff, annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
-            # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
+                pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff,
+                                   annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
+                # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
         acc_logprob = 0
         ## Update sentence indices for next batch:
         if end_ind == len(ev_seqs):
@@ -441,27 +481,31 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     logging.debug("Ending sampling")
     workDistributer.stop()
 
-    for cur_proc in range(0,num_procs):
+    for cur_proc in range(0, num_procs):
         logging.info("Sending terminate signal to worker {} ...".format(cur_proc))
         inf_procs[cur_proc].terminate()
 
-    for cur_proc in range(0,num_procs):
+    for cur_proc in range(0, num_procs):
         logging.info("Waiting to join worker {} ...".format(cur_proc))
         inf_procs[cur_proc].join()
         inf_procs[cur_proc] = None
 
     return (samples, stats)
 
+
 def max_state(hid_seqs):
     return max(a.g for b in hid_seqs if b for a in b)
 
+
 def max_state_check(hid_seqs, models, location):
     ms = max_state(hid_seqs)
-    logging.debug("max state in hid_seqs = " + str(ms) + ", pos dist size = " + str(models.pos.dist.shape[1]) + ", after " + location)
-    assert ms <= models.pos.dist.shape[1]-2, \
+    logging.debug("max state in hid_seqs = " + str(ms) + ", pos dist size = " + str(
+        models.pos.dist.shape[1]) + ", after " + location)
+    assert ms <= models.pos.dist.shape[1] - 2, \
         "Too many states in hid_seqs: max state of hid_seqs is %s, pos dist size is %s" % (ms, models.pos.dist.shape[1])
-    if (ms < models.pos.dist.shape[1]-2):
-      logging.warning("Too few states in hid_seqs: there is at least one state that is never used during inference.")
+    if (ms < models.pos.dist.shape[1] - 2):
+        logging.warning("Too few states in hid_seqs: there is at least one state that is never used during inference.")
+
 
 def remove_pos_from_hid_seqs(hid_seqs, pos):
     for a in hid_seqs:
@@ -469,6 +513,7 @@ def remove_pos_from_hid_seqs(hid_seqs, pos):
             assert state.g != pos, "Removed POS still exists in hid_seqs!"
             if state.g > pos:
                 state.g = state.g - 1
+
 
 def remove_pos_from_models(models, pos):
     ## delete the 1st dimension from the fork distribution:
@@ -502,9 +547,10 @@ def remove_pos_from_models(models, pos):
     ## Shorten the beta stick as well:
     models.pos.beta = np.delete(models.pos.beta, pos, 0)
 
-def add_model_column(model):
 
-    model.pairCounts = np.insert(model.pairCounts, model.pairCounts.shape[-1], np.zeros(model.pairCounts.shape[0:-1]), model.pairCounts.ndim-1)
+def add_model_column(model):
+    model.pairCounts = np.insert(model.pairCounts, model.pairCounts.shape[-1], np.zeros(model.pairCounts.shape[0:-1]),
+                                 model.pairCounts.ndim - 1)
 
     param_a = np.tile(model.alpha * model.beta[-2], model.dist.shape[0:-1])
     param_b = model.alpha * (1 - model.beta[0:-1].sum())
@@ -512,31 +558,34 @@ def add_model_column(model):
     if param_b < 0:
         param_a_str = str(param_a)
         param_b_str = str(param_b)
-        logging.error("param b is < 0! inputs are alpha=%f, beta=%s, betasum=%f" % (model.alpha, str(model.beta), model.beta[0:-1].sum()))
+        logging.error("param b is < 0! inputs are alpha=%f, beta=%s, betasum=%f" % (
+        model.alpha, str(model.beta), model.beta[0:-1].sum()))
         logging.info("Param a=%s and param b=%s" % (param_a_str, param_b_str))
         param_b = 0
 
     if param_a.min() < 1e-2 or param_b < 1e-2:
-        pg = np.random.binomial(1, param_a / (param_a+param_b))
+        pg = np.random.binomial(1, param_a / (param_a + param_b))
     else:
         pg = np.random.beta(param_a, param_b)
 
     ## Copy the last dimension into the new dimension:
-    model.dist = np.insert(model.dist, model.dist.shape[-1], model.dist[...,-1], model.dist.ndim-1)
-    model.dist[...,-2] += np.log10(pg)
-    model.dist[...,-1] += np.log10(1-pg)
+    model.dist = np.insert(model.dist, model.dist.shape[-1], model.dist[..., -1], model.dist.ndim - 1)
+    model.dist[..., -2] += np.log10(pg)
+    model.dist[..., -1] += np.log10(1 - pg)
 
     if np.argwhere(np.isnan(model.dist)).size > 0:
         logging.error("Addition of column resulted in nan!")
+
 
 def add_model_row_simple(model, base):
     num_outs = model.dist.shape[1]
-    model.pairCounts = np.append(model.pairCounts, np.zeros((1,num_outs)), 0)
-    model.dist = np.append(model.dist, np.zeros((1,num_outs)), 0)
-    model.dist[-1,0] = -np.inf
-    model.dist[-1,1:] = np.log10(sampler.sampleSimpleDirichlet(model.pairCounts[-1,1:] + base))
+    model.pairCounts = np.append(model.pairCounts, np.zeros((1, num_outs)), 0)
+    model.dist = np.append(model.dist, np.zeros((1, num_outs)), 0)
+    model.dist[-1, 0] = -np.inf
+    model.dist[-1, 1:] = np.log10(sampler.sampleSimpleDirichlet(model.pairCounts[-1, 1:] + base))
     if np.argwhere(np.isnan(model.dist)).size > 0:
         logging.error("Addition of column resulted in nan!")
+
 
 def initialize_models(models, max_output, params, corpus_shape, depth, inflated_num_abp):
     ## F model:
@@ -549,24 +598,27 @@ def initialize_models(models, max_output, params, corpus_shape, depth, inflated_
     models.B_J1 = [None] * depth
     models.B_J0 = [None] * depth
 
-
     for d in range(0, depth):
         ## One fork model:
         models.F[d] = Model((inflated_num_abp, 2), alpha=float(params.get('init_alpha')), name="Fork" + str(d))
 
         ## One join models:
-        models.J[d] = Model((inflated_num_abp, inflated_num_abp, 2), alpha=float(params.get('init_alpha')), name="Join" + str(d))
+        models.J[d] = Model((inflated_num_abp, inflated_num_abp, 2), alpha=float(params.get('init_alpha')),
+                            name="Join" + str(d))
 
         ## One active model:
-        models.A[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp), alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="Act" + str(d))
+        models.A[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp),
+                            alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="Act" + str(d))
 
         ## Two awaited models:
-        models.B_J1[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp), alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="B|J1_" + str(d))
-        models.B_J0[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp), alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="B|J0_" + str(d))
-
+        models.B_J1[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp),
+                               alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="B|J1_" + str(d))
+        models.B_J0[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp),
+                               alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="B|J0_" + str(d))
 
     ## one pos model:
-    models.pos = Model((inflated_num_abp, inflated_num_abp), alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="POS")
+    models.pos = Model((inflated_num_abp, inflated_num_abp), alpha=float(params.get('init_alpha')),
+                       corpus_shape=corpus_shape, name="POS")
 
     ## one lex model:
     models.lex = Model((inflated_num_abp, max_output + 1), alpha=float(params.get('init_alpha')), name="Lex")
@@ -581,6 +633,7 @@ def initialize_models(models, max_output, params, corpus_shape, depth, inflated_
 
     return models
 
+
 # In the case that we are initializing this run with the output of a Previous
 # run, it is pretty simple. We just need a lot of checks to make sure the inputs
 # are actually compatible; depth of input can be <= but not > then specified
@@ -592,21 +645,23 @@ def initialize_and_load_state(ev_seqs, models, max_depth, init_seqs):
         raise Exception
 
     if len(ev_seqs) != len(init_seqs):
-        logging.error("Initialization sequence length %d is different than input sequence length %d." % (len(init_seqs), len(ev_seqs)))
+        logging.error("Initialization sequence length %d is different than input sequence length %d." % (
+        len(init_seqs), len(ev_seqs)))
         raise Exception
 
     state_seqs = list()
-    for sent_index,sent in enumerate(ev_seqs):
+    for sent_index, sent in enumerate(ev_seqs):
         hid_seq = list()
         if len(sent) != len(init_seqs[sent_index]):
-            logging.error("Sentence %d has length %d in init but length %d in input." % (sent_index, len(init_seqs[sent_index], len(sent))))
+            logging.error("Sentence %d has length %d in init but length %d in input." % (
+            sent_index, len(init_seqs[sent_index], len(sent))))
             raise Exception
 
-        for index,word in enumerate(sent):
+        for index, word in enumerate(sent):
             state = State.State(max_depth)
             state.f = init_seqs[sent_index][index].f
             state.j = init_seqs[sent_index][index].j
-            for d in range(0,input_depth):
+            for d in range(0, input_depth):
                 state.a[d] = init_seqs[sent_index][index].a[d]
                 state.b[d] = init_seqs[sent_index][index].b[d]
             state.g = init_seqs[sent_index][index].g
@@ -614,30 +669,35 @@ def initialize_and_load_state(ev_seqs, models, max_depth, init_seqs):
             hid_seq.append(state)
         state_seqs.append(hid_seq)
         pcfg_increment_counts(hid_seq, sent, models)
-        #increment_counts(hid_seq, sent, models)
+        # increment_counts(hid_seq, sent, models)
     return state_seqs
+
 
 # Randomly initialize all the values for the hidden variables in the
 # sequence. Obeys constraints (e.g., when f=1,j=1 a=a_{t-1}) but otherwise
 # samples randomly.
-RANDOM_INIT=0
-RB_INIT=1
-LB_INIT=2
+RANDOM_INIT = 0
+RB_INIT = 1
+LB_INIT = 2
+
 
 def decrement_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
-        pcfg_increment_counts(hid_seqs[start_ind:end_ind], sents[start_ind:end_ind], models, -1)
+    pcfg_increment_counts(hid_seqs[start_ind:end_ind], sents[start_ind:end_ind], models, -1)
+
 
 def increment_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
-        pcfg_increment_counts(hid_seqs[start_ind:end_ind], sents[start_ind:end_ind ], models, 1)
+    pcfg_increment_counts(hid_seqs[start_ind:end_ind], sents[start_ind:end_ind], models, 1)
+
 
 def handle_sigint(signum, frame, workers):
     logging.info("Master received quit signal... will terminate after cleaning up.")
-    for ind,worker in enumerate(workers):
-        logging.info("Terminating worker %d" % (ind) )
+    for ind, worker in enumerate(workers):
+        logging.info("Terminating worker %d" % (ind))
         worker.terminate()
-        logging.info("Joining worker %d" % (ind) )
+        logging.info("Joining worker %d" % (ind))
         worker.join()
     sys.exit(0)
+
 
 # normalize a logged matrix
 def normalize(matrix):

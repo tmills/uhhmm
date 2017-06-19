@@ -379,45 +379,12 @@ def pcfg_replace_model(hid_seq, ev_seq, models, pcfg_model, inc=1, J=25, normali
                   np.sum(pseudo_B[1][:-1]), np.sum(pseudo_P[:-1])
                   , np.sum(pseudo_W[:-1])))
 
-def calc_anneal_alphas(models, iter, burnin, init_tempature, total_sent_lens):
-    anneal_alphas = {}
-    if init_tempature == 0:
-        return 0
-    for model_name, model in models:
-        if isinstance(model, list):
-            model_shape = model[0].dist.shape
-        else:
-            model_shape = model.dist.shape
-        model_size = reduce(lambda x, y: x*y, model_shape)
-        if iter >= burnin:
-            anneal_alphas[model_name] = 0
-        else:
-            anneal_alphas[model_name] = init_tempature * (total_sent_lens / model_size) * (burnin - iter) / burnin
-    print("ALPHAS F {}, J {}, A {}, Bs {}, P {}, W {} TOTAL STATES {}".format(anneal_alphas['F'],
-                                                                             anneal_alphas['J'], anneal_alphas['A'],
-                                                                             anneal_alphas['B_J0']
-                                                                             , anneal_alphas['pos'], anneal_alphas['lex'],
-                                                                             total_sent_lens))
-    return anneal_alphas
-
-# annealing follows this schedule
-# for anneal_likelihood_phase amount of iters, the temperature goes down by the amount that is
-# evenly assigned to that amount of iters at the end of that episode
-def calc_anneal_likelihood(cur_iter, length_of_annealing, init_tempature, anneal_likelihood_phase):
-    if init_tempature == 1:
-        return 1
-    num_phases = length_of_annealing // anneal_likelihood_phase
-    if cur_iter < length_of_annealing and init_tempature != 1:
-        cur_phase = cur_iter // anneal_likelihood_phase
-        return init_tempature * ( (num_phases - cur_phase) / num_phases ) + 1
-    else:
-        return 1
-
 # annealing follows this schedule
 # for anneal_likelihood_phase amount of iters, the temperature goes down by the amount that is
 # evenly assigned to that amount of iters at the end of that episode
 def calc_simulated_annealing(cur_anneal_iter, length_of_annealing, init_ac_coeff=0.4, final_ac_coeff=1,
-                             anneal_likelihood_phase=2):
+                             anneal_likelihood_phase=-1):
+    anneal_likelihood_phase = length_of_annealing if anneal_likelihood_phase == -1 else anneal_likelihood_phase
     num_iters_per_phases = math.floor(length_of_annealing / anneal_likelihood_phase)
     temperature_drop_per_phase = (final_ac_coeff - init_ac_coeff) / anneal_likelihood_phase
     cur_phase = cur_anneal_iter // num_iters_per_phases
