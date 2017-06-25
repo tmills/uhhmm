@@ -354,6 +354,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 best_init_model = copy.deepcopy(models)
             pcfg_replace_model(None, None, models, pcfg_model)
             sample.log_prob = 0
+            acc_logprob = 0
+            pcfg_model.log_probs = 0
             iter += 1
             continue
         elif iter == random_restarts - 1:
@@ -370,6 +372,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             max_loglikelihood = -np.inf
             sample.log_prob = 0
             acc_logprob = 0
+            pcfg_model.log_probs = 0
             iter += 1
             continue
         else:

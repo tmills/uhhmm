@@ -105,6 +105,9 @@ class PCFG_model:
         self._update_counts(pcfg_counts)
         sampled_pcfg = self._sample_model(annealing_coeff, normalize=normalize)
         sampled_pcfg = self._translate_model_to_pcfg(sampled_pcfg)
+        self.nonterm_log.flush()
+        self.term_log.flush()
+        self.hypparam_log.flush()
         return sampled_pcfg
 
     def _reset_counts(self):
