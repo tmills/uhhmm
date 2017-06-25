@@ -31,7 +31,7 @@ from pcfg_translator import *
 import copy
 from init_pcfg_strategies import *
 from pcfg_model import PCFG_model
-
+from gpu_parse import parse
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -64,12 +64,25 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 input_seqs_file=None, word_dict_file=None):
     global start_abp
     start_abp = int(params.get('startabp'))
-    sent_lens = list(map(len, ev_seqs))
-    total_sent_lens = sum(sent_lens)
+
+    # validation settings
+    validation = int(params.get("validation", 0))
+    validation_length = int(params.get("validation", 1000)) # the last 1000 senteces are used as validation set by default
+    if validation:
+        logging.info('the validation set is the last {} sentences of all the data.'.format(validation_length))
+        validation_length = -validation_length
+    else:
+        logging.info('validation is off.')
+        validation_length = None
+
     maxLen = max(map(len, ev_seqs))
     max_output = max(map(max, ev_seqs))
-    num_sents = len(ev_seqs)
-    num_tokens = np.sum(sent_lens)
+    # if validation:
+    #     ev_seqs, val_seqs = ev_seqs[:-validation_length], ev_seqs[-validation_length:]
+    # sent_lens = list(map(len, ev_seqs))
+    # total_sent_lens = sum(sent_lens)
+    num_ev_sents = len(ev_seqs[:validation])
+    # num_tokens = np.sum(sent_lens)
 
     num_samples = 0
     ## Set debug first so we can use it during config setting:
@@ -100,9 +113,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     cluster_cmd = params.get('cluster_cmd', None)
     split_merge_iters = int(params.get('split_merge_iters', -1))
     infinite_sample_prob = float(params.get('infinite_prob', 0.0))
-    batch_size = min(num_sents, int(params.get('batch_size', num_sents)))
+    batch_size = min(num_ev_sents, int(params.get('batch_size', num_ev_sents)))
     gpu = bool(int(params.get('gpu', 0)))
-    gpu_batch_size = min(num_sents, int(params.get('gpu_batch_size', 32 if gpu == 1 else 1)))
+    gpu_batch_size = min(num_ev_sents, int(params.get('gpu_batch_size', 32 if gpu == 1 else 1)))
     if gpu and num_gpu_workers < 1 and num_cpu_workers > 0:
         logging.warn("Inconsistent config: gpu flag set with %d gpu workers; setting gpu=False" % (num_gpu_workers))
         gpu = False
@@ -133,6 +146,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     super_cooling_start_iter = int(params.get("super_cooling_start_iter", 2000))
     super_cooling_target_ac = int(params.get("super_cooling_target_ac", 10))
 
+    # viterbi decoding
+    viterbi = int(params.get("viterbi", 1))
+
+    # main body
     if gold_pos_dict_file:
         gold_pos_dict = {}
         with open(gold_pos_dict_file) as g:
@@ -158,7 +175,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     samples = []
     models = Models()
     start_ind = 0
-    end_ind = min(num_sents, batch_size)
+    end_ind = min(num_ev_sents, batch_size)
 
     pcfg_model = PCFG_model(start_abp, max_output, log_dir=working_dir, word_dict_file = word_dict_file)
     pcfg_model.set_alpha(alpha_pcfg_range, alpha=init_alpha)
@@ -172,6 +189,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, inflated_num_abp)
         if input_seqs_file is None:
             hid_seqs = [None] * len(ev_seqs)
+
         else:
             logging.info("Trainer was initialized with input sequences from a previous run.")
             hid_seqs = initialize_and_load_state(ev_seqs, models, depth,
@@ -207,23 +225,12 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         hid_seqs = sample.hid_seqs
         max_state_check(hid_seqs, models, "reading sample from pickle file")
 
-        pos_counts = models.pos.pairCounts[:].sum()
-        lex_counts = models.lex.pairCounts[:].sum()
-
         pcfg_model.set_log_mode('a')
         pcfg_model.start_logging()
 
         inflated_num_abp = models.A[0].dist.shape[-1]
-
         iter = sample.iter + 1
         pcfg_model.iter = iter
-
-    # import pickle
-    # fixed_model = working_dir+'/fixed.models.bin'
-    # if os.path.exists(fixed_model):
-    #     models = pickle.load(open(fixed_model, 'rb'))
-    # else:
-    #     pickle.dump(models, open(fixed_model, 'wb'))
 
     indexer = Indexer(models)
 
@@ -291,8 +298,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## 2*2*|Act|*|Awa|*|G|
         totalK = indexer.get_state_size()
 
-        # logging.info("Number of a states=%d, b states=%d, g states=%d, total=%d, start_ind=%d, end_ind=%d" % (a_max-2, b_max-2, g_max-2, totalK, start_ind, end_ind))
-
         ## Give the models to the model server. (Note: We used to pass them to workers via temp files which works when you create new
         ## workers but is harder when you need to coordinate timing of reading new models in every pass)
 
@@ -302,47 +307,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                                                               limit_depth=init_depth).compile_and_store_models(models,
                                                                                                                working_dir)
         #            FullDepthCompiler.FullDepthCompiler(depth).compile_and_store_models(models, working_dir)
-        t1 = time.time()
-        workDistributer.submitSentenceJobs(start_ind, end_ind)
 
-        ## Wait for server to finish distributing sentences for this iteration:
-        t2 = time.time()
+        this_log_prob = parse(start_ind, end_ind, workDistributer, ev_seqs, hid_seqs)
 
-        logging.info("Sampling time of iteration %d: Model compilation: %d s; Sentence sampling: %d s" % (
-        iter, t1 - t0, t2 - t1))
-
-        t0 = time.time()
-        num_processed = 0
-        parses = workDistributer.get_parses()
-
-        state_list = []
-        state_indices = []
-        for parse in parses:
-            num_processed += 1
-            # logging.info(''.join([x.str() for x in parse.state_list]))
-            # logging.info(parse.success)
-            if parse.success:
-                try:
-                    state_list.append(parse.state_list)
-                    state_indices.append(ev_seqs[parse.index])
-                    # logging.info('The state sequence is ' + ' '.join([str(indexer.getStateIndex(x.j, x.a, x.b, x.f, x.g)) for x in parse.state_list]))
-                    # logging.info(' '.join([x.str() for x in parse.state_list]))
-
-                    # increment_counts(parse.state_list, ev_seqs[parse.index], models)
-
-                    # logging.info('Good parse:')
-                    # logging.info(' '.join([x.str() for x in parse.state_list]))
-                    # logging.info('The index is %d' % parse.index)
-                except:
-                    logging.error('This parse is bad:')
-                    logging.error('The sentence is ' + ' '.join([str(x) for x in ev_seqs[parse.index]]))
-                    logging.error('The state sequence is ' + ' '.join(
-                        [str(indexer.getStateIndex(x.j, x.a, x.b, x.f, x.g)) for x in parse.state_list]))
-                    logging.error(' '.join([x.str() for x in parse.state_list]))
-                    logging.error('The index is %d' % parse.index)
-                    raise
-                sample.log_prob += parse.log_prob
-            hid_seqs[parse.index] = parse.state_list
+        sample.log_prob += this_log_prob
         acc_logprob += sample.log_prob
         pcfg_model.log_probs = acc_logprob
         # random restarts control
@@ -388,8 +356,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             logging.info("Performed enough batches to collect a sample -- waiting for complete pass to finish")
             ready_for_sample = True
 
-        if end_ind >= num_sents:
-            if end_ind > num_sents:
+        if end_ind >= num_ev_sents:
+            if end_ind > num_ev_sents:
                 logging.warning("There are more parses than input sentences!")
 
             logging.info("Finished complete pass through data -- calling checkpoint function")
@@ -419,19 +387,23 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         t0 = time.time()
 
+        if validation:
+            validation_prob = parse(num_ev_sents, num_ev_sents+abs(validation_length),workDistributer, ev_seqs, hid_seqs)
+            pcfg_model.val_log_probs = validation_prob
+
         cur_anneal_iter = iter - random_restarts
         if (cur_anneal_iter >= anneal_length and anneal_length > 1) or anneal_length == 1:  # if annealing is finished
             logging.warn(
                 "number of iterations {} is larger than annealing length {}! Doing normal sampling!".format(iter,
                                                                                                             anneal_length))
             logging.info("The log prob for this iter is {}".format(acc_logprob))
-            pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, sample_alpha_flag=sample_alpha_flag)
+            pcfg_replace_model(hid_seqs[:validation_length], ev_seqs[:validation_length], models, pcfg_model, sample_alpha_flag=sample_alpha_flag)
         elif super_cooling and super_cooling_start_iter >= iter:
             cur_cooling_iter = iter - super_cooling_start_iter
             ac_coeff = calc_simulated_annealing(cur_cooling_iter, super_cooling_length, 1,
                                                 super_cooling_target_ac)
             logging.info("inside super cooling phase with current ac coeff {}".format(ac_coeff))
-            pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff,
+            pcfg_replace_model(hid_seqs[:validation_length], ev_seqs[:validation_length], models, pcfg_model, ac_coeff=ac_coeff,
                                annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
         else:
             ac_coeff = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
@@ -458,24 +430,24 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     if prev_sample.log_prob > best_anneal_likelihood:
                         best_anneal_likelihood = acc_logprob
                         best_anneal_model = copy.deepcopy(models)
-                    pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff,
+                    pcfg_replace_model(hid_seqs[:validation_length], ev_seqs[:validation_length], models, pcfg_model, ac_coeff=ac_coeff,
                                        annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
                     # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
             else:
                 logging.info("The log prob for this iter is {}".format(acc_logprob))
-                pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff,
+                pcfg_replace_model(hid_seqs[:validation_length], ev_seqs[:validation_length], models, pcfg_model, ac_coeff=ac_coeff,
                                    annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
                 # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
         acc_logprob = 0
         ## Update sentence indices for next batch:
-        if end_ind == len(ev_seqs):
+        if end_ind == len(ev_seqs[:validation_length]):
             start_ind = 0
-            end_ind = min(len(ev_seqs), batch_size)
+            end_ind = min(len(ev_seqs[:validation_length]), batch_size)
         else:
             start_ind = end_ind
-            end_ind = start_ind + min(len(ev_seqs), batch_size)
-            if end_ind > num_sents:
-                end_ind = num_sents
+            end_ind = start_ind + min(len(ev_seqs[:validation_length]), batch_size)
+            if end_ind > num_ev_sents:
+                end_ind = num_ev_sents
 
         sample.models = models
 

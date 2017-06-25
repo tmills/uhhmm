@@ -82,15 +82,16 @@ public:
     void set_models(Model * models);
     void initialize_dynprog(int batch_size, int max_len);
     std::vector<float> forward_pass(std::vector<std::vector<int> > sents, int sent_index);
-    std::vector<std::vector<State> > reverse_sample(std::vector<std::vector<int> > sents, int sent_index);
-    std::tuple<std::vector<std::vector<State> >, std::vector<float> > sample(std::vector<std::vector<int> > sents, int sent_index);
+    std::vector<std::vector<State> > reverse_sample(std::vector<std::vector<int> > sents, int sent_index, int viterbi=0);
+    std::tuple<std::vector<std::vector<State> >, std::vector<float> > sample(std::vector<std::vector<int> > sents, int sent_index, int viterbi=0);
     template <class AView>
     int get_sample(AView &v);
+    int get_max(AView &v);
     int sampler_batch_size;
 
 private:
     void g_factored_multiply(Dense* prev_dyn_prog_slice, Dense* this_dyn_prog_slice);
-    std::tuple<State, int> _reverse_sample_inner(int& sample_t, int& t, int sent_ind);
+    std::tuple<State, int> _reverse_sample_inner(int& sample_t, int& t, int sent_ind, int viterbi=0);
     Array* make_pos_full_array(Array* pos_matrix ,int g_max, int b_max, int depth, int state_size);
     Model * p_model = NULL;
     Indexer * p_indexer = NULL;
