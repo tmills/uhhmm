@@ -15,6 +15,7 @@ plot_command = '''python {}/resource-linetrees/scripts/constitevals2table.py {} 
 
 output_files = os.listdir(last_sample_folder)
 output_last_samples = [x for x in output_files if x.endswith('linetrees')]
+
 for f in output_last_samples:
     f_name = os.path.join(last_sample_folder, f)
     end_f_name = '{}.nt.lower.nounary.nopunc.linetrees'.format(f_name.replace('.linetrees', ''))
