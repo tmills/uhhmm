@@ -15,10 +15,9 @@ cdef class PosDependentObservationModel(ObservationModel.ObservationModel):
     def __init__(self):
         self.indexer = None
 
-    cdef set_models(self, models.Models models):
+    cdef set_models(self, models):
         self.indexer = Indexer.Indexer(models)
         g_len = models.pos.dist.shape[1]
-        self.lexMatrix = np.matrix(models.lex.dist, copy=False)
         lexMultiplier = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, self.indexer.get_state_size() // g_len)))
         self.data = lexMultiplier.data
         self.indices = lexMultiplier.indices
