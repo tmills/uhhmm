@@ -31,7 +31,7 @@ cdef class GaussianModel(Model):
             self.dist.append([])
             for dim in range(shape[1]):
                 self.dist[-1].append(scipy.stats.norm())
-                
+
     def count(self, pos_ind, token_ind, val):
         ## we've seen a count of pos tag cond pos_ind and word index token_ind
         ## Go through embeddings matrix to create pair counts for each dimensions
@@ -50,7 +50,27 @@ cdef class GaussianModel(Model):
             self.condCounts[pos_ind] = 0
             for dim in range(self.pairCounts.shape[1]):
                 self.pairCounts[pos_ind,dim] = 0
-                
+
+    def __reduce__(self):
+        d = {}
+        d['shape'] = self.shape
+        d['embeddings'] = self.embeddings
+        d['pairCounts'] = self.pairCounts
+        d['condCounts'] = self.condCounts
+        d['dist'] = self.dist
+        d['corpus_shape'] = self.corpus_shape
+        d['name'] = self.name
+        return (GaussianModel, (self.shape, self.embeddings, self.corpus_shape, self.name), d)
+
+    def __setstate__(self, d):
+        self.shape = d['shape']
+        self.embeddings = d['embeddings']
+        self.pairCounts = d['pairCounts']
+        self.condCounts = d['condCounts']
+        self.dist = d['dist']
+        self.corpus_shape = d['corpus_shape']
+        self.name = d['name']
+
 cdef class CategoricalModel(Model):
     def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, corpus_shape=(1,1), name="Categorical"):
         Model.__init__(self, corpus_shape, name)
@@ -371,7 +391,7 @@ cdef class Models:
             self.lex.sampleGaussian()
         else:
             logging.error("The type of the lexical model is not understood: %s" % type(self.lex).__name__)
-            
+
     def increment_global_counts(self):
         depth = len(self.fj)
         for d in range(depth-1, -1, -1):

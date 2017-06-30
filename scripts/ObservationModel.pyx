@@ -14,7 +14,7 @@ cimport models
 ## method called get_probability_for_g()
 cdef class ObservationModel:
 
-    cdef public set_models(self, models.Models models):
+    cdef public set_models(self, models):
         raise NotImplementedError()
 
     cdef get_probability_vector(self, token):

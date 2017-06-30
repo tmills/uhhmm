@@ -9,8 +9,9 @@ cimport PosDependentObservationModel
 cimport models
 
 cdef class GaussianObservationModel(PosDependentObservationModel.PosDependentObservationModel):
-    cdef set_models(self, models.Models models):
-        self.indexer = Indexer.Indexer(models)
+    cdef set_models(self, uhhmm_models):
+        PosDependentObservationModel.PosDependentObservationModel.set_models(self, uhhmm_models)
+        self.lex = uhhmm_models.lex
 
     ## In this version of the observation model, token is a continuous vector.
     ## Here we compute the joint probability of the observation dimensions given
@@ -23,13 +24,14 @@ cdef class GaussianObservationModel(PosDependentObservationModel.PosDependentObs
     cdef get_pos_probability_vector(self, token):
         maxes = self.indexer.getVariableMaxes()
         (a_max,b_max,g_max) = maxes
+        token_vec = self.lex.embeddings[token]
 
         retVec = [0.0]
-        for g in range(1,g_max):
+        for g in range(1,g_max-1):
             prob = 1.0
-            for ind in range(len(token)):
-                prob *= self.models.lex.dist[g][ind].pdf(token[ind])
+            for ind in range(len(token_vec)):
+                prob *= self.lex.dist[g][ind].pdf(token_vec[ind])
             retVec.append(prob)
 
         retVec.append(0.0)
-        return retVec
+        return np.array(retVec)

@@ -12,5 +12,9 @@ cimport models
 
 cdef class CategoricalObservationModel(PosDependentObservationModel.PosDependentObservationModel):
 
+    cdef set_models(self, models):
+        PosDependentObservationModel.PosDependentObservationModel.set_models(self, models)
+        self.lexMatrix = np.matrix(models.lex.dist, copy=False)
+
     cdef get_pos_probability_vector(self, token):
         return self.lexMatrix[:,token]

@@ -319,4 +319,3 @@ def unlog_models(models):
     models.pos.dist = 10**models.pos.dist
     if type(models.lex.dist).__name__ == 'ndarray':
         models.lex.dist = 10**models.lex.dist
-        

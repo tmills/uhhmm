@@ -8,5 +8,4 @@ cimport numpy as np
 cimport PosDependentObservationModel
 
 cdef class GaussianObservationModel(PosDependentObservationModel.PosDependentObservationModel):
-    #cdef Indexer.Indexer indexer
-    pass
+    cdef lex
