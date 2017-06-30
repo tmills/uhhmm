@@ -104,6 +104,7 @@ cdef class HmmSampler(Sampler.Sampler):
         cdef tuple maxes
         cdef list sent
 
+        print("Forward pass for sentence %d" % (sent_index))
         if len(sents) > 1:
             raise Exception("Error: Python version only accepts batch size 1")
 
@@ -136,17 +137,19 @@ cdef class HmmSampler(Sampler.Sampler):
                 forward[index,:] = factored_transition * sparse_factored_expand_mat
 
                 lex_prob = self.obs_model.get_probability_vector(token)
+                print(lex_prob)
 
                 forward[index,:] = np.multiply(forward[index,:], lex_prob)
 
                 normalizer = forward[index,:].sum()
+                print(normalizer)
                 forward[index,:] /= normalizer
-
+                
                 ## Normalizer is p(y_t)
                 sentence_log_prob += np.log10(normalizer)
             last_index = len(sent)-1
             if np.argwhere(forward.max(1)[0:last_index+1,:] == 0).size > 0 or np.argwhere(np.isnan(forward.max(1)[0:last_index+1,:])).size > 0:
-                logging.error("Error; There is a word with no positive probabilities for its generation in the forward filter: %s" % forward.max(1)[0:last_index+1,:])
+                logging.error("There is a word with no positive probabilities for its generation in the forward filter: %s" % forward.max(1)[0:last_index+1,:])
                 raise Exception("There is a word with no positive probabilities for its generation in the forward filter.")
 
             ## FIXME - Do we need to multiply by -/+ at last time step for d > 0 system?

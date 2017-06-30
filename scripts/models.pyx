@@ -40,9 +40,15 @@ cdef class GaussianModel(Model):
             self.pairCounts[pos_ind, dim] += val * self.embeddings[token_ind][dim]
 
     def sampleGaussian(self):
+        if self.condCounts.sum() == 0:
+            ## This is called before we've done any sampling, and we already randomly
+            ## initialized in the constructor
+            return
+            
         for pos_ind in range(self.pairCounts.shape[0]):
             for dim in range(self.pairCounts.shape[1]):
-                mean_sample_dist = scipy.stats.norm(self.pairCounts[pos_ind][dim] / self.condCounts[pos_ind])
+                sample_mean = self.pairCounts[pos_ind][dim] / self.condCounts[pos_ind]
+                mean_sample_dist = scipy.stats.norm(sample_mean)
                 self.dist[pos_ind][dim] = scipy.stats.norm(mean_sample_dist.rvs())
 
     def resetCounts(self):

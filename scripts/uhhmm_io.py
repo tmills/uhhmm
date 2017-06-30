@@ -63,23 +63,37 @@ def read_input_file(filename):
 
     return (pos_seqs, token_seqs)
 
-def read_word_vector_file(filename, dict):
+def read_word_vector_file(filename, word_dict):
     f = open(filename, 'r', encoding='utf-8')
     dim = -1
+    inv_dict = {}
+    for key,val in word_dict.items():
+        inv_dict[val] = key
+        
     for line in f:
         parts = line.split()
         if len(parts) == 2:
             dim = int(parts[1])
-            word_matrix = np.zeros((len(dict), dim))
+            word_matrix = np.zeros((len(word_dict)+1, dim))
+            print("Creating word matrix with size %d, %d" % (word_matrix.shape[0], word_matrix.shape[1]))
             continue
 
-        word = parts[0]
-        if not word in dict.keys():
+        if len(parts) > dim+1:
+            logging.warn("Found line in vectors file with incompatible length %d" % len(parts))
             continue
-        word_ind = dict[word]
+            
+        word = parts[0]
+        if not word in inv_dict:
+            continue
+
+        word_ind = inv_dict[word]
         vec = []
         for ind in range(1,dim+1):
-            vec.append(float(parts[ind]))
+            try:
+                vec.append(float(parts[ind]))
+            except:
+                print("Encountered a problem with line %s with length %d" % (line, len(parts)))
+                raise Exception
 
         np_vec = np.array(vec, dtype='float16')
         word_matrix[word_ind] += np_vec

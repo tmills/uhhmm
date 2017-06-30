@@ -133,6 +133,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         lex = None
         if not word_vecs is None:
+            logging.info("Using word vectors as observations: Embedding matrix has %d entries, %d dimensions, max=%f and min=%f" % (word_vecs.shape[0], word_vecs.shape[1], word_vecs.max(), word_vecs.min()))
             lex = GaussianModel((g_max, word_vecs.shape[1]), word_vecs, name="Lex")
         models.initialize_as_fjabp(max_output, params, (len(ev_seqs), maxLen), depth, a_max, b_max, g_max, lex=lex)
             
