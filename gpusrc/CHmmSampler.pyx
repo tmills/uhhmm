@@ -75,7 +75,7 @@ cdef extern from "HmmSampler.h":
         void set_models(Model*)
         void initialize_dynprog(int, int)
         vector[float] forward_pass(vector[vector[int]], int)
-        vector[vector[State]] reverse_sample(vector[vector[int]], int)
+        vector[vector[State]] reverse_sample(vector[vector[int]], int, int)
 
 
 cdef class GPUHmmSampler:
