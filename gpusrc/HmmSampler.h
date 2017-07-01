@@ -86,6 +86,7 @@ public:
     std::tuple<std::vector<std::vector<State> >, std::vector<float> > sample(std::vector<std::vector<int> > sents, int sent_index, int viterbi);
     template <class AView>
     int get_sample(AView &v);
+    template <class AView>
     int get_max(AView &v);
     int sampler_batch_size;
 
