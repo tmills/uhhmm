@@ -232,6 +232,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         pcfg_model.iter = iter
 
     indexer = Indexer(models)
+    compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
 
     stats = Stats()
     inf_procs = list()
@@ -298,11 +299,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## workers but is harder when you need to coordinate timing of reading new models in every pass)
 
         t0 = time.time()
-        if finite:
-            DistributedModelCompiler.DistributedModelCompiler(depth, workDistributer, gpu,
-                                                              limit_depth=init_depth).compile_and_store_models(models,
-                                                                                                               working_dir)
-        #            FullDepthCompiler.FullDepthCompiler(depth).compile_and_store_models(models, working_dir)
 
         this_log_prob, num_processed = parse(start_ind, end_ind, workDistributer, ev_seqs, hid_seqs)
 
@@ -317,6 +313,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 max_loglikelihood = sample.log_prob
                 best_init_model = copy.deepcopy(models)
             pcfg_replace_model(None, None, models, pcfg_model)
+            compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
             sample.log_prob = 0
             acc_logprob = 0
             pcfg_model.log_probs = 0
@@ -393,6 +390,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 mh_counts += 1
                 old_models = copy.deepcopy(models)
                 pcfg_replace_model(hid_seqs[:validation_length], ev_seqs[:validation_length], old_models, pcfg_model, sample_alpha_flag=sample_alpha_flag)
+                compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
+
                 if validation: # validation is after annealing
                     validation_prob, _ = parse(num_ev_sents, num_ev_sents + abs(validation_length), workDistributer,
                                                ev_seqs, hid_seqs)
@@ -419,6 +418,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             logging.info("inside super cooling phase with current ac coeff {}".format(ac_coeff))
             pcfg_replace_model(hid_seqs[:validation_length], ev_seqs[:validation_length], models, pcfg_model, ac_coeff=ac_coeff,
                                annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
+            compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
+
         else:
             ac_coeff = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
                                                 final_anneal_likelihood, anneal_likelihood_phase)
@@ -452,6 +453,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 pcfg_replace_model(hid_seqs[:validation_length], ev_seqs[:validation_length], models, pcfg_model, ac_coeff=ac_coeff,
                                    annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
                 # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
+            compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
+
         acc_logprob = 0
         ## Update sentence indices for next batch:
         if end_ind == len(ev_seqs[:validation_length]):
@@ -703,3 +706,8 @@ def normalize(matrix):
     # print(matrix, 'last')
     # assert np.sum(matrix) == np.cumprod(matrix.shape)[-1], "{}, {}".format(np.sum(matrix), np.cumprod(matrix.shape)[-1])
     return matrix
+
+def compile_and_set_models(depth, work_distributer, gpu, init_depth, models, working_dir):
+    DistributedModelCompiler.DistributedModelCompiler(depth, work_distributer, gpu,
+                                                      limit_depth=init_depth).compile_and_store_models(models,
+                                                                                                       working_dir)
