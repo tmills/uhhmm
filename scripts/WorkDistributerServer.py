@@ -7,7 +7,7 @@ import socket
 import time
 import zmq
 from queue import Queue
-from PyzmqMessage import SentenceJob, CompileJob, PyzmqJob, SentenceRequest, RowRequest, get_file_signature, resource_current, ModelLocation
+from PyzmqMessage import SentenceJob, CompileJob, PyzmqJob, SentenceRequest, RowRequest, get_file_signature, resource_current, ModelLocation, ViterbiParseJob
 from threading import Thread, Lock
 
 class ResetSignal():
@@ -296,7 +296,7 @@ class WorkDistributerServer():
         self.models = None
         self.model_server.start()
         
-    def submitSentenceJobs(self, start=-1, end=-1):
+    def submitSentenceJobs(self, start=-1, end=-1, viterbi=0):
         ind = 0
         num_done = 0
         self.model_server.reset_models()
@@ -304,7 +304,7 @@ class WorkDistributerServer():
         
         if start >= 0 and end >= 0:
             for i in range(start, end):
-                self.vent.addJob(PyzmqJob(PyzmqJob.SENTENCE, SentenceJob(i, self.sent_list[i]) ) )
+                self.vent.addJob(PyzmqJob(PyzmqJob.SENTENCE, SentenceJob(i, self.sent_list[i], viterbi) ) )
 
             self.sink.setBatchSize(end-start)
 
@@ -316,7 +316,7 @@ class WorkDistributerServer():
         self.startProcessing(model_sig)
         while self.sink.getProcessing():
             time.sleep(2)
-        
+
     def submitBuildModelJobs(self, num_rows, full_pi=False):
         self.model_server.reset_models('raw_models.bin')
         for i in range(0, num_rows):

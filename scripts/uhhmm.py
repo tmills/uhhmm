@@ -65,9 +65,15 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     global start_abp
     start_abp = int(params.get('startabp'))
 
+    debug = params.get('debug', 'INFO')
+    logfile = params.get('logfile', '')
+    if logfile:
+        logging.basicConfig(level=getattr(logging, debug), filename=logfile)
+    else:
+        logging.basicConfig(level=getattr(logging, debug), stream=sys.stdout)
     # validation settings
     validation = int(params.get("validation", 0))
-    validation_length = int(params.get("validation", 1000)) # the last 1000 senteces are used as validation set by default
+    validation_length = int(params.get("validation_length", 1000)) # the last 1000 senteces are used as validation set by default
     if validation:
         logging.info('the validation set is the last {} sentences of all the data.'.format(validation_length))
         validation_length = -validation_length
@@ -81,17 +87,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     #     ev_seqs, val_seqs = ev_seqs[:-validation_length], ev_seqs[-validation_length:]
     # sent_lens = list(map(len, ev_seqs))
     # total_sent_lens = sum(sent_lens)
-    num_ev_sents = len(ev_seqs[:validation])
+    num_ev_sents = len(ev_seqs[:validation_length])
     # num_tokens = np.sum(sent_lens)
 
     num_samples = 0
-    ## Set debug first so we can use it during config setting:
-    debug = params.get('debug', 'INFO')
-    logfile = params.get('logfile', '')
-    if logfile:
-        logging.basicConfig(level=getattr(logging, debug), filename=logfile)
-    else:
-        logging.basicConfig(level=getattr(logging, debug), stream=sys.stdout)
 
     depth = int(params.get('depth', 1))
     init_depth = int(params.get('init_depth', depth))
@@ -290,12 +289,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             else:
                 logging.info("Performing standard finite sample")
 
-        ## These values keep track of actual maxes not user-specified --
-        ## so if user specifies 10 to start this will be 11 because of state 0 (init)
+        # num_abp + 2
         inflated_num_abp = models.A[0].dist.shape[-1]
 
-        ## How many total states are there?
-        ## 2*2*|Act|*|Awa|*|G|
         totalK = indexer.get_state_size()
 
         ## Give the models to the model server. (Note: We used to pass them to workers via temp files which works when you create new
@@ -308,7 +304,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                                                                                                                working_dir)
         #            FullDepthCompiler.FullDepthCompiler(depth).compile_and_store_models(models, working_dir)
 
-        this_log_prob = parse(start_ind, end_ind, workDistributer, ev_seqs, hid_seqs)
+        this_log_prob, num_processed = parse(start_ind, end_ind, workDistributer, ev_seqs, hid_seqs)
 
         sample.log_prob += this_log_prob
         acc_logprob += sample.log_prob
@@ -387,17 +383,32 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         t0 = time.time()
 
-        if validation:
-            validation_prob = parse(num_ev_sents, num_ev_sents+abs(validation_length),workDistributer, ev_seqs, hid_seqs)
-            pcfg_model.val_log_probs = validation_prob
-
         cur_anneal_iter = iter - random_restarts
         if (cur_anneal_iter >= anneal_length and anneal_length > 1) or anneal_length == 1:  # if annealing is finished
             logging.warn(
                 "number of iterations {} is larger than annealing length {}! Doing normal sampling!".format(iter,
                                                                                                             anneal_length))
+            mh_counts = 0
+            while True:
+                mh_counts += 1
+                old_models = copy.deepcopy(models)
+                pcfg_replace_model(hid_seqs[:validation_length], ev_seqs[:validation_length], old_models, pcfg_model, sample_alpha_flag=sample_alpha_flag)
+                if validation: # validation is after annealing
+                    validation_prob, _ = parse(num_ev_sents, num_ev_sents + abs(validation_length), workDistributer,
+                                               ev_seqs, hid_seqs)
+                    thres = np.log10(np.random.uniform(0, 1))
+                    logging.info("try {}: val likelihood: {}; prev val likelihood: {}; thres {}".format(mh_counts,
+                                                                                                        validation_prob, pcfg_model.val_log_probs, thres))
+                    if pcfg_model.val_log_probs == -np.inf or validation_prob - pcfg_model.val_log_probs > thres:
+                        pcfg_model.val_log_probs = validation_prob
+                        models = old_models
+                        break
+
+                else:
+                    models = old_models
+            logging.info("the dev log prob for this iteration {} is {}, which takes {} tries.".format(iter, validation_prob, mh_counts))
             logging.info("The log prob for this iter is {}".format(acc_logprob))
-            pcfg_replace_model(hid_seqs[:validation_length], ev_seqs[:validation_length], models, pcfg_model, sample_alpha_flag=sample_alpha_flag)
+
         elif super_cooling and super_cooling_start_iter >= iter:
             cur_cooling_iter = iter - super_cooling_start_iter
             ac_coeff = calc_simulated_annealing(cur_cooling_iter, super_cooling_length, 1,

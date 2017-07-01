@@ -1,28 +1,18 @@
 #!/usr/bin/env python3
 
 import zmq
-from multiprocessing import Process
 from PyzmqMessage import get_file_signature, resource_current, ModelWrapper, PyzmqJob, SentenceJob, CompileJob, CompletedJob, PyzmqParse, CompiledRow, SentenceRequest, RowRequest
-import multiprocessing
 import logging
-import os
 import os.path
 import pickle
-import signal
-import subprocess
-import sys
-import time
-import pdb, traceback
 #import pyximport; pyximport.install()
 import tempfile
 import socket
 import DepthOneInfiniteSampler
 import HmmSampler
 cimport HmmSampler
-import SparseHmmSampler
 import Sampler
 cimport Sampler
-#from Sampler import *
 import Indexer
 import FullDepthCompiler
 import os
@@ -207,6 +197,7 @@ cdef class PyzmqWorker:
                 self.quit = True
                 break
             if job.type == PyzmqJob.SENTENCE:
+                viterbi = job.viterbi
                 if self.batch_size > 1:
                     sent_index = job.resource.index
                     for job in jobs:
@@ -263,7 +254,7 @@ cdef class PyzmqWorker:
                                     sent_batch = sent_batch[mini_batch_size:]
 
                                     try:
-                                        (sub_samples, sub_probs) = sampler.sample(pi, sub_batch, sent_index)
+                                        (sub_samples, sub_probs) = sampler.sample(pi, sub_batch, sent_index, viterbi)
                                     except Exception as e:
                                         print("Exception in sampler: %s" % (str(e)))
                                         raise Exception

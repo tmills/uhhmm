@@ -7,7 +7,7 @@ class PyzmqJob:
     SENTENCE=0
     QUIT=1
     COMPILE=2
-    
+
     def __init__(self, msg_type, resource):
         self.type = msg_type
         self.resource = resource
@@ -22,9 +22,10 @@ class SentenceRequest(JobRequest):
         self.request_size = request_size
         
 class SentenceJob:
-    def __init__(self, index, ev_seq):
+    def __init__(self, index, ev_seq, viterbi=0):
         self.index = index
         self.ev_seq = ev_seq
+        self.viterbi = viterbi
 
 class RowRequest(JobRequest):
     def __init__(self, resource_sig):

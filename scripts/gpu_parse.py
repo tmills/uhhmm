@@ -1,8 +1,9 @@
 import logging
 import Indexer
 
-def parse(start_ind, end_ind, distributer, ev_seqs, hid_seqs):
-    distributer.submitSentenceJobs(start_ind, end_ind)
+def parse(start_ind, end_ind, distributer, ev_seqs, hid_seqs, viterbi=0):
+
+    distributer.submitSentenceJobs(start_ind, end_ind, viterbi)
     num_processed = 0
     parses = distributer.get_parses()
     logprobs = 0
@@ -34,4 +35,4 @@ def parse(start_ind, end_ind, distributer, ev_seqs, hid_seqs):
                 raise
             logprobs += parse.log_prob
         hid_seqs[parse.index] = parse.state_list
-    return logprobs
+    return logprobs, num_processed

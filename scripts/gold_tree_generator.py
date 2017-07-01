@@ -1,5 +1,7 @@
 import sys
 
+# this is the gold tree generator for the abcabab toy dataset.
+
 for line in sys.stdin:
     line = line.strip().split()
     if len(line) == 3:

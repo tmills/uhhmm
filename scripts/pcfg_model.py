@@ -23,12 +23,16 @@ class PCFG_model:
         self.log_dir = log_dir
         self.log_mode = 'w'
         self.iter = iter
+        self.ac_coeff = 1
         self.nonterm_log_path = os.path.join(log_dir, 'pcfg_nonterms.txt')
         self.term_log_path = os.path.join(log_dir, 'pcfg_terms.txt')
         self.hypparams_log_path = os.path.join(log_dir, 'pcfg_hypparams.txt')
+        self.nonterm_log_str = ''
+        self.hypparam_log_str = ''
+        self.term_log_str = ''
         self.word_dict = self._read_word_dict_file(word_dict_file)
         self.log_probs = 0
-        self.val_log_probs = 0
+        self.val_log_probs = -np.inf
 
     def set_log_mode(self, mode):
         self.log_mode = mode  # decides whether append to log or restart log
@@ -65,8 +69,8 @@ class PCFG_model:
                 else:
                     index = self[(lhs, rhs)]
                     non_term_header.append(dists[lhs][index])
-        self.nonterm_log.write('\t'.join([str(x) for x in non_term_header]) + '\n')
-        self.term_log.write('\t'.join([str(x) for x in term_header]) + '\n')
+        self.nonterm_log_str = '\t'.join([str(x) for x in non_term_header]) + '\n'
+        self.term_log_str = '\t'.join([str(x) for x in term_header]) + '\n'
 
     def __getitem__(self, item):
         assert isinstance(item, tuple), "PCFG can only look up tuples"
@@ -106,10 +110,16 @@ class PCFG_model:
         self._update_counts(pcfg_counts)
         sampled_pcfg = self._sample_model(annealing_coeff, normalize=normalize)
         sampled_pcfg = self._translate_model_to_pcfg(sampled_pcfg)
+
+        return sampled_pcfg
+
+    def write_params(self):
+        self.nonterm_log.write(self.nonterm_log_str)
+        self.hypparam_log.write(self.hypparam_log_str)
+        self.term_log.write(self.term_log_str)
         self.nonterm_log.flush()
         self.term_log.flush()
         self.hypparam_log.flush()
-        return sampled_pcfg
 
     def _reset_counts(self):
         for parent in self.counts:
@@ -148,7 +158,7 @@ class PCFG_model:
     def _sample_model(self, annealing_coeff=1.0, normalize=False):
         logging.info(
             "resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha, annealing_coeff))
-        self.hypparam_log.write('\t'.join([str(x) for x in [self.iter, self.log_probs, self.val_log_probs, self.alpha, annealing_coeff]]) + '\n')
+        self.hypparam_log_str = '\t'.join([str(x) for x in [self.iter, self.log_probs, self.val_log_probs, self.alpha, annealing_coeff]]) + '\n'
         self.unannealed_dists = {x: np.random.dirichlet(self.counts[x]) for x in self.counts}
         dists = {}
         if annealing_coeff != 1.0:
