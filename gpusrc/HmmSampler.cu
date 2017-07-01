@@ -94,9 +94,8 @@ int HmmSampler::get_sample(AView &v){
 }
 template <class AView>
 int HmmSampler::get_max(AView &v){
-    int* dart_target = thrust::max_element(thrust::device, v.begin(), v.end());
-    int sample_index = dart_target - v.begin();
-    return sample_index;
+    int dart_target = thrust::max_element(thrust::device, v.begin(), v.end()) - v.begin();
+    return dart_target;
 }
 
 class cuda_exp : public thrust::unary_function<float, float>{
