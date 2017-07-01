@@ -197,7 +197,7 @@ cdef class PyzmqWorker:
                 self.quit = True
                 break
             if job.type == PyzmqJob.SENTENCE:
-                viterbi = job.viterbi
+                viterbi = job.resource.viterbi
                 if self.batch_size > 1:
                     sent_index = job.resource.index
                     for job in jobs:

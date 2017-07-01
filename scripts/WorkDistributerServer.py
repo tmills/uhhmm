@@ -7,7 +7,7 @@ import socket
 import time
 import zmq
 from queue import Queue
-from PyzmqMessage import SentenceJob, CompileJob, PyzmqJob, SentenceRequest, RowRequest, get_file_signature, resource_current, ModelLocation, ViterbiParseJob
+from PyzmqMessage import SentenceJob, CompileJob, PyzmqJob, SentenceRequest, RowRequest, get_file_signature, resource_current, ModelLocation
 from threading import Thread, Lock
 
 class ResetSignal():

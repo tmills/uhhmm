@@ -402,10 +402,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     if pcfg_model.val_log_probs == -np.inf or validation_prob - pcfg_model.val_log_probs > thres:
                         pcfg_model.val_log_probs = validation_prob
                         models = old_models
+                        pcfg_model.write_params()
                         break
 
                 else:
                     models = old_models
+                    pcfg_model.write_params()
+                    break
             logging.info("the dev log prob for this iteration {} is {}, which takes {} tries.".format(iter, validation_prob, mh_counts))
             logging.info("The log prob for this iter is {}".format(acc_logprob))
 
