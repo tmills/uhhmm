@@ -1,5 +1,5 @@
 import logging
-import indexer
+import Indexer
 
 def parse(start_ind, end_ind, distributer, ev_seqs, hid_seqs):
     distributer.submitSentenceJobs(start_ind, end_ind)
@@ -28,7 +28,7 @@ def parse(start_ind, end_ind, distributer, ev_seqs, hid_seqs):
                 logging.error('This parse is bad:')
                 logging.error('The sentence is ' + ' '.join([str(x) for x in ev_seqs[parse.index]]))
                 logging.error('The state sequence is ' + ' '.join(
-                    [str(indexer.getStateIndex(x.j, x.a, x.b, x.f, x.g)) for x in parse.state_list]))
+                    [str(Indexer.getStateIndex(x.j, x.a, x.b, x.f, x.g)) for x in parse.state_list]))
                 logging.error(' '.join([x.str() for x in parse.state_list]))
                 logging.error('The index is %d' % parse.index)
                 raise
