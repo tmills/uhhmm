@@ -232,7 +232,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         pcfg_model.iter = iter
 
     indexer = Indexer(models)
-    compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
 
     stats = Stats()
     inf_procs = list()
@@ -260,6 +259,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                              workDistributer.models_port, maxLen + 1, int(gpu), gpu_batch_size]]), file=c)
             print('OK', file=c)
 
+
     logging.info("Starting workers")
     max_loglikelihood = -np.inf
     best_init_model = None
@@ -267,6 +267,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     best_anneal_likelihood = -np.inf
     prev_anneal_coeff = -np.inf
     acc_logprob = 0
+    # compile the initialized the models
+    compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
     ### Start doing actual sampling:
     while num_samples < max_samples:
         sample.iter = iter
@@ -390,7 +392,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 mh_counts += 1
                 old_models = copy.deepcopy(models)
                 pcfg_replace_model(hid_seqs[:validation_length], ev_seqs[:validation_length], old_models, pcfg_model, sample_alpha_flag=sample_alpha_flag)
-                compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
+                compile_and_set_models(depth, workDistributer, gpu, init_depth, old_models, working_dir)
 
                 if validation: # validation is after annealing
                     validation_prob, _ = parse(num_ev_sents, num_ev_sents + abs(validation_length), workDistributer,
@@ -400,6 +402,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                                                                                                         validation_prob, pcfg_model.val_log_probs, thres))
                     if pcfg_model.val_log_probs == -np.inf or validation_prob - pcfg_model.val_log_probs > thres:
                         pcfg_model.val_log_probs = validation_prob
+                        pcfg_model.mh_tries = mh_counts
                         models = old_models
                         pcfg_model.write_params()
                         break

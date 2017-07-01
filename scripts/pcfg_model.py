@@ -32,6 +32,8 @@ class PCFG_model:
         self.term_log_str = ''
         self.word_dict = self._read_word_dict_file(word_dict_file)
         self.log_probs = 0
+        self.mh_tries = 0
+        self.annealing_coeff = 1.0
         self.val_log_probs = -np.inf
 
     def set_log_mode(self, mode):
@@ -56,7 +58,7 @@ class PCFG_model:
             self.term_log.write('\t'.join(term_header) + '\n')
         self.hypparam_log = open(self.hypparams_log_path, self.log_mode)
         if self.log_mode == 'w':
-            self.hypparam_log.write('iter\tlogprob\tval_logprob\talpha\tac\n')
+            self.hypparam_log.write('iter\tlogprob\tval_logprob\tmh_tries\talpha\tac\n')
 
     def _log_dists(self, dists):
         non_term_header = [self.iter, ]
@@ -114,6 +116,7 @@ class PCFG_model:
         return sampled_pcfg
 
     def write_params(self):
+        self.hypparam_log_str = '\t'.join([str(x) for x in [self.iter, self.log_probs, self.val_log_probs, self.mh_tries, self.alpha, self.annealing_coeff]]) + '\n'
         self.nonterm_log.write(self.nonterm_log_str)
         self.hypparam_log.write(self.hypparam_log_str)
         self.term_log.write(self.term_log_str)
@@ -158,7 +161,7 @@ class PCFG_model:
     def _sample_model(self, annealing_coeff=1.0, normalize=False):
         logging.info(
             "resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha, annealing_coeff))
-        self.hypparam_log_str = '\t'.join([str(x) for x in [self.iter, self.log_probs, self.val_log_probs, self.alpha, annealing_coeff]]) + '\n'
+        self.annealing_coeff = annealing_coeff
         self.unannealed_dists = {x: np.random.dirichlet(self.counts[x]) for x in self.counts}
         dists = {}
         if annealing_coeff != 1.0:
