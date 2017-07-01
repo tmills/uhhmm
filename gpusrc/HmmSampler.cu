@@ -92,10 +92,10 @@ int HmmSampler::get_sample(AView &v){
 //      cout << "dart_target: " << dart_target << endl;
      return dart_target;
 }
-
+template <class AView>
 int HmmSampler::get_max(AView &v){
     int* dart_target = thrust::max_element(thrust::device, v.begin(), v.end());
-    int sample_index = dart_target - v.begin()
+    int sample_index = dart_target - v.begin();
     return sample_index;
 }
 
