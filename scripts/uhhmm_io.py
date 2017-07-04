@@ -9,7 +9,7 @@ import shutil
 import sys, linecache
 import State
 from left_corner2normal_tree_converter import *
-
+import re
 ## This method reads a "last_sample*.txt" file which is space-delimited, and
 ## each token is formatted as f/j::ACT/AWA;^d:POS;token where ^d indicates that
 ## the ACT/AWA section is a semi-colon delimited list of length d. Each token
@@ -107,17 +107,17 @@ def write_output(sample, stats, config, gold_pos=None):
             (word, index) = line.rstrip().split(" ")
             word_dict[int(index)] = word
 
-    if gold_pos != None:
-        sys_pos = extract_pos(sample)
-        v = calcV.get_v(gold_pos, sys_pos)
-        f = open(output_dir + "/v_measure.txt", 'a', encoding='utf-8')
-        f.write('%d\t%f\n' % (sample.iter,v))
-        f.close()
-
-        vi = calcV.get_vi(gold_pos, sys_pos)
-        f = open(output_dir + "/vi.txt", 'a', encoding='utf-8')
-        f.write('%d\t%f\n' % (sample.iter,vi))
-        f.close()
+    # if gold_pos != None:
+    #     sys_pos = extract_pos(sample)
+    #     v = calcV.get_v(gold_pos, sys_pos)
+    #     f = open(output_dir + "/v_measure.txt", 'a', encoding='utf-8')
+    #     f.write('%d\t%f\n' % (sample.iter,v))
+    #     f.close()
+    #
+    #     vi = calcV.get_vi(gold_pos, sys_pos)
+    #     f = open(output_dir + "/vi.txt", 'a', encoding='utf-8')
+    #     f.write('%d\t%f\n' % (sample.iter,vi))
+    #     f.close()
 
     write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter, word_dict)
 
@@ -180,11 +180,13 @@ def write_lex_model(dist, out_file, word_dict=None):
 ## The translate parameter controls whether the state sequences or bracketed parses are printed out
 def write_last_sample(sample, out_file, word_dict):
     # f = open(out_file, 'w', encoding='utf-8')
-    bracketed_f = open(out_file.replace('.txt', '')+'.linetrees', 'w', encoding='utf-8')
+    bracketed_f = open(out_file.replace('.txt', '')+'.linetrees', 'w', encoding='utf-8') if out_file.endswith('.txt') else \
+        open(out_file, 'w', encoding='utf8')
     #pdb.set_trace()
-    for sent_num,sent_state in enumerate(sample.hid_seqs):
+    hid_seqs, ev_seqs = sample if isinstance(sample, tuple) else sample.hid_seqs, sample.ev_seqs
+    for sent_num,sent_state in enumerate(hid_seqs):
         state_str = ""
-        token_strs = [word_dict[sample.ev_seqs[sent_num][x]] for x in range(len(sent_state))]
+        token_strs = [word_dict[ev_seqs[sent_num][x]] for x in range(len(sent_state))]
         # for token_num,token_state in enumerate(sent_state):
         #     token_str = token_strs[token_num]
         #     state_str += token_state.raw_str() + '::' + token_str + ' '

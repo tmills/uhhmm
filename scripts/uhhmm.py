@@ -31,7 +31,7 @@ from pcfg_translator import *
 import copy
 from init_pcfg_strategies import *
 from pcfg_model import PCFG_model
-from gpu_parse import parse
+from gpu_parse import parse, compile_and_set_models
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -329,6 +329,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             # best_init_model = unreanneal(best_init_model, next_ac_coeff=init_anneal_likelihood)
             sample.models = best_init_model
             models = best_init_model
+            compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
+            if validation:  # validation is after annealing
+                validation_prob, _ = parse(num_ev_sents, num_ev_sents + abs(validation_length), workDistributer,
+                                           ev_seqs, hid_seqs)
+                pcfg_model.val_log_probs = validation_prob
             logging.info("The {} random restart has a loglikelihood of {}".format(iter, sample.log_prob))
             logging.info("The best init model has a loglikehood of {}. Will be using this for sampling.".format(
                 max_loglikelihood))
@@ -337,6 +342,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             acc_logprob = 0
             pcfg_model.log_probs = 0
             iter += 1
+
             continue
         else:
             pass
@@ -593,6 +599,9 @@ def initialize_models(models, max_output, params, corpus_shape, depth, inflated_
     models.B_J1 = [None] * depth
     models.B_J0 = [None] * depth
 
+    if params is None:
+        params = {'init_alpha':0}
+
     for d in range(0, depth):
         ## One fork model:
         models.F[d] = Model((inflated_num_abp, 2), alpha=float(params.get('init_alpha')), name="Fork" + str(d))
@@ -710,7 +719,3 @@ def normalize(matrix):
     # assert np.sum(matrix) == np.cumprod(matrix.shape)[-1], "{}, {}".format(np.sum(matrix), np.cumprod(matrix.shape)[-1])
     return matrix
 
-def compile_and_set_models(depth, work_distributer, gpu, init_depth, models, working_dir):
-    DistributedModelCompiler.DistributedModelCompiler(depth, work_distributer, gpu,
-                                                      limit_depth=init_depth).compile_and_store_models(models,
-                                                                                                       working_dir)
