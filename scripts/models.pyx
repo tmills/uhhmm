@@ -24,19 +24,21 @@ cdef class GaussianModel(Model):
         self.shape = shape
         self.embeddings = embeddings
         self.pairCounts = np.zeros(shape, dtype=np.float32)
+        self.globalPairCounts = np.zeros(shape, dtype=np.float32)
         self.condCounts = np.zeros(shape[0], dtype=np.int)
         ## Initialize distributions:
         self.dist = []
+        mean_dist = scipy.stats.norm()
         for pos_ind in range(shape[0]):
-            self.dist.append([])
-            for dim in range(shape[1]):
-                self.dist[-1].append(scipy.stats.norm())
+            init_means = mean_dist.rvs(shape[1])
+            self.dist.append( scipy.stats.norm(init_means) )
+            print("Mean vector for pos %d after resampling: " % (pos_ind), self.dist[-1].mean())
 
     def count(self, pos_ind, token_ind, val):
         ## we've seen a count of pos tag cond pos_ind and word index token_ind
         ## Go through embeddings matrix to create pair counts for each dimensions
         self.condCounts[pos_ind] += val
-        for dim in self.embeddings.shape[1]:
+        for dim in range(self.embeddings.shape[1]):
             self.pairCounts[pos_ind, dim] += val * self.embeddings[token_ind][dim]
 
     def sampleGaussian(self):
@@ -46,10 +48,9 @@ cdef class GaussianModel(Model):
             return
             
         for pos_ind in range(self.pairCounts.shape[0]):
-            for dim in range(self.pairCounts.shape[1]):
-                sample_mean = self.pairCounts[pos_ind][dim] / self.condCounts[pos_ind]
-                mean_sample_dist = scipy.stats.norm(sample_mean)
-                self.dist[pos_ind][dim] = scipy.stats.norm(mean_sample_dist.rvs())
+            sample_means = self.pairCounts[pos_ind][:] / self.condCounts[pos_ind]
+            mean_sample_dist = scipy.stats.norm(sample_means)
+            self.dist[pos_ind]=  scipy.stats.norm(mean_sample_dist.rvs(self.pairCounts.shape[1]))
 
     def resetCounts(self):
         for pos_ind in range(self.pairCounts.shape[0]):
@@ -62,6 +63,7 @@ cdef class GaussianModel(Model):
         d['shape'] = self.shape
         d['embeddings'] = self.embeddings
         d['pairCounts'] = self.pairCounts
+        d['globalPairCounts'] = self.globalPairCounts
         d['condCounts'] = self.condCounts
         d['dist'] = self.dist
         d['corpus_shape'] = self.corpus_shape
@@ -72,6 +74,7 @@ cdef class GaussianModel(Model):
         self.shape = d['shape']
         self.embeddings = d['embeddings']
         self.pairCounts = d['pairCounts']
+        self.globalPairCounts = d['globalPairCounts']
         self.condCounts = d['condCounts']
         self.dist = d['dist']
         self.corpus_shape = d['corpus_shape']

@@ -104,7 +104,7 @@ cdef class HmmSampler(Sampler.Sampler):
         cdef tuple maxes
         cdef list sent
 
-        print("Forward pass for sentence %d" % (sent_index))
+        logging.warning("Forward pass for sentence %d" % (sent_index))
         if len(sents) > 1:
             raise Exception("Error: Python version only accepts batch size 1")
 
@@ -137,13 +137,30 @@ cdef class HmmSampler(Sampler.Sampler):
                 forward[index,:] = factored_transition * sparse_factored_expand_mat
 
                 lex_prob = self.obs_model.get_probability_vector(token)
-                print(lex_prob)
+                
+                if lex_prob.max() < 0:
+                    ## The observation model passed back a log prob
+                    log_lex_prob = lex_prob                
+                    #print("lex_prob:", lex_prob)
+                    #print("Received log probs from obs model: ", log_lex_prob)
+                
+                    ## This is the "exp-normalize trick" for normalizing probability
+                    ## distributions coming out of log space, seen at:
+                    ## timvieira.github.io/blog/post/2014/02/11/exp-normalize-trick
+                    forward[index,:] = np.log(forward[index,:]) + log_lex_prob
+                    b = forward[index,:].max()
+                    exponentiated = np.exp(forward[index,:] - b)
+                    forward[index,:] =  exponentiated / exponentiated.sum()
+                    normalizer = exponentiated.sum()
+                else:
+                    #print("Received regular probs from obs model: ", lex_prob)
+                    ## Original way of incorporating lex probs, if observation
+                    ## model passed back a standard probability:
+                    forward[index,:] = np.multiply(forward[index,:], lex_prob)
 
-                forward[index,:] = np.multiply(forward[index,:], lex_prob)
-
-                normalizer = forward[index,:].sum()
-                print(normalizer)
-                forward[index,:] /= normalizer
+                    normalizer = forward[index,:].sum()
+                    print("normalizer:", normalizer)
+                    forward[index,:] /= normalizer
                 
                 ## Normalizer is p(y_t)
                 sentence_log_prob += np.log10(normalizer)

@@ -346,12 +346,12 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         logging.info("Parsed %d sentences this batch -- now have %d parses" % (end_ind-start_ind, end_ind ) )
         max_state_check(hid_seqs, models, "parses")
 
-        pos_counts = models.pos.pairCounts[:].sum() - num_sents
-        lex_counts = models.lex.pairCounts[:].sum() - num_sents
-        assert pos_counts == lex_counts
+        #pos_counts = models.pos.pairCounts[:].sum() - num_sents
+        #lex_counts = models.lex.pairCounts[:].sum() - num_sents
+        #assert pos_counts == lex_counts
 
-        if not pos_counts == num_tokens:
-            logging.warn("This iteration has %d pos counts for %d tokens" % (pos_counts, num_tokens) )
+        #if not pos_counts == num_tokens:
+        #    logging.warn("This iteration has %d pos counts for %d tokens" % (pos_counts, num_tokens) )
 
         t1 = time.time()
         logging.info("Building counts tables took %d s" % (t1-t0))
@@ -395,13 +395,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             next_sample.alpha_a = models.root[0].alpha
             next_sample.alpha_b = models.cont[0].alpha
             next_sample.alpha_g = models.pos.alpha
-            next_sample.alpha_h = models.lex.alpha
+            #next_sample.alpha_h = models.lex.alpha
 
             next_sample.beta_fj = models.fj[0].beta
             next_sample.beta_a = models.root[0].beta
             next_sample.beta_b = models.cont[0].beta
             next_sample.beta_g = models.pos.beta
-            next_sample.beta_h = models.lex.beta
+            #next_sample.beta_h = models.lex.beta
             next_sample.gamma = sample.gamma
             next_sample.ev_seqs = ev_seqs
 

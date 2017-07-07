@@ -26,18 +26,12 @@ cdef class GaussianObservationModel(PosDependentObservationModel.PosDependentObs
         (a_max,b_max,g_max) = maxes
         token_vec = self.lex.embeddings[token]
         
-        retVec = [0.0]
+        retVec = [-np.inf]
         for g in range(1,g_max-1):
-            prob = 1.0
-            for ind in range(len(token_vec)):
-                dim_prob = self.lex.dist[g][ind].pdf(token_vec[ind])
-                prob *= dim_prob
-                #print("POS: %d, ind=%d, vec_val=%f, dim_prob=%f, and prob=%.8f" % (g, ind, token_vec[ind], dim_prob, prob))
-                #print("PDF for this pos and ind has mean %f" % self.lex.dist[g][ind].mean())
-            
-            if prob <= 0.0:
-                print("Total probability underflow (= 0.0)")
-            retVec.append(prob)
+            log_prob = 0.0
+            ## Vectorizing:
+            vec_log_prob = np.log(self.lex.dist[g].pdf(token_vec)).sum()
+            retVec.append(vec_log_prob)
 
-        retVec.append(0.0)
+        retVec.append(-np.inf)
         return np.array(retVec)

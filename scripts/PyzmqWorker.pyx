@@ -94,7 +94,7 @@ cdef class PyzmqWorker:
             logging.debug("Worker %d preparing to process new model" % self.tid)
 
             if model_wrapper.model_type == ModelWrapper.HMM and not self.gpu:
-                print("Observation model type is %s" % (type(model_wrapper.model[0].lex)))
+                #print("Observation model type is %s" % (type(model_wrapper.model[0].lex)))
                 if isinstance(model_wrapper.model[0].lex, models.CategoricalModel):
                     obs_model = CategoricalObservationModel.CategoricalObservationModel()
                 else:
