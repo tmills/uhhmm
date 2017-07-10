@@ -19,7 +19,7 @@ print(describe(lengths))
 print(word_dist.B())
 f.seek(0)
 
-good_vocab = word_dist.most_common(10000)
+good_vocab = word_dist.most_common(60000)
 good_vocab = set(x[0] for x in good_vocab)
 
 thres = 20
@@ -28,7 +28,7 @@ k = 0
 with open(result_file, 'w', encoding='utf8') as w:
     for line in f:
         line = line.strip().split(' ')
-        if len(line) > thres:
+        if len(line) > thres or not any(line) or len(line) == 1:
             continue
         for word in line:
             if word not in good_vocab:
