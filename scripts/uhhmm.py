@@ -31,7 +31,7 @@ from pcfg_translator import *
 import copy
 from init_pcfg_strategies import *
 from pcfg_model import PCFG_model
-from gpu_parse import parse, compile_and_set_models
+from gpu_parse import parse, compile_and_set_models, initialize_models, handle_sigint
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -588,54 +588,6 @@ def add_model_row_simple(model, base):
         logging.error("Addition of column resulted in nan!")
 
 
-def initialize_models(models, max_output, params, corpus_shape, depth, inflated_num_abp):
-    ## F model:
-    models.F = [None] * depth
-    ## J models:
-    models.J = [None] * depth
-    ## Active models:
-    models.A = [None] * depth
-    ## Reduce models:
-    models.B_J1 = [None] * depth
-    models.B_J0 = [None] * depth
-
-    if params is None:
-        params = {'init_alpha':0}
-
-    for d in range(0, depth):
-        ## One fork model:
-        models.F[d] = Model((inflated_num_abp, 2), alpha=float(params.get('init_alpha')), name="Fork" + str(d))
-
-        ## One join models:
-        models.J[d] = Model((inflated_num_abp, inflated_num_abp, 2), alpha=float(params.get('init_alpha')),
-                            name="Join" + str(d))
-
-        ## One active model:
-        models.A[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp),
-                            alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="Act" + str(d))
-
-        ## Two awaited models:
-        models.B_J1[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp),
-                               alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="B|J1_" + str(d))
-        models.B_J0[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp),
-                               alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="B|J0_" + str(d))
-
-    ## one pos model:
-    models.pos = Model((inflated_num_abp, inflated_num_abp), alpha=float(params.get('init_alpha')),
-                       corpus_shape=corpus_shape, name="POS")
-
-    ## one lex model:
-    models.lex = Model((inflated_num_abp, max_output + 1), alpha=float(params.get('init_alpha')), name="Lex")
-
-    models.append(models.F)
-    models.append(models.J)
-    models.append(models.A)
-    models.append(models.B_J1)
-    models.append(models.B_J0)
-    models.append(models.pos)
-    models.append(models.lex)
-
-    return models
 
 
 # In the case that we are initializing this run with the output of a Previous
@@ -691,17 +643,6 @@ def decrement_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
 
 def increment_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
     pcfg_increment_counts(hid_seqs[start_ind:end_ind], sents[start_ind:end_ind], models, 1)
-
-
-def handle_sigint(signum, frame, workers):
-    logging.info("Master received quit signal... will terminate after cleaning up.")
-    for ind, worker in enumerate(workers):
-        logging.info("Terminating worker %d" % (ind))
-        worker.terminate()
-        logging.info("Joining worker %d" % (ind))
-        worker.join()
-    sys.exit(0)
-
 
 # normalize a logged matrix
 def normalize(matrix):
