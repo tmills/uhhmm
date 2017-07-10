@@ -63,8 +63,8 @@ class DistributedModelCompiler(FullDepthCompiler):
         index_data_indices = -1
         index_data_indices_full = -1
         for prevIndex in range(0,totalK):
-            if prevIndex % 500000 == 0:
-                logging.info("Model Compiler compiling row %d" % prevIndex)
+            if prevIndex % 100000 == 0:
+                logging.info("Model Compiler compiling row {} / {}".format(prevIndex, totalK))
             indptr[prevIndex+1] = indptr[prevIndex]
             if full_pi:
                 indptr_full[prevIndex + 1] = indptr_full[prevIndex]
