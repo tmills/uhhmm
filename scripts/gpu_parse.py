@@ -148,7 +148,7 @@ def viterbi_parse(last_sample_directory, param_iter, line_intstok_file, dict_fil
     return logprobs, num_parsed, hid_seqs
 
 if __name__ == '__main__':
-    last_sample_directory, param_iter, line_intstok_file, dict_file, abp_domain_size = 15, depth = 2
+    # last_sample_directory, param_iter, line_intstok_file, dict_file, abp_domain_size = 15, depth = 2
     parser = argparse.ArgumentParser(description='UHHMM GPU parser')
     parser.add_argument('-dir', type=str, help='the directory where the last sample files are')
     parser.add_argument('-iter', type=int, help='the iter number for the model for use')

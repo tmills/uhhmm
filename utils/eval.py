@@ -31,7 +31,7 @@ constlist_command = '''python scripts/iters2constitevallist.py {} > {}'''
 plot_command = '''python {}/resource-linetrees/scripts/constitevals2table.py {} > {} '''
 
 output_files = os.listdir(last_sample_folder)
-output_last_samples = [x for x in output_files if re.match('last_sample[0-9]+\.(fromdeps\.)?linetrees', x)]
+output_last_samples = [x for x in output_files if re.match('last_sample[0-9]+\.linetrees', x)]
 
 rule_f_names = []
 model_f_names = []
