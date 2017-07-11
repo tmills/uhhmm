@@ -417,7 +417,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     models = old_models
                     pcfg_model.write_params()
                     break
-            logging.info("the dev log prob for this iteration {} is {}, which takes {} tries.".format(iter, validation_prob, mh_counts))
+            if validation:
+                logging.info("the dev log prob for this iteration {} is {}, which takes {} tries.".format(iter, validation_prob, mh_counts))
             logging.info("The log prob for this iter is {}".format(acc_logprob))
 
         elif super_cooling and super_cooling_start_iter >= iter:
