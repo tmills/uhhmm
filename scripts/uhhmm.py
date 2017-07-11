@@ -146,7 +146,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     super_cooling_target_ac = int(params.get("super_cooling_target_ac", 10))
 
     # viterbi decoding
-    viterbi = int(params.get("viterbi", 1))
+    viterbi = int(params.get("viterbi", 0))
 
     # main body
     if gold_pos_dict_file:
