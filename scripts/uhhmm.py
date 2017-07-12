@@ -72,7 +72,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     else:
         logging.basicConfig(level=getattr(logging, debug), stream=sys.stdout)
     # validation settings
-    validation = int(params.get("validation", 0))
+    validation = int(params.get("validation", 0))  # this is for validation with MH steps
+    validation_no_mh = int(params.get("validation_no_mh", 1)) # this is for validation with no MH steps just for validation log prob graphing
     validation_length = int(params.get("validation_length", 1000)) # the last 1000 senteces are used as validation set by default
     if validation:
         logging.info('the validation set is the last {} sentences of all the data.'.format(validation_length))
@@ -406,7 +407,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                     thres = np.log10(np.random.uniform(0, 1))
                     logging.info("try {}: val likelihood: {}; prev val likelihood: {}; thres {}".format(mh_counts,
                                                                                                         validation_prob, pcfg_model.val_log_probs, thres))
-                    if pcfg_model.val_log_probs == -np.inf or validation_prob - pcfg_model.val_log_probs > thres:
+                    if (pcfg_model.val_log_probs == -np.inf or validation_prob - pcfg_model.val_log_probs > thres) or validation_no_mh:
                         pcfg_model.val_log_probs = validation_prob
                         pcfg_model.mh_tries = mh_counts
                         models = old_models
