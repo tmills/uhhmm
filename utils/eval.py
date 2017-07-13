@@ -1,6 +1,7 @@
 import os
 import sys
 import subprocess
+from multiprocessing import Pool
 import re
 import numpy as np
 import operator
@@ -8,14 +9,35 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-
+import pandas
+import time
+import nltk
+from collections import Counter
 # EVALB folder needs to be placed into this folder
 
 last_sample_folder = sys.argv[1]
 gold_trees_file = sys.argv[2]
 evalb_params_file = './utils/EVALB/uhhmm.prm'
+total_process_limit = 20
+process_pool = []
+burn_in = 50
+
 def bash_command(cmd):
-    return subprocess.Popen(['/bin/bash', '-c', cmd])
+    global process_pool
+    # if len(process_pool) > 0:
+    #     print(sum([(not bool(x.poll())) for x in process_pool]), process_pool[0].poll())
+    while True:
+        process_pool = [x for x in process_pool if x.poll() is None]
+        if len(process_pool) >= total_process_limit:
+            time.sleep(0.1)
+            continue
+        else:
+            p = subprocess.Popen(['/bin/bash', '-c', cmd])
+            process_pool.append(p)
+            break
+    return p
+
+gold_trees = [nltk.Tree.fromstring(x.strip()) for x in open(gold_trees_file)]
 
 modelblocks_path = open('user-modelblocks-location.txt').readline().strip()
 
@@ -33,50 +55,40 @@ plot_command = '''python {}/resource-linetrees/scripts/constitevals2table.py {} 
 output_files = os.listdir(last_sample_folder)
 output_last_samples = [x for x in output_files if re.match('last_sample[0-9]+\.linetrees', x)]
 
+output_last_samples.sort(key=lambda x: int(re.match('last_sample([0-9]+)\.linetrees', x).group(1)))
+print(output_last_samples)
+
 rule_f_names = []
 model_f_names = []
 head_model_names = []
 deps_f_names = []
 
-qs = []
 for f in output_last_samples:
     f_name = os.path.join(last_sample_folder, f)
     rule_f_name = f_name.replace('linetrees', 'rules')
     p = bash_command(build_rules_command.format(f_name, modelblocks_path, rule_f_name))
     rule_f_names.append(rule_f_name)
-    qs.append(p)
-for p in qs:
-    p.wait()
-qs = []
+
 for index, rule_f_name in enumerate(rule_f_names):
     model_f_name = rule_f_name.replace('rules', 'model')
     p = bash_command(build_model_command.format(rule_f_name, rule_f_name, model_f_name))
     model_f_names.append(model_f_name)
-    qs.append(p)
-for p in qs:
-    p.wait()
-qs = []
+
 for index, model_f_name in enumerate(model_f_names):
     head_model_name = model_f_name.replace('model', 'head.model')
     p = bash_command(build_head_model_command.format(model_f_name, modelblocks_path, head_model_name))
     head_model_names.append(head_model_name)
-    qs.append(p)
-for p in qs:
-    p.wait()
 
-qs = []
+
 for index, f_name in enumerate(output_last_samples):
     f_name = os.path.join(last_sample_folder, f_name)
     deps_f_name = f_name.replace('linetrees', 'fromdeps.linetrees')
     p = bash_command(convert_to_deps_command.format(f_name, modelblocks_path, head_model_names[index], modelblocks_path, deps_f_name))
     deps_f_names.append(deps_f_name)
-    qs.append(p)
-for p in qs:
-    p.wait()
+
 
 end_f_names = []
-ps = []
-p2s = []
+
 print('preprocessing the trees into nounary lower and nopunc')
 for f in output_last_samples + deps_f_names:
     if 'fromdeps' not in f:
@@ -87,9 +99,7 @@ for f in output_last_samples + deps_f_names:
     end_f_names.append(end_f_name)
     # print(preprocess_command.format(f_name, modelblocks_path, modelblocks_path, modelblocks_path, modelblocks_path, end_f_name))
     p = bash_command(preprocess_command.format(f_name, modelblocks_path, modelblocks_path, modelblocks_path, modelblocks_path, end_f_name))
-    ps.append(p)
-for p in ps:
-    p.wait()
+
 
 evalb_f_names = []
 print('running EVALB on the line trees')
@@ -97,10 +107,8 @@ for end_f_name in end_f_names:
     evalb_name = end_f_name.replace('linetrees', 'evalb')
     # print(eval_command.format(evalb_params_file, gold_trees_file, end_f_name, evalb_name))
     p2 = bash_command(eval_command.format(evalb_params_file, gold_trees_file, end_f_name, evalb_name))
-    p2s.append(p2)
     evalb_f_names.append(evalb_name)
-for p2 in p2s:
-    p2.wait()
+
 
 indices = []
 prec = []
@@ -160,7 +168,121 @@ pp.close()
 plt.cla()
 plt.clf()
 
-bash_command('rm -f {}'.format(' '.join(rule_f_names + model_f_names + head_model_names + deps_f_names + end_f_names + evalb_f_names)))
+
+# plot the log probs
+hyperparams = pandas.read_table(os.path.join(last_sample_folder, 'pcfg_hypparams.txt'))
+
+fig, ax = plt.subplots()
+line_1 = ax.plot(hyperparams.iter[burn_in:], hyperparams.logprob[burn_in:], 'b-')
+ax2 = ax.twinx()
+line_2 = ax2.plot(hyperparams.iter[burn_in:], np.nan_to_num(hyperparams.val_logprob[burn_in:]), 'r-')
+ax.set_ylabel('logprob', color='b')
+ax.tick_params('y', color='b')
+ax2.set_ylabel('dev logprob', color='r')
+ax2.tick_params('y',color='r')
+ax.set_xlabel('iteration')
+# ax.legend(lines, ('Training', 'Dev'))
+fig.tight_layout()
+pp = PdfPages(os.path.join(last_sample_folder, 'logprobs' + '_'+ str(min(hyperparams.iter[burn_in:]))+'_' + str(max(hyperparams.iter[burn_in:]))) + '.pdf')
+fig.savefig(pp, format='pdf')
+pp.close()
+plt.cla()
+plt.clf()
+
+
+# NP, VP and PP evaluations
+phrases = ['NP', 'VP', 'PP']
+gold_counters = {'NP':Counter(), 'VP':Counter(), 'PP':Counter()}
+for t in gold_trees:
+    for sub_t in t.subtrees():
+        if sub_t.label() in phrases and len(sub_t.leaves()) > 1:
+            gold_counters[sub_t.label()][' '.join(sub_t.leaves())] += 1
+
+scores = []
+aggregate_scores = []
+NP_length = sum(gold_counters['NP'].values())
+VP_length = sum(gold_counters['VP'].values())
+PP_length = sum(gold_counters['PP'].values())
+phrases_lengths = [NP_length, VP_length, PP_length]
+
+def calc_phrase_stats(f_name, prec_thres=0.6):
+    current_counters = {}
+    with open(f_name) as fh:
+        for line in fh:
+            this_t = nltk.Tree.fromstring(line.strip())
+            for sub_t in this_t.subtrees():
+                if  len(sub_t.leaves()) > 1:
+                    if sub_t.label() not in current_counters:
+                        current_counters[sub_t.label()] = Counter()
+                    current_counters[sub_t.label()][' '.join(sub_t.leaves())] += 1
+    this_best_scores = [0,0,0]
+    this_best_aggregate_scores = [0, 0, 0]
+    best_cats = [0,0,0]
+    aggregate_counters = [Counter(), Counter(), Counter()]
+    for cat, cat_counter in current_counters.items():
+        for index, phrase_cat in enumerate(phrases):
+            acc_num = sum(( cat_counter & gold_counters[phrase_cat]).values())
+            prec = acc_num / sum(cat_counter.values())
+            rec = acc_num / phrases_lengths[index]
+            f1 = 0 if prec == 0 or rec == 0 else 1.0 / (0.5 / prec + (0.5 / rec))
+            if f1 > this_best_scores[index]:
+                this_best_scores[index] = f1
+                best_cats[index] = cat
+            if prec > prec_thres:
+                aggregate_counters[index] += cat_counter
+    for i in range(len(aggregate_counters)):
+        aggregate_counters[i] += current_counters[best_cats[i]]
+    for index, phrase_cat in enumerate(phrases):
+        acc_num = sum((aggregate_counters[index] & gold_counters[phrase_cat]).values())
+        prec = acc_num / sum(aggregate_counters[index].values())
+        rec = acc_num / phrases_lengths[index]
+        f1 = 0 if prec == 0 or rec == 0 else 1.0 / (0.5 / prec + (0.5 / rec))
+        this_best_aggregate_scores[index] = f1
+    return this_best_scores, this_best_aggregate_scores
+
+with Pool(processes=total_process_limit) as pool:
+    scores, aggregate_scores = zip(*(pool.map(calc_phrase_stats, [os.path.join(last_sample_folder, f) for f in output_last_samples])))
+
+print(scores[0], aggregate_scores[0])
+scores = np.array(scores)
+aggregate_scores = np.array(aggregate_scores)
+fig, ax = plt.subplots()
+len_iters = len(output_last_samples)
+x_data = hyperparams.iter[:len_iters]
+lines = ax.plot(x_data, scores[:len_iters, 0], x_data, scores[:len_iters, 1], x_data, scores[:len_iters, 2]
+                ,x_data, aggregate_scores[:len_iters, 0] , x_data, aggregate_scores[:len_iters, 1],
+                x_data, aggregate_scores[:len_iters, 2])
+ax.set_ylabel('percentage')
+ax.legend(lines, ( "best NP F1", 'best VP F1', 'best PP F1', "best NP agg F1", "best VP agg F1", "best PP agg F1"))
+pp = PdfPages(
+    os.path.join(last_sample_folder, 'phrases' + '_' + str(min(x_data)) + '_' + str(max(x_data))) + '.pdf')
+fig.savefig(pp, format='pdf')
+pp.close()
+plt.cla()
+plt.clf()
+
+with Pool(processes=total_process_limit) as pool:
+    scores, aggregate_scores = zip(*(pool.map(calc_phrase_stats, deps_f_names)))
+
+print(scores[0], aggregate_scores[0])
+scores = np.array(scores)
+aggregate_scores = np.array(aggregate_scores)
+fig, ax = plt.subplots()
+lines = ax.plot(x_data, scores[:len_iters, 0], x_data, scores[:len_iters, 1], x_data, scores[:len_iters, 2]
+                ,x_data, aggregate_scores[:len_iters, 0] , x_data, aggregate_scores[:len_iters, 1],
+                x_data, aggregate_scores[:len_iters, 2])
+ax.set_ylabel('percentage')
+ax.legend(lines, ( "best NP F1 deps", 'best VP F1 deps', 'best PP F1 deps', "best NP agg F1 deps", "best VP agg F1 deps", "best PP agg F1 deps"))
+pp = PdfPages(
+    os.path.join(last_sample_folder, 'phrases_deps' + '_' + str(min(x_data)) + '_' + str(max(x_data))) + '.pdf')
+fig.savefig(pp, format='pdf')
+pp.close()
+plt.cla()
+plt.clf()
+
+# delete the temp files
+for f in rule_f_names + model_f_names + head_model_names + deps_f_names + end_f_names + evalb_f_names:
+    bash_command('rm -f {}'.format(f))
 
 # output_files = os.listdir(last_sample_folder)
 # output_last_samples = [x for x in output_files if x.endswith('.constiteval.txt')]

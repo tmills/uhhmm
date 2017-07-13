@@ -124,7 +124,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     init_anneal_alpha = float(params.get('init_anneal_alpha', 0))
     init_anneal_likelihood = float(params.get("init_anneal_likelihood", 0))
     final_anneal_likelihood = float(params.get("final_anneal_likelihood", 1))
-    anneal_length = int(params.get("anneal_length", 1))
+    anneal_length = int(params.get("anneal_length", 0))
     anneal_likelihood_phase = int(params.get("anneal_likelihood_phase", anneal_length))
     random_restarts = int(params.get("random_restarts", 0))
     gold_pcfg_file = params.get("gold_pcfg_file", '')
