@@ -11,6 +11,7 @@ from FullDepthCompiler import FullDepthCompiler, unlog_models, relog_models
 import pickle
 from Indexer import Indexer
 import itertools
+import math
 
 PER_STATE_CONNECTION = 100
 
@@ -102,13 +103,11 @@ class DistributedModelCompiler(FullDepthCompiler):
                 indices_full = indices_full[:index_data_indices_full+1]
                 data_full = data_full[:index_data_indices_full+1]
             # assert data[-1] != 0. and indices[-1] != 0., '0 prob at the end of sparse Pi.'
-        logging.info("Per state connection is %d" % (index_data_indices/totalK))
+        logging.info("Per state connection is %f" % (index_data_indices/totalK))
 
         # update the per state connection guess
         if PER_STATE_CONNECTION == 100:
-            PER_STATE_CONNECTION = index_data_indices / totalK
-            assert PER_STATE_CONNECTION.is_integer()
-            PER_STATE_CONNECTION = int(PER_STATE_CONNECTION)
+            PER_STATE_CONNECTION = math.ceil(index_data_indices / totalK)
 
         logging.info("Size of PI/g will roughly be %.2f M" % ((index_data_indices * 2 + (totalK+1))*data_type_bytes / 1e6))
         # logging.info("Flattening sublists into main list")
