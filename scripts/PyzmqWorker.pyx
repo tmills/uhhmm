@@ -18,6 +18,7 @@ import FullDepthCompiler
 import os
 import time
 from uhhmm_io import printException, ParsingError
+from gpu_parse import PARSING_SIGNAL_FILE
 
 ## This function was required because of some funkiness on ubuntu systems where reverse dns lookup was returning a loopback ip
 ## This will try the easy way and if it returns something with 127. will make an outside connectino to known DNS (8.8.8.8) and
@@ -88,13 +89,13 @@ cdef class PyzmqWorker:
 
             logging.debug("Worker %d preparing to process new model" % self.tid)
 
-            if model_wrapper.model_type == ModelWrapper.HMM and not self.gpu:
+            if (model_wrapper.model_type == ModelWrapper.HMM and not self.gpu) or model_wrapper is None:
                 if self.batch_size > 0:
                     sampler = HmmSampler.HmmSampler(self.seed)
                     sampler.set_models(model_wrapper.model)
                     self.processSentences(sampler, model_wrapper.model[1], jobs_socket, results_socket)
                 else:
-                    time.sleep(1)
+                    time.sleep(5)
             elif model_wrapper.model_type == ModelWrapper.INFINITE:
                 sampler = DepthOneInfiniteSampler.InfiniteSampler(self.seed)
                 sampler.set_models(model_wrapper.model)
@@ -298,6 +299,8 @@ cdef class PyzmqWorker:
         logging.debug("Worker %d processed %d sentences this iteration" % (self.tid, sents_processed))
 
     def get_model(self, model_loc):
+        if os.path.exists(PARSING_SIGNAL_FILE) and not self.gpu:
+            return None, None
         ip = model_loc.ip_addr
         if ip == self.my_ip or ip.startswith('10.'):
             in_file = open(model_loc.file_path, 'rb')

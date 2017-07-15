@@ -13,6 +13,8 @@ import signal
 import argparse
 import sys
 
+PARSING_SIGNAL_FILE = 'parsing.tmp'
+
 def handle_sigint(signum, frame, workers):
     logging.info("Master received quit signal... will terminate after cleaning up.")
     for ind, worker in enumerate(workers):
@@ -72,7 +74,8 @@ def initialize_models(models, max_output, params, corpus_shape, depth, inflated_
     return models
 
 def parse(start_ind, end_ind, distributer, ev_seqs, hid_seqs, viterbi=0):
-
+    p = open(PARSING_SIGNAL_FILE,'w')
+    p.close()
     distributer.submitSentenceJobs(start_ind, end_ind, viterbi)
     num_processed = 0
     parses = distributer.get_parses()
@@ -105,6 +108,7 @@ def parse(start_ind, end_ind, distributer, ev_seqs, hid_seqs, viterbi=0):
                 raise
             logprobs += parse.log_prob
         hid_seqs[parse.index] = parse.state_list
+    os.remove(PARSING_SIGNAL_FILE)
     return logprobs, num_processed
 
 def compile_and_set_models(depth, work_distributer, gpu, init_depth, models, working_dir):

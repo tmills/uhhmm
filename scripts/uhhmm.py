@@ -10,6 +10,7 @@ import signal
 import socket
 import sys
 import tempfile
+import os
 from multiprocessing import Process, Queue, JoinableQueue
 import zmq
 from WorkDistributerServer import WorkDistributerServer
@@ -31,7 +32,7 @@ from pcfg_translator import *
 import copy
 from init_pcfg_strategies import *
 from pcfg_model import PCFG_model
-from gpu_parse import parse, compile_and_set_models, initialize_models, handle_sigint
+from gpu_parse import parse, compile_and_set_models, initialize_models, handle_sigint, PARSING_SIGNAL_FILE
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -272,6 +273,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
     ### Start doing actual sampling:
     while num_samples < max_samples:
+        # this file is used to control CPU workers to not load models whenever the file is present
+        # which indicates that GPU parsing is going on
+        if os.path.exists(PARSING_SIGNAL_FILE):
+            os.remove(PARSING_SIGNAL_FILE)
+
         sample.iter = iter
         pcfg_model.iter = iter
 
@@ -390,9 +396,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         t0 = time.time()
 
         cur_anneal_iter = iter - random_restarts
-        if (cur_anneal_iter >= anneal_length and anneal_length > 1) or anneal_length == 1:  # if annealing is finished
+        if cur_anneal_iter >= anneal_length:  # if annealing is finished
             logging.warn(
-                "number of iterations {} is larger than annealing length {}! Doing normal sampling!".format(iter,
+                "iteration index {} is larger than annealing length {}! Doing normal sampling!".format(iter,
                                                                                                             anneal_length))
             mh_counts = 0
             while True:
