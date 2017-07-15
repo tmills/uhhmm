@@ -205,11 +205,28 @@ VP_length = sum(gold_counters['VP'].values())
 PP_length = sum(gold_counters['PP'].values())
 phrases_lengths = [NP_length, VP_length, PP_length]
 
+def calc_branching_score(t):
+    r_branch = 0
+    l_branch = 0
+    for position in t.treepositions():
+        # print(t[position])
+        if not (isinstance(t[position],str) or isinstance(t[position][0],str)):
+            if len(t[position][0]) == 2:
+                l_branch += 1
+            if len(t[position][1]) == 2:
+                r_branch += 1
+    return l_branch, r_branch
+
 def calc_phrase_stats(f_name, prec_thres=0.6):
+    l_branch = 0
+    r_branch = 0
     current_counters = {}
     with open(f_name) as fh:
         for line in fh:
             this_t = nltk.Tree.fromstring(line.strip())
+            this_l, this_r = calc_branching_score(this_t)
+            l_branch += this_l
+            r_branch += this_r
             for sub_t in this_t.subtrees():
                 if  len(sub_t.leaves()) > 1:
                     if sub_t.label() not in current_counters:
@@ -238,14 +255,17 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
         rec = acc_num / phrases_lengths[index]
         f1 = 0 if prec == 0 or rec == 0 else 1.0 / (0.5 / prec + (0.5 / rec))
         this_best_aggregate_scores[index] = f1
-    return this_best_scores, this_best_aggregate_scores
+    return this_best_scores, this_best_aggregate_scores, r_branch / (l_branch+r_branch)
+
+end_f_names_nodeps = [x for x in end_f_names if  'fromdeps' not in x]
 
 with Pool(processes=total_process_limit) as pool:
-    scores, aggregate_scores = zip(*(pool.map(calc_phrase_stats, [os.path.join(last_sample_folder, f) for f in output_last_samples])))
+    scores, aggregate_scores, r_branching_tendency = zip(*(pool.map(calc_phrase_stats, end_f_names_nodeps)))
 
 print(scores[0], aggregate_scores[0])
 scores = np.array(scores)
 aggregate_scores = np.array(aggregate_scores)
+r_branching_tendency = np.array(r_branching_tendency)
 fig, ax = plt.subplots()
 len_iters = len(output_last_samples)
 x_data = hyperparams.iter[:len_iters]
@@ -261,24 +281,38 @@ pp.close()
 plt.cla()
 plt.clf()
 
-with Pool(processes=total_process_limit) as pool:
-    scores, aggregate_scores = zip(*(pool.map(calc_phrase_stats, deps_f_names)))
-
-print(scores[0], aggregate_scores[0])
-scores = np.array(scores)
-aggregate_scores = np.array(aggregate_scores)
 fig, ax = plt.subplots()
-lines = ax.plot(x_data, scores[:len_iters, 0], x_data, scores[:len_iters, 1], x_data, scores[:len_iters, 2]
-                ,x_data, aggregate_scores[:len_iters, 0] , x_data, aggregate_scores[:len_iters, 1],
-                x_data, aggregate_scores[:len_iters, 2])
-ax.set_ylabel('percentage')
-ax.legend(lines, ( "best NP F1 deps", 'best VP F1 deps', 'best PP F1 deps', "best NP agg F1 deps", "best VP agg F1 deps", "best PP agg F1 deps"))
+len_iters = len(output_last_samples)
+x_data = hyperparams.iter[:len_iters]
+lines = ax.plot(x_data, r_branching_tendency)
+ax.set_ylabel('R branching tendency score')
+ax.legend(lines, ( "R branching"))
 pp = PdfPages(
-    os.path.join(last_sample_folder, 'phrases_deps' + '_' + str(min(x_data)) + '_' + str(max(x_data))) + '.pdf')
+    os.path.join(last_sample_folder, 'r_branching' + '_' + str(min(x_data)) + '_' + str(max(x_data))) + '.pdf')
 fig.savefig(pp, format='pdf')
 pp.close()
 plt.cla()
 plt.clf()
+
+# #dependency phrase scores
+# with Pool(processes=total_process_limit) as pool:
+#     scores, aggregate_scores = zip(*(pool.map(calc_phrase_stats, deps_f_names)))
+#
+# print(scores[0], aggregate_scores[0])
+# scores = np.array(scores)
+# aggregate_scores = np.array(aggregate_scores)
+# fig, ax = plt.subplots()
+# lines = ax.plot(x_data, scores[:len_iters, 0], x_data, scores[:len_iters, 1], x_data, scores[:len_iters, 2]
+#                 ,x_data, aggregate_scores[:len_iters, 0] , x_data, aggregate_scores[:len_iters, 1],
+#                 x_data, aggregate_scores[:len_iters, 2])
+# ax.set_ylabel('percentage')
+# ax.legend(lines, ( "best NP F1 deps", 'best VP F1 deps', 'best PP F1 deps', "best NP agg F1 deps", "best VP agg F1 deps", "best PP agg F1 deps"))
+# pp = PdfPages(
+#     os.path.join(last_sample_folder, 'phrases_deps' + '_' + str(min(x_data)) + '_' + str(max(x_data))) + '.pdf')
+# fig.savefig(pp, format='pdf')
+# pp.close()
+# plt.cla()
+# plt.clf()
 
 # delete the temp files
 for f in rule_f_names + model_f_names + head_model_names + deps_f_names + end_f_names + evalb_f_names:
