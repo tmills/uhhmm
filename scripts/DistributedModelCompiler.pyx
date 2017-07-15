@@ -12,6 +12,8 @@ import pickle
 from Indexer import Indexer
 import itertools
 
+PER_STAT_CONNECTION = 100
+
 class DistributedModelCompiler(FullDepthCompiler):
 
     def __init__(self, depth, work_server, gpu=False, limit_depth=-1):
@@ -23,15 +25,16 @@ class DistributedModelCompiler(FullDepthCompiler):
         self.limit_depth = self.depth if limit_depth == -1 else limit_depth
         logging.basicConfig(stream=sys.stdout)
 
-    def compile_and_store_models(self, models, working_dir, per_state_connection_guess = 100, full_pi = False):
+    def compile_and_store_models(self, models, working_dir, full_pi = False):
         # models = pickle.load(open(working_dir+ "/ori_models.bin" ,'rb')).model[0]
+        global PER_STAT_CONNECTION
         indexer = Indexer(models)
         logging.info("Compiling component models into mega-HMM transition and observation matrices")
 
         maxes = indexer.getVariableMaxes()
         (a_max, b_max, g_max) = maxes
         totalK = indexer.get_state_size()
-        total_connection = per_state_connection_guess * totalK
+        total_connection = PER_STAT_CONNECTION * totalK
        # indptr = np.zeros(totalK+1)
         if self.gpu == False:
             data_type = np.float64
@@ -100,6 +103,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                 data_full = data_full[:index_data_indices_full+1]
             # assert data[-1] != 0. and indices[-1] != 0., '0 prob at the end of sparse Pi.'
         logging.info("Per state connection is %d" % (index_data_indices/totalK))
+        PER_STAT_CONNECTION = index_data_indices/totalK
         logging.info("Size of PI/g will roughly be %.2f M" % ((index_data_indices * 2 + (totalK+1))*data_type_bytes / 1e6))
         # logging.info("Flattening sublists into main list")
         flat_indices = indices
