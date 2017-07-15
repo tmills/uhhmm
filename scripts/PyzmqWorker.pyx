@@ -89,7 +89,7 @@ cdef class PyzmqWorker:
 
             logging.debug("Worker %d preparing to process new model" % self.tid)
 
-            if (model_wrapper.model_type == ModelWrapper.HMM and not self.gpu) or model_wrapper is None:
+            if model_wrapper is None or (model_wrapper.model_type == ModelWrapper.HMM and not self.gpu) :
                 if self.batch_size > 0:
                     sampler = HmmSampler.HmmSampler(self.seed)
                     sampler.set_models(model_wrapper.model)
