@@ -12,7 +12,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 import pandas
 import time
 import nltk
-from collections import Counter
+from collections import Counter, defaultdict
+import scipy.stats as stats
 # EVALB folder needs to be placed into this folder
 
 last_sample_folder = sys.argv[1]
@@ -190,7 +191,7 @@ plt.cla()
 plt.clf()
 
 
-# NP, VP and PP evaluations
+# NP, VP and PP evaluations, branching scores
 phrases = ['NP', 'VP', 'PP']
 gold_counters = {'NP':Counter(), 'VP':Counter(), 'PP':Counter()}
 for t in gold_trees:
@@ -221,17 +222,37 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
     l_branch = 0
     r_branch = 0
     current_counters = {}
+    num_d2_trees = 0
+    num_total_trees = 0
+    overall_label_counter = Counter()
+    non_term_only_label = defaultdict(bool)
     with open(f_name) as fh:
         for line in fh:
+            num_total_trees += 1
+            d2_checked = 0
             this_t = nltk.Tree.fromstring(line.strip())
             this_l, this_r = calc_branching_score(this_t)
             l_branch += this_l
             r_branch += this_r
             for sub_t in this_t.subtrees():
-                if  len(sub_t.leaves()) > 1:
+                overall_label_counter[sub_t.label()] += 1
+                if len(sub_t.leaves()) > 1:
+                    non_term_only_label[sub_t.label()] &= True
                     if sub_t.label() not in current_counters:
                         current_counters[sub_t.label()] = Counter()
+                    try:
+                        if not d2_checked and isinstance(sub_t[1][0][1], nltk.Tree):
+                            d2_checked = 1
+                            num_d2_trees += 1
+                    except:
+                        pass
                     current_counters[sub_t.label()][' '.join(sub_t.leaves())] += 1
+                else:
+                    non_term_only_label[sub_t.label()] &= False
+    total_num_labels = sum(overall_label_counter.values())
+    label_dist = [x/total_num_labels for x in overall_label_counter.values()]
+    label_dist_entropy = stats.entropy(label_dist)
+    num_non_term_only_label = sum(non_term_only_label.values())
     this_best_scores = [0,0,0]
     this_best_aggregate_scores = [0, 0, 0]
     best_cats = [0,0,0]
@@ -255,17 +276,20 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
         rec = acc_num / phrases_lengths[index]
         f1 = 0 if prec == 0 or rec == 0 else 1.0 / (0.5 / prec + (0.5 / rec))
         this_best_aggregate_scores[index] = f1
-    return this_best_scores, this_best_aggregate_scores, r_branch / (l_branch+r_branch)
+    return this_best_scores, this_best_aggregate_scores, r_branch / (l_branch+r_branch), num_d2_trees / num_total_trees, label_dist_entropy, num_non_term_only_label / len(non_term_only_label)
 
 end_f_names_nodeps = [x for x in end_f_names if  'fromdeps' not in x]
 
 with Pool(processes=total_process_limit) as pool:
-    scores, aggregate_scores, r_branching_tendency = zip(*(pool.map(calc_phrase_stats, end_f_names_nodeps)))
+    scores, aggregate_scores, r_branching_tendency, d2_proportion, label_dist_freq, num_non_term_label= zip(*(pool.map(calc_phrase_stats, end_f_names_nodeps)))
 
 print(scores[0], aggregate_scores[0])
 scores = np.array(scores)
 aggregate_scores = np.array(aggregate_scores)
 r_branching_tendency = np.array(r_branching_tendency)
+d2_proportion = np.array(d2_proportion)
+label_dist_freq = np.array(label_dist_freq)
+num_non_term_label = np.array(num_non_term_label)
 fig, ax = plt.subplots()
 len_iters = len(output_last_samples)
 x_data = hyperparams.iter[:len_iters]
@@ -294,6 +318,44 @@ pp.close()
 plt.cla()
 plt.clf()
 
+fig, ax = plt.subplots()
+len_iters = len(output_last_samples)
+x_data = hyperparams.iter[:len_iters]
+lines = ax.plot(x_data, d2_proportion)
+ax.set_ylabel('D2 trees proportion')
+ax.legend(lines, ( "D2 trees"))
+pp = PdfPages(
+    os.path.join(last_sample_folder, 'd2_trees' + '_' + str(min(x_data)) + '_' + str(max(x_data))) + '.pdf')
+fig.savefig(pp, format='pdf')
+pp.close()
+plt.cla()
+plt.clf()
+
+fig, ax = plt.subplots()
+len_iters = len(output_last_samples)
+x_data = hyperparams.iter[:len_iters]
+lines = ax.plot(x_data, label_dist_freq)
+ax.set_ylabel('Label frequency distribution entropy')
+ax.legend(lines, ( "Entropy"))
+pp = PdfPages(
+    os.path.join(last_sample_folder, 'label_dist_entropy' + '_' + str(min(x_data)) + '_' + str(max(x_data))) + '.pdf')
+fig.savefig(pp, format='pdf')
+pp.close()
+plt.cla()
+plt.clf()
+
+fig, ax = plt.subplots()
+len_iters = len(output_last_samples)
+x_data = hyperparams.iter[:len_iters]
+lines = ax.plot(x_data, num_non_term_label)
+ax.set_ylabel('Percentage of non-termnial only labels')
+ax.legend(lines, ( "Percentage"))
+pp = PdfPages(
+    os.path.join(last_sample_folder, 'non_term_only' + '_' + str(min(x_data)) + '_' + str(max(x_data))) + '.pdf')
+fig.savefig(pp, format='pdf')
+pp.close()
+plt.cla()
+plt.clf()
 # #dependency phrase scores
 # with Pool(processes=total_process_limit) as pool:
 #     scores, aggregate_scores = zip(*(pool.map(calc_phrase_stats, deps_f_names)))

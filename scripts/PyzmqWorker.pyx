@@ -164,6 +164,8 @@ cdef class PyzmqWorker:
 
             (indices, data, indices_full, data_full) = FullDepthCompiler.compile_one_line(depth, row, models, self.indexer, full_pi)
             row_output = CompiledRow(row, indices, data, indices_full, data_full)
+            if row % 10000 == 0:
+                logging.info("Worker {} compiled row {}".format(self.tid, row))
             results_socket.send_pyobj(CompletedJob(PyzmqJob.COMPILE, row_output, True) )
 
             if self.quit:
