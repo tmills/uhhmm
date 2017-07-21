@@ -65,7 +65,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 input_seqs_file=None, word_dict_file=None):
     global start_abp
     start_abp = int(params.get('startabp'))
-
+    if os.path.exists(PARSING_SIGNAL_FILE):
+        os.remove(PARSING_SIGNAL_FILE)
     debug = params.get('debug', 'INFO')
     logfile = params.get('logfile', '')
     if logfile:
