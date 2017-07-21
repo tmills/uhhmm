@@ -303,7 +303,7 @@ cdef class PyzmqWorker:
         logging.debug("Worker %d processed %d sentences this iteration" % (self.tid, sents_processed))
 
     def get_model(self, model_loc):
-        if os.path.exists(PARSING_SIGNAL_FILE) and not self.gpu:
+        if os.path.exists(os.path.join(os.path.basename(model_loc.file_path),PARSING_SIGNAL_FILE)) and not self.gpu:
             return None, None
         ip = model_loc.ip_addr
         if ip == self.my_ip or ip.startswith('10.'):

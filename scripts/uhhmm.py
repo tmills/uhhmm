@@ -65,8 +65,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 input_seqs_file=None, word_dict_file=None):
     global start_abp
     start_abp = int(params.get('startabp'))
-    if os.path.exists(PARSING_SIGNAL_FILE):
-        os.remove(PARSING_SIGNAL_FILE)
+    if os.path.exists(os.path.join(working_dir, PARSING_SIGNAL_FILE)):
+        os.remove(os.path.join(working_dir, PARSING_SIGNAL_FILE))
     debug = params.get('debug', 'INFO')
     logfile = params.get('logfile', '')
     if logfile:
@@ -316,7 +316,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         t0 = time.time()
 
-        this_log_prob, num_processed = parse(start_ind, end_ind, workDistributer, ev_seqs, hid_seqs)
+        this_log_prob, num_processed = parse(start_ind, end_ind, workDistributer, ev_seqs, hid_seqs, working_dir=working_dir)
 
         sample.log_prob += this_log_prob
         acc_logprob += sample.log_prob
@@ -346,7 +346,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
             if validation:  # validation is after annealing
                 validation_prob, _ = parse(num_ev_sents, num_ev_sents + abs(validation_length), workDistributer,
-                                           ev_seqs, hid_seqs)
+                                           ev_seqs, hid_seqs, working_dir=working_dir)
                 pcfg_model.val_log_probs = validation_prob
             logging.info("The {} random restart has a loglikelihood of {}".format(iter, sample.log_prob))
             logging.info("The best init model has a loglikehood of {}. Will be using this for sampling.".format(
@@ -416,7 +416,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
                 if validation: # validation is after annealing
                     validation_prob, _ = parse(num_ev_sents, num_ev_sents + abs(validation_length), workDistributer,
-                                               ev_seqs, hid_seqs)
+                                               ev_seqs, hid_seqs, working_dir=working_dir)
                     thres = np.log10(np.random.uniform(0, 1))
                     logging.info("try {}: val likelihood: {}; prev val likelihood: {}; thres {}".format(mh_counts,
                                                                                                         validation_prob, pcfg_model.val_log_probs, thres))
