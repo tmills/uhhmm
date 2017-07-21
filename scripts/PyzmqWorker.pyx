@@ -44,6 +44,8 @@ cdef class PyzmqWorker:
         self.indexer = None
         self.gpu = gpu
         self.batch_size = batch_size
+        if self.gpu is False:
+            self.batch_size = 0
         self.my_ip = get_local_ip()
 
     def __reduce__(self):
