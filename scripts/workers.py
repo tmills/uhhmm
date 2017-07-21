@@ -51,12 +51,15 @@ def start_local_workers(host, jobs_port, results_port, models_port, maxLen, cpu_
 def main(args):
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
-    if len(args) != 1 and len(args) != 7 and len(args) != 8:
+    if len(args) != 2 and len(args) != 7 and len(args) != 8:
         print("ERROR: Wrong number of arguments! Two run modes -- One argument of a file with properties or 7-8 arguments: <host (string)> <jobs port (int)> <results port (int)> <models port (int)> <max sentence length (int)> <gpu ([0|1])> <gpu batch size (int)> [num replicates (int)]")
         sys.exit(-1)
 
-    if len(args) == 1:
-        config_file = args[0] + "/masterConfig.txt"
+    if len(args) == 2:
+        if args[1] == 'gpu':
+            config_file = os.path.join(args[0], "masterConfig_gpu.txt")
+        elif args[1] == 'cpu':
+            config_file = os.path.join(args[0], "masterConfig_cpu.txt")
         while True:
             if os.path.isfile(config_file):
                 configs = open(config_file).readlines()

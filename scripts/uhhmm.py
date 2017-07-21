@@ -254,11 +254,17 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     elif cluster_cmd != None:
         start_cluster_workers(workDistributer, cluster_cmd, maxLen, gpu)
     else:
-        master_config_file = './masterConfig.txt'
-        with open(master_config_file, 'w') as c:
+        master_config_file_gpu = os.path.join(working_dir, 'masterConfig_gpu.txt')
+        master_config_file_cpu = os.path.join(working_dir, 'masterConfig_cpu.txt')
+        with open(master_config_file_gpu, 'w') as c:
             print(' '.join([str(x) for x in
                             [workDistributer.host, workDistributer.jobs_port, workDistributer.results_port,
-                             workDistributer.models_port, maxLen + 1, int(gpu), gpu_batch_size]]), file=c)
+                             workDistributer.models_port, maxLen + 1, 1, gpu_batch_size]]), file=c)
+            print('OK', file=c)
+        with open(master_config_file_cpu, 'w') as c:
+            print(' '.join([str(x) for x in
+                            [workDistributer.host, workDistributer.jobs_port, workDistributer.results_port,
+                             workDistributer.models_port, maxLen + 1, 0, gpu_batch_size]]), file=c)
             print('OK', file=c)
 
 
