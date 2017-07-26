@@ -32,7 +32,7 @@ cdef class GaussianModel(Model):
         for pos_ind in range(shape[0]):
             init_means = mean_dist.rvs(shape[1])
             self.dist.append( scipy.stats.norm(init_means) )
-            print("Mean vector for pos %d after resampling: " % (pos_ind), self.dist[-1].mean())
+            #print("Mean vector for pos %d after initial sampling: " % (pos_ind), self.dist[-1].mean())
 
     def count(self, pos_ind, token_ind, val):
         ## we've seen a count of pos tag cond pos_ind and word index token_ind
@@ -46,11 +46,20 @@ cdef class GaussianModel(Model):
             ## This is called before we've done any sampling, and we already randomly
             ## initialized in the constructor
             return
-            
+
         for pos_ind in range(self.pairCounts.shape[0]):
             sample_means = self.pairCounts[pos_ind][:] / self.condCounts[pos_ind]
             mean_sample_dist = scipy.stats.norm(sample_means)
-            self.dist[pos_ind]=  scipy.stats.norm(mean_sample_dist.rvs(self.pairCounts.shape[1]))
+            if self.condCounts[pos_ind] == 0:
+                logging.error("Error resampling Gaussian: One of the conditions (pos_ind=%d) had zero counts." % (pos_ind))
+                ## don't assign it anything -- it keeps the same means as last sample.
+            else:
+                self.dist[pos_ind] = scipy.stats.norm(mean_sample_dist.rvs(self.pairCounts.shape[1]))
+
+            if np.isnan(self.dist[pos_ind].mean().max()):
+                logging.error("Resampled gaussian and there is a nan in the mean vector")
+                logging.error("self.dist[%d] = %s" %(pos_ind, str(self.dist[pos_ind].mean())))
+                logging.error("sample_means: %s" % str(sample_means))
 
     def resetCounts(self):
         for pos_ind in range(self.pairCounts.shape[0]):
