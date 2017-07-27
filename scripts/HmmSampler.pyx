@@ -104,7 +104,7 @@ cdef class HmmSampler(Sampler.Sampler):
         cdef tuple maxes
         cdef list sent
 
-        logging.warning("Forward pass for sentence %d" % (sent_index))
+        #logging.warning("Forward pass for sentence %d" % (sent_index))
         if len(sents) > 1:
             raise Exception("Error: Python version only accepts batch size 1")
 
@@ -137,13 +137,13 @@ cdef class HmmSampler(Sampler.Sampler):
                 forward[index,:] = factored_transition * sparse_factored_expand_mat
 
                 lex_prob = self.obs_model.get_probability_vector(token)
-                
+
                 if lex_prob.max() < 0:
                     ## The observation model passed back a log prob
-                    log_lex_prob = lex_prob                
+                    log_lex_prob = lex_prob
                     #print("lex_prob:", lex_prob)
                     #print("Received log probs from obs model: ", log_lex_prob)
-                
+
                     ## This is the "exp-normalize trick" for normalizing probability
                     ## distributions coming out of log space, seen at:
                     ## timvieira.github.io/blog/post/2014/02/11/exp-normalize-trick
@@ -161,7 +161,7 @@ cdef class HmmSampler(Sampler.Sampler):
                     normalizer = forward[index,:].sum()
                     print("normalizer:", normalizer)
                     forward[index,:] /= normalizer
-                
+
                 ## Normalizer is p(y_t)
                 sentence_log_prob += np.log10(normalizer)
             last_index = len(sent)-1
