@@ -175,12 +175,13 @@ hyperparams = pandas.read_table(os.path.join(last_sample_folder, 'pcfg_hypparams
 
 fig, ax = plt.subplots()
 line_1 = ax.plot(hyperparams.iter[burn_in:], hyperparams.logprob[burn_in:], 'b-')
-ax2 = ax.twinx()
-line_2 = ax2.plot(hyperparams.iter[burn_in:], np.nan_to_num(hyperparams.val_logprob[burn_in:]), 'r-')
 ax.set_ylabel('logprob', color='b')
 ax.tick_params('y', color='b')
-ax2.set_ylabel('dev logprob', color='r')
-ax2.tick_params('y',color='r')
+if hasattr(hyperparams, 'val_logprob'):
+    ax2 = ax.twinx()
+    line_2 = ax2.plot(hyperparams.iter[burn_in:], np.nan_to_num(hyperparams.val_logprob[burn_in:]), 'r-')
+    ax2.set_ylabel('dev logprob', color='r')
+    ax2.tick_params('y',color='r')
 ax.set_xlabel('iteration')
 # ax.legend(lines, ('Training', 'Dev'))
 fig.tight_layout()

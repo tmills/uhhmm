@@ -463,6 +463,7 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
     normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
 //     cout << "normalizer " << normalizer <<endl;
     blas::scal(dyn_prog_col, 1.0f/normalizer);
+    cout << "viterbi is " << viterbi << endl;
     if (viterbi == 0){
         sample_t = get_sample(dyn_prog_col);
     } else {
