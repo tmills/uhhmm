@@ -12,12 +12,20 @@ from matplotlib.backends.backend_pdf import PdfPages
 import pandas
 import time
 import nltk
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, namedtuple
 import scipy.stats as stats
+import argparse
 # EVALB folder needs to be placed into this folder
 
-last_sample_folder = sys.argv[1]
-gold_trees_file = sys.argv[2]
+arg_parser = argparse.ArgumentParser()
+arg_parser.add_argument('-folder', default='.', type=str, help='the path to the output folder')
+arg_parser.add_argument('-gold-trees', default=None, type=str, help='the path to the gold trees')
+arg_parser.add_argument('-first-n-iter', default=None, type=int, help='the first N of iterations considered')
+args = arg_parser.parse_args()
+last_sample_folder = args.folder
+gold_trees_file = args.gold_trees
+assert gold_trees_file is not None, "gold trees file is not defined!"
+first_n_iter = args.first_n_iter
 evalb_params_file = './utils/EVALB/uhhmm.prm'
 total_process_limit = 20
 process_pool = []
@@ -54,7 +62,9 @@ constlist_command = '''python scripts/iters2constitevallist.py {} > {}'''
 plot_command = '''python {}/resource-linetrees/scripts/constitevals2table.py {} > {} '''
 
 output_files = os.listdir(last_sample_folder)
-output_last_samples = [x for x in output_files if re.match('last_sample[0-9]+\.linetrees', x)]
+output_last_samples = [x for x in output_files if re.match('last_sample[0-9]+\.linetrees', x) and
+                       (int(re.match('last_sample([0-9]+)\.linetrees', x).group(1)) < first_n_iter if first_n_iter is not None
+                        else True)]
 
 output_last_samples.sort(key=lambda x: int(re.match('last_sample([0-9]+)\.linetrees', x).group(1)))
 print(output_last_samples)
@@ -174,18 +184,19 @@ plt.clf()
 hyperparams = pandas.read_table(os.path.join(last_sample_folder, 'pcfg_hypparams.txt'))
 
 fig, ax = plt.subplots()
-line_1 = ax.plot(hyperparams.iter[burn_in:], hyperparams.logprob[burn_in:], 'b-')
+line_1 = ax.plot(hyperparams.iter[burn_in:first_n_iter], hyperparams.logprob[burn_in:first_n_iter], 'b-')
 ax.set_ylabel('logprob', color='b')
 ax.tick_params('y', color='b')
 if hasattr(hyperparams, 'val_logprob'):
     ax2 = ax.twinx()
-    line_2 = ax2.plot(hyperparams.iter[burn_in:], np.nan_to_num(hyperparams.val_logprob[burn_in:]), 'r-')
+    line_2 = ax2.plot(hyperparams.iter[burn_in:first_n_iter], np.nan_to_num(hyperparams.val_logprob[burn_in:first_n_iter]), 'r-')
     ax2.set_ylabel('dev logprob', color='r')
     ax2.tick_params('y',color='r')
 ax.set_xlabel('iteration')
 # ax.legend(lines, ('Training', 'Dev'))
 fig.tight_layout()
-pp = PdfPages(os.path.join(last_sample_folder, 'logprobs' + '_'+ str(min(hyperparams.iter[burn_in:]))+'_' + str(max(hyperparams.iter[burn_in:]))) + '.pdf')
+pp = PdfPages(os.path.join(last_sample_folder, 'logprobs' + '_'+ str(min(hyperparams.iter[burn_in:first_n_iter]))+
+                           '_' + str(max(hyperparams.iter[burn_in:first_n_iter]))) + '.pdf')
 fig.savefig(pp, format='pdf')
 pp.close()
 plt.cla()
@@ -194,17 +205,20 @@ plt.clf()
 
 # NP, VP and PP evaluations, branching scores
 phrases = ['NP', 'VP', 'PP']
-gold_counters = {'NP':Counter(), 'VP':Counter(), 'PP':Counter()}
-for t in gold_trees:
+gold_counters = {'NP':[], 'VP':[], 'PP': []}
+for index, t in enumerate(gold_trees):
+    gold_counters['NP'].append(Counter())
+    gold_counters['VP'].append(Counter())
+    gold_counters['PP'].append(Counter())
     for sub_t in t.subtrees():
         if sub_t.label() in phrases and len(sub_t.leaves()) > 1:
-            gold_counters[sub_t.label()][' '.join(sub_t.leaves())] += 1
+            gold_counters[sub_t.label()][index][' '.join(sub_t.leaves())] += 1
 
 scores = []
 aggregate_scores = []
-NP_length = sum(gold_counters['NP'].values())
-VP_length = sum(gold_counters['VP'].values())
-PP_length = sum(gold_counters['PP'].values())
+NP_length = sum([x.values() for x in gold_counters['NP']])
+VP_length = sum([x.values() for x in gold_counters['VP']])
+PP_length = sum([x.values() for x in gold_counters['PP']])
 phrases_lengths = [NP_length, VP_length, PP_length]
 
 def calc_branching_score(t):
@@ -222,11 +236,11 @@ def calc_branching_score(t):
 def calc_phrase_stats(f_name, prec_thres=0.6):
     l_branch = 0
     r_branch = 0
-    current_counters = {}
+    current_counters = []
     num_d2_trees = 0
     num_total_trees = 0
-    overall_label_counter = Counter()
-    non_term_only_label = defaultdict(bool)
+    overall_label_counter = Counter() #used in label dist entropy calc
+    non_term_only_label = defaultdict(bool) # used in non-preterm only label calc
     with open(f_name) as fh:
         for line in fh:
             num_total_trees += 1
@@ -235,6 +249,7 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
             this_l, this_r = calc_branching_score(this_t)
             l_branch += this_l
             r_branch += this_r
+            current_counters.append(Counter())
             for sub_t in this_t.subtrees():
                 overall_label_counter[sub_t.label()] += 1
                 if len(sub_t.leaves()) > 1:
@@ -247,7 +262,7 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
                             num_d2_trees += 1
                     except:
                         pass
-                    current_counters[sub_t.label()][' '.join(sub_t.leaves())] += 1
+                    current_counters[num_total_trees - 1][sub_t.label()][' '.join(sub_t.leaves())] += 1
                 else:
                     non_term_only_label[sub_t.label()] &= False
     total_num_labels = sum(overall_label_counter.values())
@@ -257,26 +272,47 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
     this_best_scores = [0,0,0]
     this_best_aggregate_scores = [0, 0, 0]
     best_cats = [0,0,0]
+    total_acc_number = [Counter(), Counter(), Counter()]
+    total_hyp_cat_number = [Counter(), Counter(), Counter()]
     aggregate_counters = [Counter(), Counter(), Counter()]
-    for cat, cat_counter in current_counters.items():
-        for index, phrase_cat in enumerate(phrases):
-            acc_num = sum(( cat_counter & gold_counters[phrase_cat]).values())
-            prec = acc_num / sum(cat_counter.values())
+    for index_tree, tree_counter in current_counters:
+        for cat, cat_counter in tree_counter.items():
+            for index, phrase_cat in enumerate(phrases):
+                acc_num = sum(( cat_counter & gold_counters[phrase_cat][index_tree]).values())
+                total_acc_number[index][cat] += acc_num
+                total_hyp_cat_number[index][cat] += sum(cat_counter.values())
+                # prec = acc_num / sum(cat_counter.values())
+                # rec = acc_num / phrases_lengths[index]
+                # f1 = 0 if prec == 0 or rec == 0 else 1.0 / (0.5 / prec + (0.5 / rec))
+                # if f1 > this_best_scores[index]:
+                #     this_best_scores[index] = f1
+                #     best_cats[index] = cat
+                # if prec > prec_thres:
+                #     aggregate_counters[index] += cat_counter
+    Performance = namedtuple('Performance', 'id prec rec f1')
+    performances = [[],[],[]] # compute the performances of each cat
+    for index, phrase_cat in enumerate(phrases):
+        for cat, cat_acc in total_acc_number[index].items():
+            prec = cat_acc / total_hyp_cat_number[index][cat]
+            rec = cat_acc / phrases_lengths[index]
+            f1 = 0 if prec == 0 or rec == 0 else 1.0 / (0.5 / prec + (0.5 / rec))
+            performances[index].append(Performance(cat, prec, rec, f1))
+
+    performances = [phrase.sort(key=lambda x: x.f1, reverse=True) for phrase in performances]
+    this_best_scores = [phrase[0].f1 for phrase in performances]
+    this_best_aggregate_scores = [phrase[0].f1 for phrase in performances]
+
+    for index, phrase_cat in enumerate(phrases):
+        for best_cat_index, best_cat in enumerate(performances[index]):
+            acc_num = sum([ total_acc_number[index][perf.id] for perf in performances[index][:best_cat_index+1]])
+            total_num = sum([total_hyp_cat_number[index][perf.id] for perf in performances[index][:best_cat_index+1]])
+            prec = acc_num / total_num
             rec = acc_num / phrases_lengths[index]
             f1 = 0 if prec == 0 or rec == 0 else 1.0 / (0.5 / prec + (0.5 / rec))
-            if f1 > this_best_scores[index]:
-                this_best_scores[index] = f1
-                best_cats[index] = cat
-            if prec > prec_thres:
-                aggregate_counters[index] += cat_counter
-    for i in range(len(aggregate_counters)):
-        aggregate_counters[i] += current_counters[best_cats[i]]
-    for index, phrase_cat in enumerate(phrases):
-        acc_num = sum((aggregate_counters[index] & gold_counters[phrase_cat]).values())
-        prec = acc_num / sum(aggregate_counters[index].values())
-        rec = acc_num / phrases_lengths[index]
-        f1 = 0 if prec == 0 or rec == 0 else 1.0 / (0.5 / prec + (0.5 / rec))
-        this_best_aggregate_scores[index] = f1
+            if f1 > this_best_aggregate_scores[index]:
+                this_best_aggregate_scores[index] = f1
+            else:
+                break
     return this_best_scores, this_best_aggregate_scores, r_branch / (l_branch+r_branch), num_d2_trees / num_total_trees, label_dist_entropy, num_non_term_only_label / len(non_term_only_label)
 
 end_f_names_nodeps = [x for x in end_f_names if  'fromdeps' not in x]
