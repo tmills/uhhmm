@@ -216,9 +216,9 @@ for index, t in enumerate(gold_trees):
 
 scores = []
 aggregate_scores = []
-NP_length = sum([x.values() for x in gold_counters['NP']])
-VP_length = sum([x.values() for x in gold_counters['VP']])
-PP_length = sum([x.values() for x in gold_counters['PP']])
+NP_length = sum([sum(x.values()) for x in gold_counters['NP']])
+VP_length = sum([sum(x.values()) for x in gold_counters['VP']])
+PP_length = sum([sum(x.values()) for x in gold_counters['PP']])
 phrases_lengths = [NP_length, VP_length, PP_length]
 
 def calc_branching_score(t):
@@ -249,13 +249,13 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
             this_l, this_r = calc_branching_score(this_t)
             l_branch += this_l
             r_branch += this_r
-            current_counters.append(Counter())
+            current_counters.append({})
             for sub_t in this_t.subtrees():
                 overall_label_counter[sub_t.label()] += 1
                 if len(sub_t.leaves()) > 1:
                     non_term_only_label[sub_t.label()] &= True
                     if sub_t.label() not in current_counters:
-                        current_counters[sub_t.label()] = Counter()
+                        current_counters[num_total_trees - 1][sub_t.label()] = Counter()
                     try:
                         if not d2_checked and isinstance(sub_t[1][0][1], nltk.Tree):
                             d2_checked = 1
@@ -275,7 +275,7 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
     total_acc_number = [Counter(), Counter(), Counter()]
     total_hyp_cat_number = [Counter(), Counter(), Counter()]
     aggregate_counters = [Counter(), Counter(), Counter()]
-    for index_tree, tree_counter in current_counters:
+    for index_tree, tree_counter in enumerate(current_counters):
         for cat, cat_counter in tree_counter.items():
             for index, phrase_cat in enumerate(phrases):
                 acc_num = sum(( cat_counter & gold_counters[phrase_cat][index_tree]).values())
@@ -298,7 +298,7 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
             f1 = 0 if prec == 0 or rec == 0 else 1.0 / (0.5 / prec + (0.5 / rec))
             performances[index].append(Performance(cat, prec, rec, f1))
 
-    performances = [phrase.sort(key=lambda x: x.f1, reverse=True) for phrase in performances]
+    _ = [phrase.sort(key=lambda x: x.f1, reverse=True) for phrase in performances]
     this_best_scores = [phrase[0].f1 for phrase in performances]
     this_best_aggregate_scores = [phrase[0].f1 for phrase in performances]
 
@@ -330,9 +330,9 @@ num_non_term_label = np.array(num_non_term_label)
 fig, ax = plt.subplots()
 len_iters = len(output_last_samples)
 x_data = hyperparams.iter[:len_iters]
-lines = ax.plot(x_data, scores[:len_iters, 0], x_data, scores[:len_iters, 1], x_data, scores[:len_iters, 2]
-                ,x_data, aggregate_scores[:len_iters, 0] , x_data, aggregate_scores[:len_iters, 1],
-                x_data, aggregate_scores[:len_iters, 2])
+lines = ax.plot(x_data, scores[:len_iters, 0], 'o', x_data, scores[:len_iters, 1], 'v', x_data, scores[:len_iters, 2]
+                , 'x', x_data, aggregate_scores[:len_iters, 0], '+', x_data, aggregate_scores[:len_iters, 1], 's',
+                x_data, aggregate_scores[:len_iters, 2], '*')
 ax.set_ylabel('percentage')
 ax.legend(lines, ( "best NP F1", 'best VP F1', 'best PP F1', "best NP agg F1", "best VP agg F1", "best PP agg F1"))
 pp = PdfPages(
