@@ -315,6 +315,7 @@ void HmmSampler::g_factored_multiply(Dense* prev_dyn_prog_slice, Dense* this_dyn
 //    cout << "factor multiply 4" << endl;
 }
 
+
 std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents, int sent_index){
 //     cout << "Forward in " << endl;
     float normalizer;
@@ -325,7 +326,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
     int batch_size = sents.size();
     int batch_max_len = get_max_len(sents);
     // np_sents is |batches| x max_len
-    Dense* np_sents = get_sentence_array(sents, batch_max_len);
+//    Dense* np_sents = get_sentence_array(sents, batch_max_len);
     csr_matrix_view<IndexArrayView,IndexArrayView,ValueArrayView>* pi_view = pi -> get_view();
     
     array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();

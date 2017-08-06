@@ -19,6 +19,7 @@ import os
 import time
 from uhhmm_io import printException, ParsingError
 from gpu_parse import PARSING_SIGNAL_FILE
+from ViterbiParser import ViterbiParser
 
 ## This function was required because of some funkiness on ubuntu systems where reverse dns lookup was returning a loopback ip
 ## This will try the easy way and if it returns something with 127. will make an outside connectino to known DNS (8.8.8.8) and
@@ -124,6 +125,22 @@ cdef class PyzmqWorker:
                 pi = 0 # placeholder
                 self.processSentences(sampler, pi, jobs_socket, results_socket)
 
+            elif model_wrapper.model_type == ModelWrapper.VITERBI and self.gpu:
+                msg.file_path = msg.file_path + '.gpu'
+                model_wrapper = self.get_model(msg)[0]
+
+                # print('1 worker loading file.')
+                sampler = ViterbiParser()
+                # print('2 init sampler on GPU')
+                # print(model_wrapper.model)
+                gpu_model = model_wrapper.model
+                # print('3 loading in models')
+                sampler.set_models(gpu_model)
+                # print('4 setting in models')
+                # self.model_file_sig = get_file_signature(msg)
+                pi = 0 # placeholder
+                self.processSentences(sampler, pi, jobs_socket, results_socket)
+
             else:
                 logging.error("Received a model type that I don't know how to process!")
 
@@ -202,7 +219,7 @@ cdef class PyzmqWorker:
                 self.quit = True
                 break
             if job.type == PyzmqJob.SENTENCE:
-                viterbi = job.resource.viterbi
+                posterior_decoding = job.resource.posterior_decoding
                 if self.batch_size > 1:
                     sent_index = job.resource.index
                     for job in jobs:
@@ -245,7 +262,7 @@ cdef class PyzmqWorker:
                         if len(sent_batch) in [1,2,4,8,16,32,64,128,256]:
                             #logging.info("Batch has acceptable length of %d" % (len(sent_batch)))
                             # print('6 sampling now')
-                            (sent_samples, log_probs) = sampler.sample(pi, sent_batch, sent_index)
+                            (sent_samples, log_probs) = sampler.sample(pi, sent_batch, sent_index, posterior_decoding)
                         else:
                             logging.info("Batch size %d doesn't match power of 2 -- breaking into sub-batches" % (len(sent_batch) ) )
                             ## have some number of batches < 32 but not a power of 2
@@ -259,7 +276,7 @@ cdef class PyzmqWorker:
                                     sent_batch = sent_batch[mini_batch_size:]
 
                                     try:
-                                        (sub_samples, sub_probs) = sampler.sample(pi, sub_batch, sent_index, viterbi)
+                                        (sub_samples, sub_probs) = sampler.sample(pi, sub_batch, sent_index, posterior_decoding)
                                     except Exception as e:
                                         print("Exception in sampler: %s" % (str(e)))
                                         raise Exception

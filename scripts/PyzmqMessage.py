@@ -7,6 +7,7 @@ class PyzmqJob:
     SENTENCE=0
     QUIT=1
     COMPILE=2
+    VITERBI=3
 
     def __init__(self, msg_type, resource):
         self.type = msg_type
@@ -22,10 +23,10 @@ class SentenceRequest(JobRequest):
         self.request_size = request_size
         
 class SentenceJob:
-    def __init__(self, index, ev_seq, viterbi=0):
+    def __init__(self, index, ev_seq, posterior_decoding=0):
         self.index = index
         self.ev_seq = ev_seq
-        self.viterbi = viterbi
+        self.posterior_decoding = posterior_decoding
 
 class RowRequest(JobRequest):
     def __init__(self, resource_sig):
@@ -69,6 +70,7 @@ class ModelWrapper:
     INFINITE = 0
     HMM = 1
     COMPILE = 2
+    VITERBI=3
     
     ## If the model type is INFINITE we just have a Models object with all
     ## the various CPTs as component models. If we have HMM we have a tuple of

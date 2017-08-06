@@ -105,12 +105,12 @@ class PCFG_model:
             self.alpha = sum(alpha_range) / len(alpha_range)
 
     def sample(self, pcfg_counts, annealing_coeff=1.0, normalize=False,
-               sample_alpha_flag=False):  # used as the normal sampling procedure
+               sample_alpha_flag=False, viterbi=False):  # used as the normal sampling procedure
         if sample_alpha_flag:
             self._sample_alpha()
         self._reset_counts()
         self._update_counts(pcfg_counts)
-        sampled_pcfg = self._sample_model(annealing_coeff, normalize=normalize)
+        sampled_pcfg = self._sample_model(annealing_coeff, normalize=normalize, viterbi=viterbi)
         sampled_pcfg = self._translate_model_to_pcfg(sampled_pcfg)
 
         return sampled_pcfg
@@ -158,11 +158,14 @@ class PCFG_model:
                 logging.info('pcfg alpha samples a new value {} with log ratio {}/{}'.format(new_alpha, mh_ratio,
                                                                                              acceptance_thres))
 
-    def _sample_model(self, annealing_coeff=1.0, normalize=False):
+    def _sample_model(self, annealing_coeff=1.0, normalize=False, viterbi=False):
         logging.info(
             "resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha, annealing_coeff))
         self.annealing_coeff = annealing_coeff
-        self.unannealed_dists = {x: np.random.dirichlet(self.counts[x]) for x in self.counts}
+        if not viterbi:
+            self.unannealed_dists = {x: np.random.dirichlet(self.counts[x]) for x in self.counts}
+        else:
+            self.unannealed_dists = {x: self.counts[x] / (np.sum(self.counts[x]) + 1e-4) for x in self.counts}
         dists = {}
         if annealing_coeff != 1.0:
             for x in dists:

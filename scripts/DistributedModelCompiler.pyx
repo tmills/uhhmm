@@ -26,7 +26,7 @@ class DistributedModelCompiler(FullDepthCompiler):
         self.limit_depth = self.depth if limit_depth == -1 else limit_depth
         logging.basicConfig(stream=sys.stdout)
 
-    def compile_and_store_models(self, models, working_dir, full_pi = False):
+    def compile_and_store_models(self, models, working_dir, full_pi = False, viterbi=False):
         # models = pickle.load(open(working_dir+ "/ori_models.bin" ,'rb')).model[0]
         global PER_STATE_CONNECTION
         indexer = Indexer(models)
@@ -205,9 +205,13 @@ class DistributedModelCompiler(FullDepthCompiler):
             #             state_t = indexer.extractState(index_t)
             #             logging.info(' '.join(map(str, [state_t_1.str(), '->', state_t.str(), pi[index_t_1, index_t],
             #                                             'pos line:', pos_dist[]])))
-
-            model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, corrected_pos_dist,
+            if not viterbi:
+                model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, corrected_pos_dist,
                                                         indexer.get_EOS_full()), self.depth)
+            else:
+                model_gpu = ModelWrapper(ModelWrapper.VITERBI,
+                                         (pi.T, lex_dist, (a_max, b_max, g_max), self.depth, corrected_pos_dist,
+                                          indexer.get_EOS_full()), self.depth)
             # logging.info("EOS index is "+str(indexer.get_EOS_full()))
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
             # logging.info("Saving GPU models for use")

@@ -111,10 +111,10 @@ def parse(start_ind, end_ind, distributer, ev_seqs, hid_seqs, viterbi=0, working
     os.remove(os.path.join(working_dir, PARSING_SIGNAL_FILE))
     return logprobs, num_processed
 
-def compile_and_set_models(depth, work_distributer, gpu, init_depth, models, working_dir):
-    DistributedModelCompiler.DistributedModelCompiler(depth, work_distributer, gpu,
-                                                      limit_depth=init_depth).compile_and_store_models(models,
-                                                                                                       working_dir)
+def compile_and_set_models(depth, work_distributer, gpu, init_depth, models, working_dir, viterbi=False):
+    DistributedModelCompiler.\
+        DistributedModelCompiler(depth, work_distributer, gpu,
+                                 limit_depth=init_depth).compile_and_store_models(models,working_dir, viterbi=viterbi)
 
 def viterbi_parse(last_sample_directory, param_iter, line_intstok_file, dict_file, abp_domain_size=15, depth=2):
     '''
