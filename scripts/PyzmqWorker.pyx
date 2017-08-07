@@ -347,10 +347,12 @@ cdef class PyzmqWorker:
     def handle_sigint(self, signum, frame):
         logging.info("Worker received quit signal... will terminate after cleaning up.")
         self.quit = True
+        exit(-1)
 
     def handle_sigterm(self, signum, frame):
         logging.info("Worker received quit signal... will terminate after cleaning up.")
         self.quit = True
+        exit(-1)
 
     def handle_sigalarm(self, signum, frame):
         logging.warning("Worker received alarm while trying to process sentence... will raise exception")

@@ -149,7 +149,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     super_cooling_target_ac = int(params.get("super_cooling_target_ac", 10))
 
     # viterbi decoding
-    viterbi_start_iter = int(params.get("viterbi", -1))
+    viterbi_start_iter = int(params.get("viterbi_start_iter", np.inf))
     viterbi = False
 
     # main body
@@ -322,7 +322,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         t0 = time.time()
 
-        this_log_prob, num_processed = parse(start_ind, end_ind, workDistributer, ev_seqs, hid_seqs, working_dir=working_dir)
+        this_log_prob, num_processed = parse(start_ind, end_ind, workDistributer, ev_seqs, hid_seqs, working_dir=working_dir, viterbi=viterbi)
 
         sample.log_prob += this_log_prob
         acc_logprob += sample.log_prob
