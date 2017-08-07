@@ -128,7 +128,7 @@ cdef class PyzmqWorker:
             elif model_wrapper.model_type == ModelWrapper.VITERBI and self.gpu:
                 msg.file_path = msg.file_path + '.gpu'
                 model_wrapper = self.get_model(msg)[0]
-
+                logging.info("using viterbi decoding for worker {}".format(self.tid))
                 # print('1 worker loading file.')
                 sampler = ViterbiParser()
                 # print('2 init sampler on GPU')
