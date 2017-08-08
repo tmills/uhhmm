@@ -296,7 +296,7 @@ class WorkDistributerServer():
         self.models = None
         self.model_server.start()
         
-    def submitSentenceJobs(self, start=-1, end=-1, viterbi=0):
+    def submitSentenceJobs(self, start=-1, end=-1, posterior_decoding=0):
         ind = 0
         num_done = 0
         self.model_server.reset_models()
@@ -304,7 +304,7 @@ class WorkDistributerServer():
         
         if start >= 0 and end >= 0:
             for i in range(start, end):
-                self.vent.addJob(PyzmqJob(PyzmqJob.SENTENCE, SentenceJob(i, self.sent_list[i], viterbi) ) )
+                self.vent.addJob(PyzmqJob(PyzmqJob.SENTENCE, SentenceJob(i, self.sent_list[i], posterior_decoding) ) )
 
             self.sink.setBatchSize(end-start)
 

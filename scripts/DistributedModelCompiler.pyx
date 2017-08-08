@@ -31,11 +31,12 @@ class DistributedModelCompiler(FullDepthCompiler):
         global PER_STATE_CONNECTION
         indexer = Indexer(models)
         logging.info("Compiling component models into mega-HMM transition and observation matrices")
-
+        logging.info("the model for viterbi? - {}".format(viterbi))
+        model_wrapper_type = ModelWrapper.HMM if not viterbi else ModelWrapper.VITERBI
         maxes = indexer.getVariableMaxes()
         (a_max, b_max, g_max) = maxes
         totalK = indexer.get_state_size()
-        total_connection = PER_STATE_CONNECTION * totalK
+        total_connection = int(PER_STATE_CONNECTION * totalK)
        # indptr = np.zeros(totalK+1)
         if self.gpu == False:
             data_type = np.float64
@@ -187,8 +188,9 @@ class DistributedModelCompiler(FullDepthCompiler):
                                 corrected_pos_dist[bf_index, g_index] = 0
             corrected_pos_dist = np.ravel(corrected_pos_dist.astype(np.float32))
 
-            assert corrected_pos_dist.shape[0]== g_max*(b_max**self.depth)*2, "Size of POS array {} should be analytically equal to {}".format
-            (pos_dist.shape[0], g_max*(b_max**self.depth)*2)
+            assert corrected_pos_dist.shape[0]== g_max*(b_max**self.depth)*2, "Size of POS array {} should be analytically" \
+                                                                              " equal to {}".format(pos_dist.shape[0],
+                                                                                                    g_max*(b_max**self.depth)*2)
 
             for b_index, b_cats in enumerate(row_indices):
                 for f_index in (0, 1):
@@ -205,11 +207,7 @@ class DistributedModelCompiler(FullDepthCompiler):
             #             state_t = indexer.extractState(index_t)
             #             logging.info(' '.join(map(str, [state_t_1.str(), '->', state_t.str(), pi[index_t_1, index_t],
             #                                             'pos line:', pos_dist[]])))
-            if not viterbi:
-                model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, corrected_pos_dist,
-                                                        indexer.get_EOS_full()), self.depth)
-            else:
-                model_gpu = ModelWrapper(ModelWrapper.VITERBI,
+            model_gpu = ModelWrapper(model_wrapper_type,
                                          (pi.T, lex_dist, (a_max, b_max, g_max), self.depth, corrected_pos_dist,
                                           indexer.get_EOS_full()), self.depth)
             # logging.info("EOS index is "+str(indexer.get_EOS_full()))
@@ -218,11 +216,12 @@ class DistributedModelCompiler(FullDepthCompiler):
             pickle.dump(model_gpu, gpu_out_file)
             gpu_out_file.close()
         relog_models(models, self.depth)
+
         if full_pi:
             pi_full = pi_full.tocsc()
-            model = ModelWrapper(ModelWrapper.HMM, (models, pi_full, models.ac_coeff), self.depth)
+            model = ModelWrapper(model_wrapper_type, (models, pi_full, models.ac_coeff), self.depth)
         else:
-            model = ModelWrapper(ModelWrapper.HMM, (models, pi), self.depth)
+            model = ModelWrapper(model_wrapper_type, (models, pi), self.depth)
         # EOS = indexer.get_EOS()
         # EOS_full = indexer.get_EOS_full()
         # EOS_1wrd = indexer.get_EOS_1wrd()

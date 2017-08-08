@@ -17,6 +17,7 @@ import Indexer
 import FullDepthCompiler
 import os
 import time
+import traceback
 from uhhmm_io import printException, ParsingError
 from gpu_parse import PARSING_SIGNAL_FILE
 from ViterbiParser import ViterbiParser
@@ -92,7 +93,8 @@ cdef class PyzmqWorker:
 
             logging.debug("Worker %d preparing to process new model" % self.tid)
 
-            if model_wrapper is None or (model_wrapper.model_type == ModelWrapper.HMM and not self.gpu) :
+            if model_wrapper is None or ((model_wrapper.model_type == ModelWrapper.HMM or
+                                          model_wrapper.model_type == ModelWrapper.VITERBI) and not self.gpu) :
                 if self.batch_size > 0:
                     sampler = HmmSampler.HmmSampler(self.seed)
                     sampler.set_models(model_wrapper.model)
@@ -255,7 +257,7 @@ cdef class PyzmqWorker:
                 t0 = time.time()
                 tries = 0
 
-                while not success and tries < 10:
+                while not success and tries < 1:
                     try:
                         if tries > 0:
                             logging.info("Error in previous sampling attempt. Retrying batch")
@@ -291,6 +293,7 @@ cdef class PyzmqWorker:
                         tries += 1
                         sent_sample = None
                         log_prob = 0
+                        traceback.print_tb(e.__traceback__)
 
                 if (self.batch_size == 1 and sent_index % self.out_freq == 0) or (self.batch_size > 1 and (sent_index // self.out_freq != (sent_index+len(sent_batch)) // self.out_freq)):
                     logging.info("Processed sentence {0} (Worker {1})".format(sent_index, self.tid))

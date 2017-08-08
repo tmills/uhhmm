@@ -322,7 +322,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         t0 = time.time()
 
-        this_log_prob, num_processed = parse(start_ind, end_ind, workDistributer, ev_seqs, hid_seqs, working_dir=working_dir, viterbi=viterbi)
+        this_log_prob, num_processed = parse(start_ind, end_ind, workDistributer, ev_seqs, hid_seqs, working_dir=working_dir)
 
         sample.log_prob += this_log_prob
         acc_logprob += sample.log_prob

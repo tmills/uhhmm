@@ -15,13 +15,16 @@ cdef class Indexer:
         self.fj_size = 4
         if isinstance(models, dict):
             self.depth = models['depth']
-            self.a_max = models['numabp'] = self.b_max = self.g_max
-
+            self.a_max = models['num_abp']
+            self.b_max = models['num_abp']
+            self.g_max = models['num_abp']
+            self.num_abp = models['num_abp']
         else:
             self.depth = len(models.F)
             self.a_max = models.A[0].dist.shape[-1]
             self.b_max = models.B_J0[0].dist.shape[-1]
             self.g_max = models.pos.dist.shape[-1]
+            self.num_abp = self.a_max
         self.state_size = self.fj_size * ((self.a_max * self.b_max) ** self.depth) * self.g_max
         self.a_size = self.a_max**self.depth
         self.b_size = self.b_max**self.depth

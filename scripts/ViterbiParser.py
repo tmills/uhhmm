@@ -15,75 +15,100 @@ class ViterbiParser:
             return tensor
 
     def set_models(self, models):
-        with open(models,'rb') as m:
-            self.pi, self.lex_dist, self.maxes, self.depth, self.pos_dist, self.EOS_index = pickle.load(m)
-            self.pi = self.pi.tocoo()
-            pi_shape = self.pi.shape
-            indices = torch.from_numpy(np.vstack([self.pi.row, self.pi.col])).long()
-            values = torch.from_numpy(self.pi.data)
-            self.pi = torch.sparse.FloatTensor(indices, values, pi_shape)
-        self.indexer = Indexer({'depth':self.depth, 'numabp':self.maxes[0]})
+        self.pi, self.lex_dist, self.maxes, self.depth, self.pos_dist, self.EOS_index = models
+        self.pi = self.pi.tocoo()
+        pi_shape = self.pi.shape
+        indices = torch.from_numpy(np.vstack([self.pi.row,self.pi.col])).long()
+
+        values = torch.from_numpy(self.pi.data)
+        # print(indices.shape, values.shape, self.pi.shape)
+        self.pi = torch.sparse.FloatTensor(indices, values, torch.Size(pi_shape))
+        self.pi = self.pi.coalesce()
+        self.indexer = Indexer({'depth':self.depth, 'num_abp':self.maxes[0]})
         self.state_size = self.indexer.get_state_size()
-        self.state_size_no_g = self.indexer.get_state_size() / self.indexer.g_max
+        self.state_size_no_g = int(self.indexer.get_state_size() / self.indexer.num_abp)
         self.full_pos_dist = self.make_full_pos_array(self.pos_dist)
 
         self.pi = self._convert_cuda(self.pi)
-        self.lex_dist = self._convert_cuda(self.lex_dist)
+        self.lex_dist = self._convert_cuda(torch.from_numpy(self.lex_dist))
         self.full_pos_dist = self._convert_cuda(self.full_pos_dist)
 
     def make_full_pos_array(self, pos_array):
-        pos_array = np.ravel(pos_array)
-        pos_array_size = np.cumprod(pos_array.shape)
-        num_rows = self.state_size / pos_array_size
-        pos_array = torch.from_numpy(np.ravel(np.repeat(pos_array, (num_rows, 1))))
+        if isinstance(pos_array, np.ndarray):
+            pos_array = torch.from_numpy(pos_array)
+        # print(pos_array.shape)
+        # print(pos_array[:10])
+        pos_array = torch.squeeze(pos_array)
+        pos_array_size = pos_array.numel()
+        num_rows = int(self.state_size / pos_array_size)
+        # print(num_rows)
+        pos_array = torch.unsqueeze(pos_array, 0)
+        pos_array = (pos_array.expand(num_rows, pos_array_size).contiguous()).view(-1)
+        # print(pos_array.shape)
+        # print(pos_array[:10])
         return pos_array
 
     def initialize_dynprog(self, batch_size, max_len):
         self.batch_size = batch_size
-        self.max_len = max_len
+        self.max_len = max_len + 1
         self.start_state = torch.zeros((self.state_size, self.batch_size))
         self.start_state[0, :] = 1
-        self.trellis = self._convert_cuda(torch.zeros((self.max_len, self.state_size, self.batch_size)))
-        self.backpointers = self._convert_cuda(torch.zeros((self.max_len, self.state_size, self.batch_size)).fill_(-1))
-        self.shrunk_trellis_column = self._convert_cuda(torch.zeros((self.state_size_no_g,)))
-        self.shrunk_backpointers_column = self._convert_cuda(torch.zeros((self.state_size_no_g,)))
+        self.start_state = self._convert_cuda(self.start_state)
+        self.trellis = torch.zeros(self.max_len, self.state_size, self.batch_size).cuda()
+        self.trellis2 = torch.zeros(self.max_len, self.state_size, self.batch_size).cuda()
+        self.trellis3 = torch.zeros(self.max_len, self.state_size, self.batch_size).cuda()
+        self.trellis4 = torch.zeros(self.max_len, self.state_size, self.batch_size).cuda()
+
+
+        print(self.trellis.shape)
+        self.trellis.fill_(0)
+        # self.trellis = self._convert_cuda(self.trellis)
+        self.trellis = self.trellis.cuda()
+        self.trellis.fill_(0)
+        self.backpointers = self._convert_cuda(torch.zeros(self.max_len, self.state_size, self.batch_size).long().fill_(-1))
+        self.shrunk_trellis_column = self._convert_cuda(torch.zeros(self.state_size_no_g))
+        self.shrunk_backpointers_column = self._convert_cuda(torch.zeros(self.state_size_no_g))
+        # print(self.trellis.shape, self.backpointers.shape, self.shrunk_backpointers_column.shape, self.shrunk_trellis_column.shape)
+        # print(type(self.trellis), type(self.backpointers))
 
     def viterbi_max(self, sparse_m, word_index, sent_id, token=None):
         if token is not None:
+            # print(self.lex_dist.shape)
             token_dist = self.lex_dist[:, token]
+            token_dist = self.make_full_pos_array(token_dist)
         else:
             token_dist = 1
         sparse_m_rows = sparse_m.size()[0]
         assert self.state_size_no_g == sparse_m_rows, (self.state_size_no_g, sparse_m_rows, self.state_size)
         for i in range(sparse_m_rows):
-            this_row = sparse_m.values()[sparse_m.indices()[:, 0] == i]
-            if this_row:
+            this_row = sparse_m._values()[sparse_m._indices()[0, :] == i]
+            if len(this_row.shape) > 0:
                 max_val, max_sparse_index = torch.max(this_row, 0)
-                max_sparse_index = sparse_m.indices[:, 1][sparse_m.indices()[:, 0] == i][max_sparse_index]
-                self.shrunk_trellis_column[i] = max_val
-                self.shrunk_backpointers_column[i] = max_sparse_index
+                max_sparse_index = sparse_m._indices()[1, :][sparse_m._indices()[0, :] == i][max_sparse_index]
+                self.shrunk_trellis_column[i] = max_val[0]
+                self.shrunk_backpointers_column[i] = max_sparse_index[0]
         self.trellis[word_index, :, sent_id] = self.shrunk_trellis_column.view(-1, 1).expand(
-            self.state_size_no_g, self.indexer.g_max).view(-1, 1).contiguous() * self.full_pos_dist * token_dist
+            self.state_size_no_g, self.indexer.num_abp).contiguous().view(-1) * self.full_pos_dist * token_dist
         self.backpointers[word_index, :, sent_id] = self.shrunk_backpointers_column.view(-1, 1).expand(
-            self.state_size_no_g, self.indexer.g_max).view(-1, 1).contiguous()
+            self.state_size_no_g, self.indexer.num_abp).contiguous().view(-1)
         self.shrunk_trellis_column.zero_()
         self.shrunk_backpointers_column.fill_(-1)
 
     def viterbi_forward(self, prev_dyn_slice, word_index, sents):
-        for sent_id in range(self.batch_size):
-            if len(sents[sent_id]) >= word_index:
+        for sent_id in range(self.this_batch_size):
+            if len(sents[sent_id]) > word_index:
                 current_token = sents[sent_id][word_index]
             else:
                 current_token = None
             prev_dyn_slice_column = prev_dyn_slice[:,sent_id].expand_as(self.pi)
-            prev_dyn_slice_sparse = prev_dyn_slice_column.sparse_mask(self.pi)
+            prev_dyn_slice_sparse = prev_dyn_slice_column._sparse_mask(self.pi)
             result = self.pi * prev_dyn_slice_sparse
             self.viterbi_max(result, word_index, sent_id, current_token)
 
 
     def viterbi_backward(self, sents):
-        states = [[] for i in range(self.batch_size)]
-        max_probs = [0 for i in range(self.batch_size)]
+        states = [[] for i in range(self.this_batch_size)]
+        max_probs = [0 for i in range(self.this_batch_size)]
         EOS_index = self.indexer.get_EOS_full()
         for sent_id, sent in enumerate(sents):
             sent_len = len(sent)
@@ -98,17 +123,24 @@ class ViterbiParser:
         return states, max_probs
 
     def parse(self, sents, sent_index):
-        assert max(map(len, sents)) == self.max_len + 1, "max length should be 1 longer than the longest sent"
-        self.trellis.zero_()
-        self.backpointers.zero_()
+        assert max(map(len, sents)) == self.max_len - 1, "max length {} should be 1 longer than the longest sent {}".format(
+            self.max_len, max(map(len,sents))
+        )
+        torch.cuda.synchronize()
+        # print(type(self.trellis), type(self.backpointers))
+        # print(self.trellis)
+        # self.trellis.fill_(0.)
+        self.backpointers.fill_(0)
         for word_index in range(self.max_len):
             if word_index == 0:
                 self.viterbi_forward(self.start_state, word_index, sents)
             else:
                 self.viterbi_forward(self.trellis[word_index - 1], word_index, sents)
         states, max_probs = self.viterbi_backward(sents)
+        print(states, max_probs)
         return states, max_probs
 
-    def sample(self, sents, sent_index, posterior_decoding): # conforming to the same API, not really useful
+    def sample(self, pi, sents, sent_index, posterior_decoding): # conforming to the same API, not really useful
+        self.this_batch_size = len(sents)
         return self.parse(sents, sent_index)
 

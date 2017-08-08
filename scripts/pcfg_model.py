@@ -35,6 +35,7 @@ class PCFG_model:
         self.mh_tries = 0
         self.annealing_coeff = 1.0
         self.val_log_probs = -np.inf
+        self.viterbi = 0
 
     def set_log_mode(self, mode):
         self.log_mode = mode  # decides whether append to log or restart log
@@ -58,7 +59,7 @@ class PCFG_model:
             self.term_log.write('\t'.join(term_header) + '\n')
         self.hypparam_log = open(self.hypparams_log_path, self.log_mode)
         if self.log_mode == 'w':
-            self.hypparam_log.write('iter\tlogprob\tval_logprob\tmh_tries\talpha\tac\n')
+            self.hypparam_log.write('iter\tlogprob\tval_logprob\tmh_tries\talpha\tac\tviterbi\n')
 
     def _log_dists(self, dists):
         non_term_header = [self.iter, ]
@@ -108,7 +109,7 @@ class PCFG_model:
                sample_alpha_flag=False, viterbi=False):  # used as the normal sampling procedure
         if sample_alpha_flag:
             self._sample_alpha()
-        self._reset_counts()
+        self._reset_counts(viterbi=False)
         self._update_counts(pcfg_counts)
         sampled_pcfg = self._sample_model(annealing_coeff, normalize=normalize, viterbi=viterbi)
         sampled_pcfg = self._translate_model_to_pcfg(sampled_pcfg)
@@ -116,7 +117,7 @@ class PCFG_model:
         return sampled_pcfg
 
     def write_params(self):
-        self.hypparam_log_str = '\t'.join([str(x) for x in [self.iter, self.log_probs, self.val_log_probs, self.mh_tries, self.alpha, self.annealing_coeff]]) + '\n'
+        self.hypparam_log_str = '\t'.join([str(x) for x in [self.iter, self.log_probs, self.val_log_probs, self.mh_tries, self.alpha, self.annealing_coeff, self.viterbi]]) + '\n'
         self.nonterm_log.write(self.nonterm_log_str)
         self.hypparam_log.write(self.hypparam_log_str)
         self.term_log.write(self.term_log_str)
@@ -124,9 +125,12 @@ class PCFG_model:
         self.term_log.flush()
         self.hypparam_log.flush()
 
-    def _reset_counts(self):
+    def _reset_counts(self, viterbi=False):
         for parent in self.counts:
-            self.counts[parent].fill(self.alpha)
+            if not viterbi:
+                self.counts[parent].fill(self.alpha)
+            else:
+                self.counts[parent].fill(0.)
 
     def _update_counts(self, pcfg_counts):
         for parent in pcfg_counts:
@@ -164,8 +168,10 @@ class PCFG_model:
         self.annealing_coeff = annealing_coeff
         if not viterbi:
             self.unannealed_dists = {x: np.random.dirichlet(self.counts[x]) for x in self.counts}
+            self.viterbi = 0
         else:
             self.unannealed_dists = {x: self.counts[x] / (np.sum(self.counts[x]) + 1e-4) for x in self.counts}
+            self.viterbi = 1
         dists = {}
         if annealing_coeff != 1.0:
             for x in dists:

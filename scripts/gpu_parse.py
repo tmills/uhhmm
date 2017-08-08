@@ -73,10 +73,10 @@ def initialize_models(models, max_output, params, corpus_shape, depth, inflated_
 
     return models
 
-def parse(start_ind, end_ind, distributer, ev_seqs, hid_seqs, viterbi=0, working_dir='.'):
+def parse(start_ind, end_ind, distributer, ev_seqs, hid_seqs, posterior_decoding=0, working_dir='.'):
     p = open(os.path.join(working_dir, PARSING_SIGNAL_FILE),'w')
     p.close()
-    distributer.submitSentenceJobs(start_ind, end_ind, viterbi)
+    distributer.submitSentenceJobs(start_ind, end_ind, posterior_decoding)
     num_processed = 0
     parses = distributer.get_parses()
     logprobs = 0
@@ -201,10 +201,10 @@ def viterbi_parse(last_sample_directory, param_iter, line_intstok_file, dict_fil
                                                          gpu_batch_size)
         signal.signal(signal.SIGINT, lambda x, y: handle_sigint(x, y, inf_procs))
 
-    compile_and_set_models(depth, work_distributer, gpu, depth, uhhmm_model, last_sample_directory)
+    compile_and_set_models(depth, work_distributer, gpu, depth, uhhmm_model, last_sample_directory, viterbi=True)
 
     hid_seqs = [None]*len(word_seq)
-    logprobs, num_parsed = parse(0, len(word_seq), work_distributer, word_seq, hid_seqs, viterbi=1)
+    logprobs, num_parsed = parse(0, len(word_seq), work_distributer, word_seq, hid_seqs)
 
     io.write_last_sample((hid_seqs, word_seq), target_parse_file, word_dict)
     return logprobs, num_parsed, hid_seqs

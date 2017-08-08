@@ -5,7 +5,7 @@ import numpy as np
 cdef class Indexer:
     cdef int depth, f_size, j_size, fj_size, a_max, b_max, g_max, a_size, b_size, EOS_index
     
-    cdef public int state_size
+    cdef public int state_size, num_abp
     
     cpdef public int extractPos(self, int index)
     
