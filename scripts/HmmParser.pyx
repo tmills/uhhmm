@@ -1,4 +1,3 @@
-#!python3.4
 # cython: profile=True
 # cython: linetrace=True
 # cython: binding=True

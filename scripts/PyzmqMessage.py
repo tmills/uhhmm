@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # Classes and methods for facilitating communication between workers and server
 
 import os

@@ -1,5 +1,3 @@
-#!/usr/bin/env python3.4
-
 import logging
 import time
 import numpy as np

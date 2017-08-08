@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import unittest
 import pyximport; pyximport.install()
 from HmmSampler import *

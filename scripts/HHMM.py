@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 from keras.layers import Recurrent
 from keras import backend as K
 from keras import activations, initializations, regularizers

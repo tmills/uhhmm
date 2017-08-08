@@ -15,6 +15,8 @@ class ViterbiParser:
             return tensor
 
     def set_models(self, models):
+        self.mat = torch.zeros(4, 100, 5).cuda()
+        self.mat.fill_(0)
         self.pi, self.lex_dist, self.maxes, self.depth, self.pos_dist, self.EOS_index = models
         self.pi = self.pi.tocoo()
         pi_shape = self.pi.shape
@@ -23,7 +25,11 @@ class ViterbiParser:
         values = torch.from_numpy(self.pi.data)
         # print(indices.shape, values.shape, self.pi.shape)
         self.pi = torch.sparse.FloatTensor(indices, values, torch.Size(pi_shape))
+        self.mat = torch.zeros(4, 100, 5).cuda()
+        self.mat.fill_(0)
         self.pi = self.pi.coalesce()
+        self.mat = torch.zeros(4, 100, 5).cuda()
+        self.mat.fill_(0)
         self.indexer = Indexer({'depth':self.depth, 'num_abp':self.maxes[0]})
         self.state_size = self.indexer.get_state_size()
         self.state_size_no_g = int(self.indexer.get_state_size() / self.indexer.num_abp)
@@ -50,16 +56,14 @@ class ViterbiParser:
 
     def initialize_dynprog(self, batch_size, max_len):
         self.batch_size = batch_size
-        self.max_len = max_len + 1
-        self.start_state = torch.zeros((self.state_size, self.batch_size))
-        self.start_state[0, :] = 1
+        self.max_len = int(max_len + 1)
+        self.start_state = torch.zeros(self.state_size, self.batch_size)
         self.start_state = self._convert_cuda(self.start_state)
+        self.start_state[0, :] = 1
+        torch.cuda.synchronize()
+        print(self.max_len, self.state_size, self.batch_size, type(self.max_len),type(self.state_size),
+              type(self.batch_size))
         self.trellis = torch.zeros(self.max_len, self.state_size, self.batch_size).cuda()
-        self.trellis2 = torch.zeros(self.max_len, self.state_size, self.batch_size).cuda()
-        self.trellis3 = torch.zeros(self.max_len, self.state_size, self.batch_size).cuda()
-        self.trellis4 = torch.zeros(self.max_len, self.state_size, self.batch_size).cuda()
-
-
         print(self.trellis.shape)
         self.trellis.fill_(0)
         # self.trellis = self._convert_cuda(self.trellis)

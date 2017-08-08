@@ -1,5 +1,3 @@
-#!/usr/bin/env python3.4
-
 ## To compute V-measure (as in vangael et al.)
 ## V = [(1 + Beta) * h * c ] / [(Beta*h) + c]
 ## where:

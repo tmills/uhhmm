@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import seaborn as sea
 import re, itertools
 import numpy as np

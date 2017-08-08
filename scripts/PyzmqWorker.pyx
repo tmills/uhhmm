@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import zmq
 from PyzmqMessage import get_file_signature, resource_current, ModelWrapper, PyzmqJob, SentenceJob, CompileJob, CompletedJob, PyzmqParse, CompiledRow, SentenceRequest, RowRequest
 import logging

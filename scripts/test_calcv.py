@@ -1,5 +1,3 @@
-#!/usr/bin/env python3.4
-
 import unittest
 import calcV
 import numpy as np

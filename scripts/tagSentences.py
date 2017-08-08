@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 import nltk
 import sys
 import codecs

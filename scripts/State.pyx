@@ -1,5 +1,3 @@
-#!python3
-
 import numpy as np
 
 def sentence_string(state_list):
