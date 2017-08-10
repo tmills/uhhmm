@@ -91,8 +91,8 @@ cdef class GPUHmmSampler:
         self.hmmsampler.initialize_dynprog(batch_size, k)
     def forward_pass(self, vector[vector[int]] sents, int sent_index):
         return self.hmmsampler.forward_pass(sents, sent_index)
-    def reverse_sample(self, vector[vector[int]] sents, int sent_index, int viterbi=0):
-        cdef vector[vector[State]] states_list = self.hmmsampler.reverse_sample(sents, sent_index, viterbi)
+    def reverse_sample(self, vector[vector[int]] sents, int sent_index, int posterior_decoding=0):
+        cdef vector[vector[State]] states_list = self.hmmsampler.reverse_sample(sents, sent_index, posterior_decoding)
         #states = self.hmmsampler.reverse_sample(sent, sent_index)
         #state_list = states[0]
         #print(states[1])
@@ -104,7 +104,7 @@ cdef class GPUHmmSampler:
                 wrapped_list.append(wrap_state(state_list[i]))
             wrapped_lists.append(wrapped_list)
         return wrapped_lists
-    def sample(self, pi, vector[vector[int]] sents, int sent_index, int viterbi=0):  # need pi to conform to API
+    def sample(self, pi, vector[vector[int]] sents, int sent_index, int posterior_decoding=0):  # need pi to conform to API
         try:
             log_probs = self.forward_pass(sents, sent_index)
         except Exception as e:
@@ -112,7 +112,7 @@ cdef class GPUHmmSampler:
             raise Exception
             
         try:
-            states = self.reverse_sample(sents, sent_index, viterbi)
+            states = self.reverse_sample(sents, sent_index, posterior_decoding)
         except Exception as e:
             print("Exception in reverse sample: %s" % (str(e)))
             raise Exception

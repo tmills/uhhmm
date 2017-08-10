@@ -11,10 +11,10 @@ from WorkDistributerServer import WorkDistributerServer
 from workers import start_local_workers_with_distributer, start_cluster_workers
 import signal
 import argparse
+import pickle
 import sys
-
-PARSING_SIGNAL_FILE = 'parsing.tmp'
-
+from global_params import PARSING_SIGNAL_FILE
+from ViterbiParser import ViterbiParser
 def handle_sigint(signum, frame, workers):
     logging.info("Master received quit signal... will terminate after cleaning up.")
     for ind, worker in enumerate(workers):
@@ -76,7 +76,7 @@ def initialize_models(models, max_output, params, corpus_shape, depth, inflated_
 def parse(start_ind, end_ind, distributer, ev_seqs, hid_seqs, posterior_decoding=0, working_dir='.'):
     p = open(os.path.join(working_dir, PARSING_SIGNAL_FILE),'w')
     p.close()
-    distributer.submitSentenceJobs(start_ind, end_ind, posterior_decoding)
+    distributer.submitSentenceJobs(start_ind, end_ind, posterior_decoding=posterior_decoding)
     num_processed = 0
     parses = distributer.get_parses()
     logprobs = 0
@@ -112,7 +112,7 @@ def parse(start_ind, end_ind, distributer, ev_seqs, hid_seqs, posterior_decoding
     return logprobs, num_processed
 
 def compile_and_set_models(depth, work_distributer, gpu, init_depth, models, working_dir, viterbi=False):
-    DistributedModelCompiler.\
+    return DistributedModelCompiler.\
         DistributedModelCompiler(depth, work_distributer, gpu,
                                  limit_depth=init_depth).compile_and_store_models(models,working_dir, viterbi=viterbi)
 
@@ -201,13 +201,25 @@ def viterbi_parse(last_sample_directory, param_iter, line_intstok_file, dict_fil
                                                          gpu_batch_size)
         signal.signal(signal.SIGINT, lambda x, y: handle_sigint(x, y, inf_procs))
 
-    compile_and_set_models(depth, work_distributer, gpu, depth, uhhmm_model, last_sample_directory, viterbi=True)
+    model_name = compile_and_set_models(depth, work_distributer, gpu, depth, uhhmm_model, last_sample_directory, viterbi=True)
+    model = pickle.load(open(model_name, 'rb'))
+    parser = ViterbiParser()
+    parses = parser.batch_parse(0, len(word_seq), model, word_seq)
+    word_dict = {int(word_dict[x]):x for x in word_dict}
+    io.write_last_sample((parses, word_seq), target_parse_file, word_dict)
 
-    hid_seqs = [None]*len(word_seq)
-    logprobs, num_parsed = parse(0, len(word_seq), work_distributer, word_seq, hid_seqs)
+    work_distributer.stop()
 
-    io.write_last_sample((hid_seqs, word_seq), target_parse_file, word_dict)
-    return logprobs, num_parsed, hid_seqs
+    for cur_proc in range(0, len(inf_procs)):
+        logging.info("Sending terminate signal to worker {} ...".format(cur_proc))
+        inf_procs[cur_proc].terminate()
+
+    for cur_proc in range(0, len(inf_procs)):
+        logging.info("Waiting to join worker {} ...".format(cur_proc))
+        inf_procs[cur_proc].join()
+        inf_procs[cur_proc] = None
+
+    return parses
 
 if __name__ == '__main__':
     # last_sample_directory, param_iter, line_intstok_file, dict_file, abp_domain_size = 15, depth = 2
@@ -223,9 +235,8 @@ if __name__ == '__main__':
     last_sample_directory, param_iter, line_intstok_file, dict_file, abp_domain_size , depth = args.dir, args.iter, \
     args.parse_file, args.dict_file, args.abp, args.depth
 
-    logprob, num_parsed, _ = viterbi_parse(last_sample_directory, param_iter, line_intstok_file, dict_file, abp_domain_size , depth)
-    print('parsed {} with {} parses in total with the logprob of {} for the whole set'.format(line_intstok_file,
-                                                                                              num_parsed, logprob))
+    parses = viterbi_parse(last_sample_directory, param_iter, line_intstok_file, dict_file, abp_domain_size , depth)
+    print('parsed {} '.format(len(parses)))
     print('the saved parse trees are at {}'.format(last_sample_directory+'/last_sample0.linetrees'))
 
 

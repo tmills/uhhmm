@@ -3,10 +3,14 @@ import pickle
 from Indexer import Indexer
 import numpy as np
 import scipy.sparse
+import tqdm
+import line_profiler
 
 class ViterbiParser:
     def __init__(self, cuda=True):
         self.cuda = cuda
+        self.mat = torch.zeros(4, 100, 5).cuda()
+        self.mat.fill_(0)
 
     def _convert_cuda(self, tensor):
         if self.cuda:
@@ -14,10 +18,32 @@ class ViterbiParser:
         else:
             return tensor
 
+    def batch_parse(self, start_index, end_index, models, sents, batch_size=40):
+        self.set_models(models)
+        max_len = max(map(len, sents))
+        self.initialize_dynprog(batch_size, max_len)
+        batch_start_index = 0
+        batch_end_index = 0
+        results = []
+        for i in tqdm.trange(len(sents)):
+            if i - batch_start_index < batch_size and i != len(sents) - 1:
+                continue
+            batch_end_index = i
+            sent_seg = sents[batch_start_index:batch_end_index]
+            parses, _ = self.parse(sent_seg, batch_start_index)
+            assert all([len(x[0]) == len(x[1]) for x in zip(sent_seg, parses)])
+            # for index, sent in enumerate(sent_seg):
+            #     print(sent_seg[index])
+            #     print(' '.join([x.str() for x in parses[index]]))
+            results.extend(parses)
+            batch_start_index = i
+
+        return results
+
     def set_models(self, models):
         self.mat = torch.zeros(4, 100, 5).cuda()
         self.mat.fill_(0)
-        self.pi, self.lex_dist, self.maxes, self.depth, self.pos_dist, self.EOS_index = models
+        self.pi, self.lex_dist, self.maxes, self.depth, self.pos_dist, self.EOS_index = models.model
         self.pi = self.pi.tocoo()
         pi_shape = self.pi.shape
         indices = torch.from_numpy(np.vstack([self.pi.row,self.pi.col])).long()
@@ -27,7 +53,6 @@ class ViterbiParser:
         self.pi = torch.sparse.FloatTensor(indices, values, torch.Size(pi_shape))
         self.mat = torch.zeros(4, 100, 5).cuda()
         self.mat.fill_(0)
-        self.pi = self.pi.coalesce()
         self.mat = torch.zeros(4, 100, 5).cuda()
         self.mat.fill_(0)
         self.indexer = Indexer({'depth':self.depth, 'num_abp':self.maxes[0]})
@@ -36,6 +61,7 @@ class ViterbiParser:
         self.full_pos_dist = self.make_full_pos_array(self.pos_dist)
 
         self.pi = self._convert_cuda(self.pi)
+        self.pi = self.pi.coalesce()
         self.lex_dist = self._convert_cuda(torch.from_numpy(self.lex_dist))
         self.full_pos_dist = self._convert_cuda(self.full_pos_dist)
 
@@ -75,11 +101,13 @@ class ViterbiParser:
         # print(self.trellis.shape, self.backpointers.shape, self.shrunk_backpointers_column.shape, self.shrunk_trellis_column.shape)
         # print(type(self.trellis), type(self.backpointers))
 
+    # not efficient. must be optimized
+    @profile
     def viterbi_max(self, sparse_m, word_index, sent_id, token=None):
         if token is not None:
             # print(self.lex_dist.shape)
             token_dist = self.lex_dist[:, token]
-            token_dist = self.make_full_pos_array(token_dist)
+            # token_dist = self.make_full_pos_array(token_dist)
         else:
             token_dist = 1
         sparse_m_rows = sparse_m.size()[0]
@@ -91,8 +119,18 @@ class ViterbiParser:
                 max_sparse_index = sparse_m._indices()[1, :][sparse_m._indices()[0, :] == i][max_sparse_index]
                 self.shrunk_trellis_column[i] = max_val[0]
                 self.shrunk_backpointers_column[i] = max_sparse_index[0]
-        self.trellis[word_index, :, sent_id] = self.shrunk_trellis_column.view(-1, 1).expand(
-            self.state_size_no_g, self.indexer.num_abp).contiguous().view(-1) * self.full_pos_dist * token_dist
+        # self.trellis[word_index, :, sent_id] = self.shrunk_trellis_column.view(-1, 1).expand(
+        #     self.state_size_no_g, self.indexer.num_abp).contiguous().view(-1) * self.full_pos_dist * token_dist
+        # self.backpointers[word_index, :, sent_id] = self.shrunk_backpointers_column.view(-1, 1).expand(
+        #     self.state_size_no_g, self.indexer.num_abp).contiguous().view(-1)
+        if token_dist is not 1:
+            self.trellis[word_index, :, sent_id] = (self.shrunk_trellis_column.view(-1, 1).expand(
+            self.state_size_no_g, self.indexer.num_abp) * self.full_pos_dist.view(self.state_size_no_g,
+                           self.indexer.num_abp) * token_dist.unsqueeze(0).expand(self.state_size_no_g, self.indexer.num_abp)).view(-1)
+        else:
+            self.trellis[word_index, :, sent_id] = (self.shrunk_trellis_column.view(-1, 1).expand(
+            self.state_size_no_g, self.indexer.num_abp) * self.full_pos_dist.view(self.state_size_no_g,
+                           self.indexer.num_abp)).view(-1)
         self.backpointers[word_index, :, sent_id] = self.shrunk_backpointers_column.view(-1, 1).expand(
             self.state_size_no_g, self.indexer.num_abp).contiguous().view(-1)
         self.shrunk_trellis_column.zero_()
@@ -104,9 +142,13 @@ class ViterbiParser:
                 current_token = sents[sent_id][word_index]
             else:
                 current_token = None
-            prev_dyn_slice_column = prev_dyn_slice[:,sent_id].expand_as(self.pi)
-            prev_dyn_slice_sparse = prev_dyn_slice_column._sparse_mask(self.pi)
+            indices = self.pi._indices()[1, :]
+            assert self.pi.shape[1] == prev_dyn_slice[:,sent_id].shape[0], (self.pi.shape[1], prev_dyn_slice[:,sent_id].shape[0])
+            prev_dyn_slice_column = torch.index_select(prev_dyn_slice[:,sent_id], 0, indices).contiguous()
+            prev_dyn_slice_sparse = torch.cuda.sparse.FloatTensor(self.pi._indices(), prev_dyn_slice_column, self.pi.shape)
+            # prev_dyn_slice_sparse = prev_dyn_slice_column._sparse_mask(self.pi)
             result = self.pi * prev_dyn_slice_sparse
+            # result = self.pi * prev_dyn_slice_column
             self.viterbi_max(result, word_index, sent_id, current_token)
 
 
@@ -127,10 +169,10 @@ class ViterbiParser:
         return states, max_probs
 
     def parse(self, sents, sent_index):
-        assert max(map(len, sents)) == self.max_len - 1, "max length {} should be 1 longer than the longest sent {}".format(
+        assert max(map(len, sents)) <= self.max_len - 1, "max length {} should be 1 longer than the longest sent {}".format(
             self.max_len, max(map(len,sents))
         )
-        torch.cuda.synchronize()
+        self.this_batch_size = len(sents)
         # print(type(self.trellis), type(self.backpointers))
         # print(self.trellis)
         # self.trellis.fill_(0.)
@@ -141,10 +183,6 @@ class ViterbiParser:
             else:
                 self.viterbi_forward(self.trellis[word_index - 1], word_index, sents)
         states, max_probs = self.viterbi_backward(sents)
-        print(states, max_probs)
+        # print(states, max_probs)
         return states, max_probs
-
-    def sample(self, pi, sents, sent_index, posterior_decoding): # conforming to the same API, not really useful
-        self.this_batch_size = len(sents)
-        return self.parse(sents, sent_index)
 

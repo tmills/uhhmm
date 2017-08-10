@@ -182,7 +182,11 @@ def write_last_sample(sample, out_file, word_dict):
     bracketed_f = open(out_file.replace('.txt', '')+'.linetrees', 'w', encoding='utf-8') if out_file.endswith('.txt') else \
         open(out_file, 'w', encoding='utf8')
     #pdb.set_trace()
-    hid_seqs, ev_seqs = sample if isinstance(sample, tuple) else sample.hid_seqs, sample.ev_seqs
+    print(type(sample))
+    if isinstance(sample, tuple):
+        hid_seqs, ev_seqs = sample
+    else:
+        hid_seqs, ev_seqs = sample.hid_seqs, sample.ev_seqs
     for sent_num,sent_state in enumerate(hid_seqs):
         state_str = ""
         token_strs = [word_dict[ev_seqs[sent_num][x]] for x in range(len(sent_state))]

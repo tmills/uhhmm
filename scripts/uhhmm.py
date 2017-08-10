@@ -9,7 +9,7 @@ import socket
 import sys
 import tempfile
 import os
-from multiprocessing import Process, Queue, JoinableQueue
+# from multiprocessing import Process, Queue, JoinableQueue
 import zmq
 from WorkDistributerServer import WorkDistributerServer
 from PyzmqMessage import *
@@ -17,10 +17,10 @@ from PyzmqMessage import *
 from State import sentence_string
 import State
 from Indexer import Indexer
-import multiprocessing as mp
+# import multiprocessing as mp
 import FullDepthCompiler
 import NoopCompiler
-import DepthOneInfiniteSampler
+# import DepthOneInfiniteSampler
 import DistributedModelCompiler
 import HmmSampler
 from dahl_split_merge import perform_split_merge_operation
@@ -30,8 +30,8 @@ from pcfg_translator import *
 import copy
 from init_pcfg_strategies import *
 from pcfg_model import PCFG_model
-from gpu_parse import parse, compile_and_set_models, initialize_models, handle_sigint, PARSING_SIGNAL_FILE
-
+from gpu_parse import parse, compile_and_set_models, initialize_models, handle_sigint
+from global_params import  PARSING_SIGNAL_FILE
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
 class Sample:
@@ -146,9 +146,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     super_cooling_start_iter = int(params.get("super_cooling_start_iter", 2000))
     super_cooling_target_ac = int(params.get("super_cooling_target_ac", 10))
 
-    # viterbi decoding
-    viterbi_start_iter = int(params.get("viterbi_start_iter", np.inf))
-    viterbi = False
 
     # main body
     if gold_pos_dict_file:
@@ -204,17 +201,17 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         if gold_pcfg_file:
             logging.info("Initializing the models with the gold PCFG file {}.".format(gold_pcfg_file))
             pcfg_replace_model(None, None, models, gold_pcfg_file=gold_pcfg_file, add_noise=add_noise,
-                               noise_sigma=noise_sigma, viterbi=viterbi)
+                               noise_sigma=noise_sigma)
         elif init_strategy:
             logging.info("Initialization strategy found \"{}\". Executing strategy.".format(init_strategy))
             if init_strategy in STRATEGY_STRINGS:
                 pcfg_replace_model(None, None, models, strategy=STRATEGY_STRINGS[init_strategy],
                                    ints_seqs=sample.ev_seqs
-                                   , gold_pos_dict=gold_pos_dict, viterbi=viterbi)
+                                   , gold_pos_dict=gold_pos_dict)
             else:
                 raise Exception("strategy {} not found!".format(init_strategy))
         else:
-            pcfg_replace_model(None, None, models, pcfg_model, viterbi=viterbi)
+            pcfg_replace_model(None, None, models, pcfg_model)
 
         sample.models = models
         iter = 0
@@ -278,7 +275,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     # compile the initialized the models
 
 
-    compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir, viterbi=viterbi)
+    compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
     ### Start doing actual sampling:
     while num_samples < max_samples:
         # this file is used to control CPU workers to not load models whenever the file is present
@@ -289,9 +286,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         sample.iter = iter
         pcfg_model.iter = iter
 
-        if iter > viterbi_start_iter:
-            viterbi = True
-            logging.info("VITERBI decoding is on!")
         ## If user specified an init depth (i.e. less than the final depth), increment it after 1000 iterations.
         if init_depth < depth:
             if iter > 0 and iter % 1000 == 0:
@@ -332,8 +326,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             if sample.log_prob > max_loglikelihood:
                 max_loglikelihood = sample.log_prob
                 best_init_model = copy.deepcopy(models)
-            pcfg_replace_model(None, None, models, pcfg_model, viterbi=viterbi)
-            compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir, viterbi=viterbi)
+            pcfg_replace_model(None, None, models, pcfg_model)
+            compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
             sample.log_prob = 0
             acc_logprob = 0
             pcfg_model.log_probs = 0
@@ -347,7 +341,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             # best_init_model = unreanneal(best_init_model, next_ac_coeff=init_anneal_likelihood)
             sample.models = best_init_model
             models = best_init_model
-            compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir, viterbi=viterbi)
+            compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
             if validation:  # validation is after annealing
                 validation_prob, _ = parse(num_ev_sents, num_ev_sents + abs(validation_length), workDistributer,
                                            ev_seqs, hid_seqs, working_dir=working_dir)
@@ -416,8 +410,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 mh_counts += 1
                 old_models = copy.deepcopy(models)
                 pcfg_replace_model(hid_seqs[:validation_length], ev_seqs[:validation_length], old_models,
-                                   pcfg_model, sample_alpha_flag=sample_alpha_flag, viterbi=viterbi)
-                compile_and_set_models(depth, workDistributer, gpu, init_depth, old_models, working_dir, viterbi=viterbi)
+                                   pcfg_model, sample_alpha_flag=sample_alpha_flag)
+                compile_and_set_models(depth, workDistributer, gpu, init_depth, old_models, working_dir)
 
                 if validation: # validation is after annealing
                     validation_prob, _ = parse(num_ev_sents, num_ev_sents + abs(validation_length), workDistributer,
@@ -446,8 +440,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                                                 super_cooling_target_ac)
             logging.info("inside super cooling phase with current ac coeff {}".format(ac_coeff))
             pcfg_replace_model(hid_seqs[:validation_length], ev_seqs[:validation_length], models, pcfg_model, ac_coeff=ac_coeff,
-                               annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag, viterbi=viterbi)
-            compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir,viterbi=viterbi)
+                               annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
+            compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
 
         else:
             ac_coeff = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
@@ -475,14 +469,14 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                         best_anneal_likelihood = acc_logprob
                         best_anneal_model = copy.deepcopy(models)
                     pcfg_replace_model(hid_seqs[:validation_length], ev_seqs[:validation_length], models, pcfg_model, ac_coeff=ac_coeff,
-                                       annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag, viterbi=viterbi)
-                    # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
+                                       annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
+                    # resample_all(models, sample, params, depth, anneal_   alphas, ac_coeff, normalize_flag)
             else:
                 logging.info("The log prob for this iter is {}".format(acc_logprob))
                 pcfg_replace_model(hid_seqs[:validation_length], ev_seqs[:validation_length], models, pcfg_model, ac_coeff=ac_coeff,
-                                   annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag, viterbi=viterbi)
+                                   annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
                 # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
-            compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir, viterbi=viterbi)
+            compile_and_set_models(depth, workDistributer, gpu, init_depth, models, working_dir)
 
         acc_logprob = 0
         ## Update sentence indices for next batch:

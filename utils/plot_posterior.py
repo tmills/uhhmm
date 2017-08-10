@@ -13,6 +13,11 @@ import sys, os
 # cmapred = mcolors.LinearSegmentedColormap.from_list('mycmap', colors, N=5)
 # colors = [(0,0,1,c) for c in np.linspace(0,1,100)]
 # cmapblue = mcolors.LinearSegmentedColormap.from_list('mycmap', colors, N=5)
+def symmetric_kl(p, q):
+    kl1 = scipy.stats.entropy(p, q)
+    kl2 = scipy.stats.entropy(q, p)
+    return (kl1 + kl2) / 2
+
 def limit_array(arr, r_limit=300):
     arr *= (300/arr.max())
     return arr
@@ -39,8 +44,9 @@ def plot_multiple_chains(sample_chains, logprobs, burn_in=100):
     # print(reduced_samples)
     bidigit_data = reduced_samples
 
-    tsne_model = TSNE(n_components=2, learning_rate=1000, metric='euclidean', perplexity=50)
+    # tsne_model = TSNE(n_components=2, learning_rate=1000, metric='euclidean', perplexity=50)
     # tsne_model = TSNE(n_components=2, learning_rate=1000, metric=scipy.stats.entropy, perplexity=50)
+    tsne_model = TSNE(n_components=2, learning_rate=1000, metric=symmetric_kl, perplexity=50)
     bidigit_data = tsne_model.fit_transform(bidigit_data)
     # print(bidigit_data)
 

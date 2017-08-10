@@ -29,7 +29,8 @@ class DistributedModelCompiler(FullDepthCompiler):
         global PER_STATE_CONNECTION
         indexer = Indexer(models)
         logging.info("Compiling component models into mega-HMM transition and observation matrices")
-        logging.info("the model for viterbi? - {}".format(viterbi))
+        if viterbi:
+            logging.warning("VITERBI model compilation is ON!")
         model_wrapper_type = ModelWrapper.HMM if not viterbi else ModelWrapper.VITERBI
         maxes = indexer.getVariableMaxes()
         (a_max, b_max, g_max) = maxes
@@ -209,10 +210,15 @@ class DistributedModelCompiler(FullDepthCompiler):
                                          (pi.T, lex_dist, (a_max, b_max, g_max), self.depth, corrected_pos_dist,
                                           indexer.get_EOS_full()), self.depth)
             # logging.info("EOS index is "+str(indexer.get_EOS_full()))
-            gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
+            gpu_model_file_name = working_dir+'/models.bin.gpu'
+            if viterbi:
+                gpu_model_file_name += '.viterbi'
+            gpu_out_file = open(gpu_model_file_name, 'wb')
             # logging.info("Saving GPU models for use")
             pickle.dump(model_gpu, gpu_out_file)
             gpu_out_file.close()
+            if viterbi:
+                return gpu_model_file_name
         relog_models(models, self.depth)
 
         if full_pi:

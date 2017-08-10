@@ -1,0 +1,1 @@
+PARSING_SIGNAL_FILE = 'parsing.tmp'

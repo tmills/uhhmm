@@ -1,5 +1,12 @@
 import sys
+import torch.multiprocessing as mp
 
+# start_method = mp.get_start_method()
+# print(start_method)
+try:
+    mp.set_start_method("spawn")
+except:
+    pass
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit()
@@ -87,4 +94,5 @@ def read_params(config):
 
 
 if __name__ == "__main__":
+
     main(sys.argv[1:])

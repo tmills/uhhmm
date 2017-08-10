@@ -1,12 +1,15 @@
 import logging
-from multiprocessing import Process
-import multiprocessing
+# from multiprocessing import Process
+from torch.multiprocessing import Process
+# import multiprocessing
+import torch.multiprocessing as multiprocessing
 import os, os.path
 import signal
 import subprocess
 import sys
 import time
 import PyzmqWorker
+# import PyzmqWorkerPy as PyzmqWorker
 
 def start_cluster_workers(work_distributer, cluster_cmd, maxLen, gpu):
     logging.debug("Cluster command is %s" % cluster_cmd)
@@ -27,7 +30,7 @@ def start_local_workers(host, jobs_port, results_port, models_port, maxLen, cpu_
     try:
         multiprocessing.set_start_method("spawn")
     except:
-        logging.warning("worker context has already been set!")
+        logging.warning("worker context has already been set! {}".format(multiprocessing.get_start_method()))
     for i in range(0, cpu_workers+gpu_workers):
         if i >= gpu_workers:
             gpu = False

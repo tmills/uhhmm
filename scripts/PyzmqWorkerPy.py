@@ -6,11 +6,9 @@ import pickle
 #import pyximport; pyximport.install()
 import tempfile
 import socket
-import DepthOneInfiniteSampler
-import HmmSampler
-cimport HmmSampler
+# import DepthOneInfiniteSampler
+# import HmmSampler
 import Sampler
-cimport Sampler
 import Indexer
 import FullDepthCompiler
 import os
@@ -28,7 +26,7 @@ from ViterbiParser import ViterbiParser
 def get_local_ip():
     return [l for l in ([ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")][:1], [[(s.connect(('8.8.8.8', 53)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]]) if l][0][0]
 
-cdef class PyzmqWorker:
+class PyzmqWorker:
     def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=1000, tid=0, gpu=False, batch_size=8, seed=0, level=logging.INFO):
         #Process.__init__(self)
         self.host = host
@@ -127,7 +125,6 @@ cdef class PyzmqWorker:
                 self.processSentences(sampler, pi, jobs_socket, results_socket)
 
             elif model_wrapper.model_type == ModelWrapper.VITERBI and self.gpu:
-                logging.error("do not use viterbi parser within sampling!")
                 msg.file_path = msg.file_path + '.gpu'
                 model_wrapper = self.get_model(msg)[0]
                 logging.info("using viterbi decoding for worker {}".format(self.tid))
@@ -317,8 +314,9 @@ cdef class PyzmqWorker:
             if self.quit:
                 break
 
-            if log_prob > 0:
-                logging.error('Sentence %d had positive log probability %f' % (sent_index, log_prob))
+            for log_prob_index, log_prob in enumerate(log_probs):
+                if log_prob > 0:
+                    logging.error('Sentence %d had positive log probability %f' % (log_prob_index+sent_index, log_prob))
 
         logging.debug("Worker %d processed %d sentences this iteration" % (self.tid, sents_processed))
 
