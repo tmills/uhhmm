@@ -184,7 +184,7 @@ gpusrc/hmmsampler.o: gpusrc/temp.o
 	${CUDA_PATH}/bin/nvcc -dlink -o $@ $^ -lcudart --shared -Xcompiler -fPIC -m64 -L${CUDA_PATH}/lib64 -Xlinker -rpath -Xlinker ${CUDA_PATH}/lib64
 
 gpusrc/temp.o: gpusrc/HmmSampler.cu gpusrc/State.cu gpusrc/HmmSampler.h
-	${CUDA_PATH}/bin/nvcc -rdc=true -c -o $@ $< -std=c++11 --shared -Xcompiler -fPIC -m64
+	${CUDA_PATH}/bin/nvcc -rdc=true -c -o $@ $< -Icusplibrary/ -std=c++11 --shared -Xcompiler -fPIC -m64
 
 config/myconfig.ini: config/d1train.ini
 	cp $< $@
