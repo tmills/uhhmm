@@ -237,6 +237,7 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
     l_branch = 0
     r_branch = 0
     current_counters = []
+    current_counter_nolabel = []
     num_d2_trees = 0
     num_total_trees = 0
     overall_label_counter = Counter() #used in label dist entropy calc
@@ -250,6 +251,7 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
             l_branch += this_l
             r_branch += this_r
             current_counters.append({})
+            current_counter_nolabel.append(Counter())
             for sub_t in this_t.subtrees():
                 overall_label_counter[sub_t.label()] += 1
                 if len(sub_t.leaves()) > 1:
@@ -263,6 +265,7 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
                     except:
                         pass
                     current_counters[num_total_trees - 1][sub_t.label()][' '.join(sub_t.leaves())] += 1
+                    current_counter_nolabel[num_total_trees - 1][' '.join(sub_t.leaves())] += 1
                 else:
                     non_term_only_label[sub_t.label()] &= False
     total_num_labels = sum(overall_label_counter.values())
@@ -275,6 +278,14 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
     total_acc_number = [Counter(), Counter(), Counter()]
     total_hyp_cat_number = [Counter(), Counter(), Counter()]
     aggregate_counters = [Counter(), Counter(), Counter()]
+    nolabel_recalls = [0, 0, 0]
+    for index_tree, tree_counter in enumerate(current_counter_nolabel):
+        for index, phrase_cat in enumerate(phrases):
+            acc_num = sum((tree_counter & gold_counters[phrase_cat][index_tree]).values())
+            nolabel_recalls[index] += acc_num
+
+    nolabel_recalls = [ x / phrases_lengths[index] for index, x in enumerate(nolabel_recalls)]
+
     for index_tree, tree_counter in enumerate(current_counters):
         for cat, cat_counter in tree_counter.items():
             for index, phrase_cat in enumerate(phrases):
@@ -313,12 +324,12 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
                 this_best_aggregate_scores[index] = f1
             else:
                 break
-    return this_best_scores, this_best_aggregate_scores, r_branch / (l_branch+r_branch), num_d2_trees / num_total_trees, label_dist_entropy, num_non_term_only_label / len(non_term_only_label)
+    return this_best_scores, this_best_aggregate_scores, r_branch / (l_branch+r_branch), num_d2_trees / num_total_trees, label_dist_entropy, num_non_term_only_label / len(non_term_only_label), nolabel_recalls
 
 end_f_names_nodeps = [x for x in end_f_names if  'fromdeps' not in x]
 
 with Pool(processes=total_process_limit) as pool:
-    scores, aggregate_scores, r_branching_tendency, d2_proportion, label_dist_freq, num_non_term_label= zip(*(pool.map(calc_phrase_stats, end_f_names_nodeps)))
+    scores, aggregate_scores, r_branching_tendency, d2_proportion, label_dist_freq, num_non_term_label, nolabel_recalls= zip(*(pool.map(calc_phrase_stats, end_f_names_nodeps)))
 
 print(scores[0], aggregate_scores[0])
 scores = np.array(scores)
@@ -341,6 +352,21 @@ fig.savefig(pp, format='pdf')
 pp.close()
 plt.cla()
 plt.clf()
+
+nolabel_recalls = np.array(nolabel_recalls)
+fig, ax = plt.subplots()
+len_iters = len(output_last_samples)
+x_data = hyperparams.iter[:len_iters]
+lines = ax.plot(x_data, nolabel_recalls[:len_iters, 0], x_data, nolabel_recalls[:len_iters, 1], x_data, nolabel_recalls[:len_iters, 2])
+ax.set_ylabel('No label recalls')
+ax.legend(lines, ( "NP recall", "VP recall", "PP recall"))
+pp = PdfPages(
+    os.path.join(last_sample_folder, 'nolabel_recall' + '_' + str(min(x_data)) + '_' + str(max(x_data))) + '.pdf')
+fig.savefig(pp, format='pdf')
+pp.close()
+plt.cla()
+plt.clf()
+
 
 fig, ax = plt.subplots()
 len_iters = len(output_last_samples)
