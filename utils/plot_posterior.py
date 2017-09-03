@@ -98,6 +98,8 @@ def plot_multiple_chains(sample_chains, logprobs, burn_in=100):
     ax = fig.add_subplot(111, projection='3d')
     # num_sample_list.insert(0, 0)
     print(num_sample_list, chain_markers)
+    if bidigit_data_quad[0, 0] > 0:
+        bidigit_data_quad[:, 0] *= -1
     for i in range(num_chains):
         points = ax.scatter(bidigit_data_quad[sum(num_sample_list[:i]):sum(num_sample_list[:i+1]), 0], bidigit_data_quad[sum(num_sample_list[:i]):sum(num_sample_list[:i+1]), 1],
                             bidigit_data_quad[sum(num_sample_list[:i]):sum(num_sample_list[:i + 1]), 2], c=colors_per_point[sum(num_sample_list[:i]):sum(num_sample_list[:i+1])], s=data_point_sizes[i],

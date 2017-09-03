@@ -8,7 +8,7 @@ with open(filename, encoding='utf8') as i, open(filename+'.clean.txt', 'w', enco
     all_indices = index_i.readlines()
     for index, line in enumerate(i):
         segs = line.strip().split(' ')
-        if len(segs) == 1 or len(segs) > 40:
+        if len(segs) == 1 or len(segs) > 40 or not all(segs):
             continue
         good_segs = []
         for seg in segs:
@@ -16,5 +16,7 @@ with open(filename, encoding='utf8') as i, open(filename+'.clean.txt', 'w', enco
                 continue
             else:
                 good_segs.append(seg.lower())
+        if not good_segs:
+            continue
         print(' '.join(good_segs), file=o)
         print(all_indices[index].strip(), file=index_w)

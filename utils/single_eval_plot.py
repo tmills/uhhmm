@@ -21,15 +21,18 @@ arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument('-folder', default='.', type=str, help='the path to the output folder')
 arg_parser.add_argument('-gold-trees', default=None, type=str, help='the path to the gold trees')
 arg_parser.add_argument('-first-n-iter', default=None, type=int, help='the first N of iterations considered')
+arg_parser.add_argument('-burn-in', default=50, type=int, help='burn in period')
+arg_parser.add_argument('-max-threads', default=20, type=int)
 args = arg_parser.parse_args()
 last_sample_folder = args.folder
 gold_trees_file = args.gold_trees
 assert gold_trees_file is not None, "gold trees file is not defined!"
 first_n_iter = args.first_n_iter
 evalb_params_file = './utils/EVALB/uhhmm.prm'
-total_process_limit = 20
+total_process_limit = args.max_threads
 process_pool = []
-burn_in = 50
+burn_in = args.burn_in
+all_results = []
 
 def bash_command(cmd):
     global process_pool
@@ -63,7 +66,7 @@ plot_command = '''python {}/resource-linetrees/scripts/constitevals2table.py {} 
 
 output_files = os.listdir(last_sample_folder)
 output_last_samples = [x for x in output_files if re.match('last_sample[0-9]+\.linetrees', x) and
-                       (int(re.match('last_sample([0-9]+)\.linetrees', x).group(1)) < first_n_iter if first_n_iter is not None
+                       (int(re.match('last_sample([0-9]+)\.linetrees', x).group(1)) >= burn_in) and (int(re.match('last_sample([0-9]+)\.linetrees', x).group(1)) < first_n_iter if first_n_iter is not None
                         else True)]
 
 output_last_samples.sort(key=lambda x: int(re.match('last_sample([0-9]+)\.linetrees', x).group(1)))
@@ -170,6 +173,8 @@ data_deps = np.array(data_deps)
 
 data = np.hstack((data, data_deps[:, 1:]))
 fig, ax = plt.subplots()
+all_results.append(['iters']+titles)
+all_results.append([data])
 lines = ax.plot(data[:, 0], data[:,1], data[:,0], data[:,2], data[:,0], data[:,3], data[:,0], data[:,4], data[:,0], data[:,5], data[:,0], data[:,6])
 ax.set_ylabel('percentage')
 ax.legend(lines, ('Precision', "Recall", "F1", 'Precision-deps', 'Recall-deps', 'F1-deps'))
@@ -184,7 +189,14 @@ plt.clf()
 hyperparams = pandas.read_table(os.path.join(last_sample_folder, 'pcfg_hypparams.txt'))
 
 fig, ax = plt.subplots()
-line_1 = ax.plot(hyperparams.iter[burn_in:first_n_iter], hyperparams.logprob[burn_in:first_n_iter], 'b-')
+all_results[0].append('logprob')
+x_data = hyperparams.iter[burn_in:first_n_iter]
+if len(x_data) != len(output_last_samples):
+    burn_in = burn_in - 1
+    x_data = hyperparams.iter[burn_in:first_n_iter]
+assert len(x_data) == len(output_last_samples), str(len(x_data)) + ' ' + str(len(output_last_samples))
+all_results[1].append(hyperparams.logprob[burn_in:first_n_iter].get_values())
+line_1 = ax.plot(x_data, hyperparams.logprob[burn_in:first_n_iter], 'b-')
 ax.set_ylabel('logprob', color='b')
 ax.tick_params('y', color='b')
 if hasattr(hyperparams, 'val_logprob'):
@@ -309,21 +321,37 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
             f1 = 0 if prec == 0 or rec == 0 else 1.0 / (0.5 / prec + (0.5 / rec))
             performances[index].append(Performance(cat, prec, rec, f1))
 
-    _ = [phrase.sort(key=lambda x: x.f1, reverse=True) for phrase in performances]
+    for phrase in performances:
+        phrase.sort(key=lambda x: x.f1, reverse=True)
     this_best_scores = [phrase[0].f1 for phrase in performances]
     this_best_aggregate_scores = [phrase[0].f1 for phrase in performances]
+    this_best_aggregate_scores_index = [[phrase[0].id] for phrase in performances]
+    for phrase in performances:
+        phrase.sort(key=lambda x: x.prec, reverse=True)
+
 
     for index, phrase_cat in enumerate(phrases):
-        for best_cat_index, best_cat in enumerate(performances[index]):
-            acc_num = sum([ total_acc_number[index][perf.id] for perf in performances[index][:best_cat_index+1]])
-            total_num = sum([total_hyp_cat_number[index][perf.id] for perf in performances[index][:best_cat_index+1]])
-            prec = acc_num / total_num
-            rec = acc_num / phrases_lengths[index]
-            f1 = 0 if prec == 0 or rec == 0 else 1.0 / (0.5 / prec + (0.5 / rec))
-            if f1 > this_best_aggregate_scores[index]:
-                this_best_aggregate_scores[index] = f1
-            else:
-                break
+        for k in range(len(performances[index]) - 1):
+            best_f1 = 0
+            best_id = None
+            for best_cat_index, best_cat in enumerate(performances[index]):
+                if best_cat.id in this_best_aggregate_scores_index[index]:
+                    continue
+                acc_num = sum([ total_acc_number[index][cat] for cat in this_best_aggregate_scores_index[index] + [best_cat.id]])
+                total_num = sum([total_hyp_cat_number[index][cat] for cat in this_best_aggregate_scores_index[index] + [best_cat.id]])
+                prec = acc_num / total_num
+                rec = acc_num / phrases_lengths[index]
+                f1 = 0 if (prec == 0 or rec == 0 ) else 1.0 / (0.5 / prec + (0.5 / rec))
+                # if best_cat_index == 0:
+                #     assert f1 == this_best_aggregate_scores[index], "{}, {}, {}， {}".format(prec, rec, f1, this_best_aggregate_scores[index])
+                if f1 > best_f1:
+                    best_f1 = f1
+                    best_id = best_cat.id
+            if best_f1 > this_best_aggregate_scores[index]:
+                this_best_aggregate_scores[index] = best_f1
+                this_best_aggregate_scores_index[index].append(best_id)
+            else: break
+
     return this_best_scores, this_best_aggregate_scores, r_branch / (l_branch+r_branch), num_d2_trees / num_total_trees, label_dist_entropy, num_non_term_only_label / len(non_term_only_label), nolabel_recalls
 
 end_f_names_nodeps = [x for x in end_f_names if  'fromdeps' not in x]
@@ -331,21 +359,24 @@ end_f_names_nodeps = [x for x in end_f_names if  'fromdeps' not in x]
 with Pool(processes=total_process_limit) as pool:
     scores, aggregate_scores, r_branching_tendency, d2_proportion, label_dist_freq, num_non_term_label, nolabel_recalls= zip(*(pool.map(calc_phrase_stats, end_f_names_nodeps)))
 
-print(scores[0], aggregate_scores[0])
+# print(scores[0], aggregate_scores[0])
 scores = np.array(scores)
+len_iters = len(x_data)
 aggregate_scores = np.array(aggregate_scores)
 r_branching_tendency = np.array(r_branching_tendency)
 d2_proportion = np.array(d2_proportion)
 label_dist_freq = np.array(label_dist_freq)
 num_non_term_label = np.array(num_non_term_label)
 fig, ax = plt.subplots()
-len_iters = len(output_last_samples)
-x_data = hyperparams.iter[:len_iters]
+titles = [ "best NP F1", 'best VP F1', 'best PP F1', "best NP agg F1", "best VP agg F1", "best PP agg F1"]
+all_results[0].extend(titles)
+all_results[1].append(scores)
+all_results[1].append(aggregate_scores)
 lines = ax.plot(x_data, scores[:len_iters, 0], 'o', x_data, scores[:len_iters, 1], 'v', x_data, scores[:len_iters, 2]
                 , 'x', x_data, aggregate_scores[:len_iters, 0], '+', x_data, aggregate_scores[:len_iters, 1], 's',
-                x_data, aggregate_scores[:len_iters, 2], '*')
+                x_data, aggregate_scores[:len_iters, 2], '*', alpha=0.3)
 ax.set_ylabel('percentage')
-ax.legend(lines, ( "best NP F1", 'best VP F1', 'best PP F1', "best NP agg F1", "best VP agg F1", "best PP agg F1"))
+ax.legend(lines, titles)
 pp = PdfPages(
     os.path.join(last_sample_folder, 'phrases' + '_' + str(min(x_data)) + '_' + str(max(x_data))) + '.pdf')
 fig.savefig(pp, format='pdf')
@@ -355,11 +386,13 @@ plt.clf()
 
 nolabel_recalls = np.array(nolabel_recalls)
 fig, ax = plt.subplots()
-len_iters = len(output_last_samples)
-x_data = hyperparams.iter[:len_iters]
+# len_iters = len(output_last_samples)
+titles = ["NP recall", "VP recall", "PP recall"]
+all_results[0].extend(titles)
+all_results[1].append(nolabel_recalls)
 lines = ax.plot(x_data, nolabel_recalls[:len_iters, 0], x_data, nolabel_recalls[:len_iters, 1], x_data, nolabel_recalls[:len_iters, 2])
 ax.set_ylabel('No label recalls')
-ax.legend(lines, ( "NP recall", "VP recall", "PP recall"))
+ax.legend(lines, titles)
 pp = PdfPages(
     os.path.join(last_sample_folder, 'nolabel_recall' + '_' + str(min(x_data)) + '_' + str(max(x_data))) + '.pdf')
 fig.savefig(pp, format='pdf')
@@ -369,9 +402,10 @@ plt.clf()
 
 
 fig, ax = plt.subplots()
-len_iters = len(output_last_samples)
-x_data = hyperparams.iter[:len_iters]
-lines = ax.plot(x_data, r_branching_tendency)
+# len_iters = len(output_last_samples)
+lines = ax.plot(x_data, r_branching_tendency[:len_iters])
+all_results[0].append("R branching")
+all_results[1].append(r_branching_tendency)
 ax.set_ylabel('R branching tendency score')
 ax.legend(lines, ( "R branching"))
 pp = PdfPages(
@@ -382,8 +416,8 @@ plt.cla()
 plt.clf()
 
 fig, ax = plt.subplots()
-len_iters = len(output_last_samples)
-x_data = hyperparams.iter[:len_iters]
+all_results[0].append("D2 trees")
+all_results[1].append(d2_proportion)
 lines = ax.plot(x_data, d2_proportion)
 ax.set_ylabel('D2 trees proportion')
 ax.legend(lines, ( "D2 trees"))
@@ -395,8 +429,8 @@ plt.cla()
 plt.clf()
 
 fig, ax = plt.subplots()
-len_iters = len(output_last_samples)
-x_data = hyperparams.iter[:len_iters]
+all_results[0].append("entropy")
+all_results[1].append(label_dist_freq)
 lines = ax.plot(x_data, label_dist_freq)
 ax.set_ylabel('Label frequency distribution entropy')
 ax.legend(lines, ( "Entropy"))
@@ -408,8 +442,8 @@ plt.cla()
 plt.clf()
 
 fig, ax = plt.subplots()
-len_iters = len(output_last_samples)
-x_data = hyperparams.iter[:len_iters]
+all_results[0].append("nonterm_only")
+all_results[1].append(num_non_term_label)
 lines = ax.plot(x_data, num_non_term_label)
 ax.set_ylabel('Percentage of non-termnial only labels')
 ax.legend(lines, ( "Percentage"))
@@ -419,6 +453,13 @@ fig.savefig(pp, format='pdf')
 pp.close()
 plt.cla()
 plt.clf()
+all_results[1] = [np.expand_dims(x, 1) if len(x.shape) < 2 else x for x in all_results[1]]
+all_results[1] = np.hstack(all_results[1])
+with open(os.path.join(last_sample_folder, 'results' + '_' + str(min(x_data)) + '_' + str(max(x_data))) + '.txt','w') as r:
+    print('\t'.join(all_results[0]), file=r)
+    for row in all_results[1]:
+        print('\t'.join([str(x) for x in row]), file=r)
+
 # #dependency phrase scores
 # with Pool(processes=total_process_limit) as pool:
 #     scores, aggregate_scores = zip(*(pool.map(calc_phrase_stats, deps_f_names)))
