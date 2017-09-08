@@ -136,7 +136,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             logging.info("Using word vectors as observations: Embedding matrix has %d entries, %d dimensions, max=%f and min=%f" % (word_vecs.shape[0], word_vecs.shape[1], word_vecs.max(), word_vecs.min()))
             lex = GaussianModel((g_max, word_vecs.shape[1]), word_vecs, name="Lex")
         models.initialize_as_fjabp(max_output, params, (len(ev_seqs), maxLen), depth, a_max, b_max, g_max, lex=lex)
-            
+
         if input_seqs_file is None:
             hid_seqs = [None] * len(ev_seqs)
         else:
@@ -436,8 +436,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             return_to_finite = False
 
         pos_counts = models.pos.pairCounts[:].sum() - num_sents
-        lex_counts = models.lex.pairCounts[:].sum() - num_sents
-        logging.info("Have %d pos counts, %d lex counts after sample - should equal number of tokens %d" % (pos_counts, lex_counts, num_tokens) )
+        #lex_counts = models.lex.pairCounts[:].sum() - num_sents
+        #logging.info("Have %d pos counts, %d lex counts after sample - should equal number of tokens %d" % (pos_counts, lex_counts, num_tokens) )
 
         ## remove the counts from these sentences
         if batch_size < num_sents:
@@ -447,8 +447,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             logging.info("Resetting all counts to zero for next iteration")
             models.resetAll()
             pos_counts = models.pos.pairCounts[:].sum()
-            lex_counts = models.lex.pairCounts[:].sum()
-            assert pos_counts == 0 and lex_counts == 0
+            #lex_counts = models.lex.pairCounts[:].sum()
+            #assert pos_counts == 0 and lex_counts == 0
 
         iter += 1
 

@@ -69,7 +69,7 @@ def read_word_vector_file(filename, word_dict):
     inv_dict = {}
     for key,val in word_dict.items():
         inv_dict[val] = key
-        
+
     for line in f:
         parts = line.split()
         if len(parts) == 2:
@@ -81,7 +81,7 @@ def read_word_vector_file(filename, word_dict):
         if len(parts) > dim+1:
             logging.warn("Found line in vectors file with incompatible length %d" % len(parts))
             continue
-            
+
         word = parts[0]
         if not word in inv_dict:
             continue
@@ -177,6 +177,7 @@ def write_output(sample, stats, config, gold_pos=None):
     #write_lex_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
     write_model(models.pos.globalPairCounts, output_dir + "/p_pos_%d.txt" % sample.iter, condPrefix="B", outcomePrefix="POS")
     write_model(models.lex.globalPairCounts, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
+    models.lex.write_model(output_dir + "/p_lex_given_pos%d_self.txt" % sample.iter, word_dict)
 
     write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter, word_dict)
 

@@ -5,6 +5,18 @@ import distribution_sampler as sampler
 from scipy.sparse import lil_matrix
 import scipy.stats
 
+## fullwiki_vecs_10dim.txt stats
+#mean_mean = 0.18
+#mean_stdev = 0.28
+#stdev_mean = 0.4
+#stdev_stdev = 0.04
+
+## simple wiki stats:
+mean_mean = 0.03
+mean_stdev = 0.16
+stdev_mean = 0.65
+stdev_stdev = 0.07
+
 # A mapping from input space to output space. The Model class can be
 # used to store counts during inference, and then know how to resample themselves
 # if given a base distribution.
@@ -23,38 +35,76 @@ cdef class GaussianModel(Model):
         Model.__init__(self, corpus_shape, name)
         self.shape = shape
         self.embeddings = embeddings
-        self.pairCounts = np.zeros(shape, dtype=np.float32)
+        self.embed_dims = self.embeddings.shape[1]
+        self.pairCounts = [] #np.zeros(shape, dtype=np.float32)
         self.globalPairCounts = np.zeros(shape, dtype=np.float32)
-        self.condCounts = np.zeros(shape[0], dtype=np.int)
+        #self.condCounts = [] #np.zeros(shape[0], dtype=np.int)
         ## Initialize distributions:
         self.dist = []
-        mean_dist = scipy.stats.norm()
+
+        mean_dist = scipy.stats.norm(mean_mean, mean_stdev)
         for pos_ind in range(shape[0]):
+            self.pairCounts.append([])
             init_means = mean_dist.rvs(shape[1])
-            self.dist.append( scipy.stats.norm(init_means) )
+            stds = np.zeros(len(init_means)) + stdev_mean
+            self.dist.append( scipy.stats.norm(init_means, stds) )
             #print("Mean vector for pos %d after initial sampling: " % (pos_ind), self.dist[-1].mean())
 
     def count(self, pos_ind, token_ind, val):
         ## we've seen a count of pos tag cond pos_ind and word index token_ind
         ## Go through embeddings matrix to create pair counts for each dimensions
-        self.condCounts[pos_ind] += val
-        for dim in range(self.embeddings.shape[1]):
-            self.pairCounts[pos_ind, dim] += val * self.embeddings[token_ind][dim]
+        #self.condCounts[pos_ind] += val
+        #for dim in range(self.embeddings.shape[1]):
+        #    self.pairCounts[pos_ind, dim] += val * self.embeddings[token_ind][dim]
+        if val != 1:
+            raise Exception("For gaussian model, counts must be single increments")
+
+        self.pairCounts[pos_ind].append(np.zeros(self.embed_dims) + self.embeddings[token_ind])
+
 
     def sampleGaussian(self):
-        if self.condCounts.sum() == 0:
-            ## This is called before we've done any sampling, and we already randomly
-            ## initialized in the constructor
+#        if self.condCounts.sum() == 0:
+#            ## This is called before we've done any sampling, and we already randomly
+#            ## initialized in the constructor
+#            return
+        if len(self.pairCounts[0]) == 0:
+            ## we haven't done any sampling yet
             return
 
-        for pos_ind in range(self.pairCounts.shape[0]):
-            sample_means = self.pairCounts[pos_ind][:] / self.condCounts[pos_ind]
-            mean_sample_dist = scipy.stats.norm(sample_means)
-            if self.condCounts[pos_ind] == 0:
-                logging.error("Error resampling Gaussian: One of the conditions (pos_ind=%d) had zero counts." % (pos_ind))
-                ## don't assign it anything -- it keeps the same means as last sample.
+        logging.info("Resampling gaussian observation models")
+
+        sample_means = []
+        sample_stdevs = []
+        for pos_ind in range(len(self.pairCounts)-1):
+            logging.info("Pair counts for POS%d with %d tokens assigned:" % (pos_ind, len(self.pairCounts[pos_ind])))
+            #logging.info(self.pairCounts[pos_ind])
+            stds = np.zeros(self.embed_dims) + stdev_mean
+            if len(self.pairCounts[pos_ind]) > 0:
+                #sample_means = self.pairCounts[pos_ind][:] / self.condCounts[pos_ind]
+                sample_mean = np.mean(self.pairCounts[pos_ind], 0)
+                sample_stdev = np.std(self.pairCounts[pos_ind], 0)
+                sample_means.append(sample_mean)
+                sample_stdevs.append(sample_stdev)
+                self.dist[pos_ind] = scipy.stats.norm(sample_mean, stds)
+                if pos_ind > 0:
+                    logging.info("POS index=%d has distribution with mean %s and stdev %s" % (pos_ind, sample_mean, sample_stdev))
+
+                ## FIXME: (see above)
+    #            stds = np.zeros(len(sample_means)) + stdev_mean
+    #            mean_sample_dist = scipy.stats.norm(sample_means, stds)
+    #            if self.condCounts[pos_ind] == 0:
+    #                logging.error("Error resampling Gaussian: One of the conditions (pos_ind=%d) had zero counts." % (pos_ind))
+    #                ## don't assign it anything -- it keeps the same means as last sample.
+    #            else:
+    #                stds = np.zeros(self.pairCounts.shape[1]) + 0.4
+    #                self.dist[pos_ind] = scipy.stats.norm(mean_sample_dist.rvs(self.pairCounts.shape[1]), stds)
             else:
-                self.dist[pos_ind] = scipy.stats.norm(mean_sample_dist.rvs(self.pairCounts.shape[1]))
+                ## We didn't use this POS, so re-initialize it:
+                mean_dist = scipy.stats.norm(mean_mean, mean_stdev)
+                mean_init = mean_dist.rvs(self.embed_dims)
+                self.dist[pos_ind] = scipy.stats.norm(mean_init, stds)
+                if pos_ind > 0:
+                    logging.info("POS index=%d has distribution with mean %s and stdev %s" % (pos_ind, sample_mean, sample_stdev))
 
             if np.isnan(self.dist[pos_ind].mean().max()):
                 logging.error("Resampled gaussian and there is a nan in the mean vector")
@@ -62,10 +112,23 @@ cdef class GaussianModel(Model):
                 logging.error("sample_means: %s" % str(sample_means))
 
     def resetCounts(self):
-        for pos_ind in range(self.pairCounts.shape[0]):
-            self.condCounts[pos_ind] = 0
-            for dim in range(self.pairCounts.shape[1]):
-                self.pairCounts[pos_ind,dim] = 0
+        for pos_ind in range(len(self.pairCounts)):
+            self.pairCounts[pos_ind] = []
+            #self.condCounts[pos_ind] = 0
+            #for dim in range(len(self.pairCounts)):
+            #    self.pairCounts[pos_ind,dim] = 0
+        self.pairCounts[0].append([1])
+
+    def write_model(self, out_file, word_dict):
+        f = open(out_file, 'w', encoding='utf-8')
+
+        for pos_ind in range(len(self.pairCounts)):
+            f.write("## writing pos_ind=%d\n" % pos_ind)
+            for dim in range(self.embed_dims):
+                f.write("## Writing pos_ind=%d, dim = %d\n"  % (pos_ind, dim))
+                f.write("P( %d | POS%d ) ~ N(%f, %f)\n" % (dim, pos_ind, self.dist[pos_ind].mean()[dim], self.dist[pos_ind].std()[dim]))
+
+        f.close()
 
     def __reduce__(self):
         d = {}
@@ -73,7 +136,7 @@ cdef class GaussianModel(Model):
         d['embeddings'] = self.embeddings
         d['pairCounts'] = self.pairCounts
         d['globalPairCounts'] = self.globalPairCounts
-        d['condCounts'] = self.condCounts
+        #d['condCounts'] = self.condCounts
         d['dist'] = self.dist
         d['corpus_shape'] = self.corpus_shape
         d['name'] = self.name
@@ -84,10 +147,11 @@ cdef class GaussianModel(Model):
         self.embeddings = d['embeddings']
         self.pairCounts = d['pairCounts']
         self.globalPairCounts = d['globalPairCounts']
-        self.condCounts = d['condCounts']
+        #self.condCounts = d['condCounts']
         self.dist = d['dist']
         self.corpus_shape = d['corpus_shape']
         self.name = d['name']
+
 
 cdef class CategoricalModel(Model):
     def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, corpus_shape=(1,1), name="Categorical"):
@@ -100,7 +164,7 @@ cdef class CategoricalModel(Model):
         self.dist = np.log10(self.dist)
         self.trans_prob = lil_matrix(self.corpus_shape)
         self.alpha = alpha
-        if beta != None:
+        if not beta is None:
             self.beta = beta
         else:
             self.beta = np.ones(shape[-1]) / shape[-1]
@@ -263,9 +327,11 @@ cdef class Models:
         self.pos = CategoricalModel((b_max, g_max), alpha=float(params.get('alphag')), corpus_shape=corpus_shape, name="POS")
 
         if lex is None:
+            logging.info("Initializing default lexical model as Categorical")
             ## one lex model (categorical default)
             self.lex = CategoricalModel((g_max, max_output+1), alpha=float(params.get('alphah')), name="Lex")
         else:
+            logging.info("Using passed in lexical model")
             ## Let the calling entity worry about the lex model.
             self.lex = lex
 
@@ -421,4 +487,4 @@ cdef class Models:
             self.act[d].globalPairCounts += self.act[d].pairCounts
             self.root[d].globalPairCounts += self.root[d].pairCounts
         self.pos.globalPairCounts += self.pos.pairCounts
-        self.lex.globalPairCounts += self.lex.pairCounts
+        #self.lex.globalPairCounts += self.lex.pairCounts
