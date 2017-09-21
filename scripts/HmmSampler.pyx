@@ -22,6 +22,7 @@ from uhhmm_io import printException
 import models
 cimport models
 import scipy.sparse
+from CategoricalObservationModel import CategoricalObservationModel
 
 def boolean_depth(l):
     for index,val in enumerate(l):
@@ -30,10 +31,14 @@ def boolean_depth(l):
 
 cdef class HmmSampler(Sampler.Sampler):
 
-    def __init__(self, seed):
+    def __init__(self, obs_model=None, seed=0):
         Sampler.Sampler.__init__(self, seed)
         self.indexer = None
         self.models = None
+        if obs_model is None:
+            self.obs_model = CategoricalObservationModel(self.indexer)
+        else:
+            self.obs_model = obs_model
 #        self.pi = None
 
     def get_factor_expand_mat(self):
@@ -67,16 +72,20 @@ cdef class HmmSampler(Sampler.Sampler):
     def set_models(self, models):
         self.models = models[0]
         unlog_models(self.models)
-        self.lexMatrix = np.matrix(self.models.lex.dist, copy=False)
-        self.depth = len(self.models.fork)
+        #self.lexMatrix = np.matrix(self.models.lex.dist, copy=False)
+        self.depth = len(self.models.fj)
         self.indexer = Indexer.Indexer(self.models)
 
-        g_len = self.models.pos.dist.shape[1]
-        w_len = self.models.lex.dist.shape[1]
-        lexMultiplier = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, self.indexer.get_state_size() // g_len)))
-        self.data = lexMultiplier.data
-        self.indices = lexMultiplier.indices
-        self.indptr = lexMultiplier.indptr
+        #g_len = self.models.pos.dist.shape[1]
+        #w_len = self.models.lex.dist.shape[1]
+        #lexMultiplier = scipy.sparse.csc_matrix(np.tile(np.identity(g_len), (1, self.indexer.get_state_size() // g_len)))
+        #self.data = lexMultiplier.data
+        #self.indices = lexMultiplier.indices
+        #self.indptr = lexMultiplier.indptr
+
+        self.factor_expand_mat = self.get_factor_expand_mat()
+
+        self.obs_model.set_models(self.models)
 
         self.factor_expand_mat = self.get_factor_expand_mat()
 
@@ -97,6 +106,7 @@ cdef class HmmSampler(Sampler.Sampler):
         cdef tuple maxes
         cdef list sent
 
+        #logging.warning("Forward pass for sentence %d" % (sent_index))
         if len(sents) > 1:
             raise Exception("Error: Python version only accepts batch size 1")
 
@@ -111,7 +121,7 @@ cdef class HmmSampler(Sampler.Sampler):
             ## array -- we don't have to copy it into a matrix and recopy back to array
             ## to get the return value
             self.dyn_prog[:] = 0
-            lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
+            #lexMultiplier = scipy.sparse.csc_matrix((self.data, self.indices, self.indptr), shape=(g_max, self.indexer.get_state_size() ) )
             sparse_factored_expand_mat = scipy.sparse.csc_matrix(self.factor_expand_mat)
             ## Make forward be transposed up front so we don't have to do all the transposing inside the loop
             forward = np.matrix(self.dyn_prog, copy=False)
@@ -128,17 +138,37 @@ cdef class HmmSampler(Sampler.Sampler):
                 # Expand 1 x K to 1 x N with p(g | b) replicated values
                 forward[index,:] = factored_transition * sparse_factored_expand_mat
 
-                expanded_lex = self.lexMatrix[:,token].transpose() * lexMultiplier
-                forward[index,:] = np.multiply(forward[index,:], expanded_lex)
+                lex_prob = self.obs_model.get_probability_vector(token)
 
-                normalizer = forward[index,:].sum()
-                forward[index,:] /= normalizer
+                if lex_prob.max() < 0:
+                    ## The observation model passed back a log prob
+                    log_lex_prob = lex_prob
+                    #print("lex_prob:", lex_prob)
+                    #print("Received log probs from obs model: ", log_lex_prob)
+
+                    ## This is the "exp-normalize trick" for normalizing probability
+                    ## distributions coming out of log space, seen at:
+                    ## timvieira.github.io/blog/post/2014/02/11/exp-normalize-trick
+                    forward[index,:] = np.log(forward[index,:]) + log_lex_prob
+                    b = forward[index,:].max()
+                    exponentiated = np.exp(forward[index,:] - b)
+                    forward[index,:] =  exponentiated / exponentiated.sum()
+                    normalizer = exponentiated.sum()
+                else:
+                    #print("Received regular probs from obs model: ", lex_prob)
+                    ## Original way of incorporating lex probs, if observation
+                    ## model passed back a standard probability:
+                    forward[index,:] = np.multiply(forward[index,:], lex_prob)
+
+                    normalizer = forward[index,:].sum()
+                    print("normalizer:", normalizer)
+                    forward[index,:] /= normalizer
 
                 ## Normalizer is p(y_t)
                 sentence_log_prob += np.log10(normalizer)
             last_index = len(sent)-1
             if np.argwhere(forward.max(1)[0:last_index+1,:] == 0).size > 0 or np.argwhere(np.isnan(forward.max(1)[0:last_index+1,:])).size > 0:
-                logging.error("Error; There is a word with no positive probabilities for its generation in the forward filter: %s" % forward.max(1)[0:last_index+1,:])
+                logging.error("There is a word with no positive probabilities for its generation in the forward filter: %s" % forward.max(1)[0:last_index+1,:])
                 raise Exception("There is a word with no positive probabilities for its generation in the forward filter.")
 
             ## FIXME - Do we need to multiply by -/+ at last time step for d > 0 system?
@@ -171,22 +201,21 @@ cdef class HmmSampler(Sampler.Sampler):
             sample_log_prob = 0
             maxes = self.indexer.getVariableMaxes()
             totalK = self.indexer.get_state_size()
-            depth = len(self.models.fork)
+            depth = len(self.models.fj)
 
             ## Normalize and grab the sample from the forward probs at the end of the sentence
             last_index = len(sent)-1
 
             ## normalize after multiplying in the transition out probabilities
             self.dyn_prog[last_index,:] /= self.dyn_prog[last_index,:].sum()
-            
+
             ## EOS state is f=0,j=1,a=[0]*d,b=[0]*d,g=0. Located 1/4 way through state list.
             if len(sent) == 1:
                 sample_t = self.indexer.get_EOS_1wrd_full()
             else:
                 sample_t = self.indexer.get_EOS_full()
-  
-            for t in range(len(sent)-1,-1,-1):              
 
+            for t in range(len(sent)-1,-1,-1):
                 sample_state, sample_t = self._reverse_sample_inner(pi, sample_t, t)
                 sample_seq.append(sample_state)
 
@@ -223,7 +252,8 @@ cdef class HmmSampler(Sampler.Sampler):
 
         normalizer = self.dyn_prog[t,:].sum()
         if normalizer == 0.0:
-            logging.warning("No positive probability states at this time step %d. Sampling backward from state %d." % (t, sample_t))
+            logging.warning("No positive probability states at this time step %d." % (t))
+
         self.dyn_prog[t,:] /= normalizer
 
         sample_t = get_sample(self.dyn_prog[t,:])
@@ -296,12 +326,9 @@ cdef int old_get_sample(np.ndarray dist):
             return i
 
 def unlog_models(models):
-    depth = len(models.fork)
+    depth = len(models.fj)
     for d in range(0, depth):
-        models.fork[d].dist = 10**models.fork[d].dist
-
-        models.reduce[d].dist = 10**models.reduce[d].dist
-        models.trans[d].dist = 10**models.trans[d].dist
+        models.fj[d].dist = 10**models.fj[d].dist
 
         models.act[d].dist = 10**models.act[d].dist
         models.root[d].dist = 10**models.root[d].dist
@@ -312,4 +339,5 @@ def unlog_models(models):
         models.start[d].dist = 10**models.start[d].dist
 
     models.pos.dist = 10**models.pos.dist
-    models.lex.dist = 10**models.lex.dist
+    if type(models.lex.dist).__name__ == 'ndarray':
+        models.lex.dist = 10**models.lex.dist

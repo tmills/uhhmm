@@ -32,7 +32,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     nominal_depth = start_depth + prev_state.f
     (a_max, b_max, g_max) = indexer.getVariableMaxes()
     totalK = indexer.get_state_size()
-    
+
     ## Get EOS indices
     EOS_full = EOS_1wrd_full = indexer.get_EOS_full()
     EOS =  EOS_1wrd = indexer.get_EOS()
@@ -48,7 +48,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     ## If previous was EOS, no outgoing transitions allowed
     if prev_index/g_max == EOS or prev_index/g_max == EOS_1wrd:
         return indices, data, indices_full, data_full
-    
+
     ## Skip invalid start states
     ## never have b_max or a_max or p_max in the state for the time being
     if any([x == a_max -1 for x in prev_state.a]) or any([x == b_max -1 for x in prev_state.b]) or prev_state.g == g_max - 1:
@@ -90,7 +90,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                 if prev_state.a[d] == 0 or prev_state.b[d] == 0:
                     return indices, data, indices_full, data_full
 
-    cum_probs = np.zeros(3)
+    cum_probs = np.zeros(2)
     next_state = State.State(depth)
 
     # Populate previous state conditional dependencies
@@ -110,7 +110,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
             prev_a_above = prev_state.a[start_depth - 1]
 
     t00 = time.time()
-    
+
     ## special case for start state:
     if prev_index == 0:
 
@@ -130,7 +130,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
         data.append(1)
         logging.debug(' '.join(map(str, [prev_state.unfiltered_str(), '->', indexer.extractState(state_index_full).unfiltered_str(), 1])))
         return indices, data, indices_full, data_full
-        
+
     # for f in (0,1):
     #     next_state.j = j
     #
@@ -250,7 +250,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
 
                     logging.debug(' '.join(map(str,[prev_state.unfiltered_str(), '->', next_state.unfiltered_str(), cum_probs[2]])))
                     # the g is factored out
-                    range_probs = cum_probs[2] #* (models.pos.dist[b,:-1])
+                    range_probs = cum_probs[1] #* (models.pos.dist[b,:-1])
                     if full_pi:
                         if next_state.f == 0:
                             range_probs_full = cum_probs[2] * (np.ones_like(models.pos.dist[b, :-1]))
@@ -267,10 +267,10 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
 
 cdef class FullDepthCompiler:
     cdef int depth
-    
+
     def __init__(self, depth):
         self.depth = depth
-    
+
     #@profile
     def compile_and_store_models(self, models, working_dir):
         indexer = Indexer.Indexer(models)
@@ -278,7 +278,7 @@ cdef class FullDepthCompiler:
         maxes = indexer.getVariableMaxes()
         (a_max, b_max, g_max) = maxes
         totalK = indexer.get_state_size()
-        
+
         cache_hits = 0
         t0 = time.time()
         indptr = np.zeros(totalK+1)
@@ -287,7 +287,7 @@ cdef class FullDepthCompiler:
 
         ## Take exponent out of inner loop:
         unlog_models(models, self.depth)
-                
+
         for prev_index in range(0,totalK):
             indptr[prev_index+1] = indptr[prev_index]
             (local_indices, local_data) = compile_one_line(self.depth, prev_index, models, indexer)
@@ -298,7 +298,7 @@ cdef class FullDepthCompiler:
         logging.info("Flattening sublists into main list")
         flat_indices = [item for sublist in indices for item in sublist]
         flat_data = [item for sublist in data for item in sublist]
-            
+
         relog_models(models, self.depth)
         logging.info("Creating csr transition matrix from sparse indices")
         pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK), dtype=np.float64)
@@ -313,44 +313,44 @@ cdef class FullDepthCompiler:
 
         time_spent = time.time() - t0
         logging.info("Done in %d s with %d cache hits and %d non-zero values" % (time_spent, cache_hits, nnz))
-        
+
 
 def unlog_models(models, depth):
 
     for d in range(0, depth):
         models.F[d].dist = 10**models.F[d].dist
-        
+
         models.J[d].dist = 10**models.J[d].dist
-        
+
         models.A[d].dist = 10**models.A[d].dist
 
         models.B_J0[d].dist = 10**models.B_J0[d].dist
         models.B_J1[d].dist = 10**models.B_J1[d].dist
-        
+
     models.pos.dist = 10**models.pos.dist
 
 def relog_models(models, depth):
     for d in range(0, depth):
         models.F[d].dist = np.log10(models.F[d].dist)
-        
+
         models.J[d].dist = np.log10(models.J[d].dist)
 
         models.A[d].dist = np.log10(models.A[d].dist)
 
         models.B_J0[d].dist = np.log10(models.B_J0[d].dist)
         models.B_J1[d].dist = np.log10(models.B_J1[d].dist)
-        
+
     models.pos.dist = np.log10(models.pos.dist)
 
 def get_cur_awa_depth(stack):
     ## Essentially empty -- used for first time step
     if stack[0] <= 0:
         return -1
-    
+
     ## If we encounter a zero at position 1, then the depth is 0
     for d in range(1, len(stack)):
         if stack[d] == 0:
             return d-1
-    
+
     ## Stack is full -- if d=4 then max depth index is 3
     return len(stack)-1

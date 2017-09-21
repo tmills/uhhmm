@@ -25,7 +25,7 @@ import DepthOneInfiniteSampler
 import DistributedModelCompiler
 import HmmSampler
 from dahl_split_merge import perform_split_merge_operation
-from models import Model, Models
+from models import Model, Models, GaussianModel, CategoricalModel
 from workers import start_local_workers_with_distributer, start_cluster_workers
 from pcfg_translator import *
 import copy
@@ -61,7 +61,7 @@ class Stats:
 # the EVidence SEQuenceS seen by the user (e.g., words in a sentence
 # mapped to ints).
 def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_dir, pickle_file=None, gold_seqs=None,
-                input_seqs_file=None, word_dict_file=None):
+                input_seqs_file=None, word_dict_file=None, word_vecs=None):
     global start_abp
     start_abp = int(params.get('startabp'))
     sent_lens = list(map(len, ev_seqs))
@@ -99,6 +99,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     finite = bool(int(params.get('finite', 0)))
     cluster_cmd = params.get('cluster_cmd', None)
     split_merge_iters = int(params.get('split_merge_iters', -1))
+    inc = params.get('inc', 1)
     infinite_sample_prob = float(params.get('infinite_prob', 0.0))
     batch_size = min(num_sents, int(params.get('batch_size', num_sents)))
     gpu = bool(int(params.get('gpu', 0)))
@@ -140,6 +141,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 line = line.strip().split(' = ')
                 gold_pos_dict[int(line[0])] = int(line[1])
 
+    from_global_counts = bool(int(params.get('from_global_counts', 0)))
+    decay = float(params.get('decay', 1.0))
+
     return_to_finite = False
     ready_for_sample = False
 
@@ -169,7 +173,14 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## Add 1 to every start value for "Null/start" state
         inflated_num_abp = start_abp + 2
 
-        models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, inflated_num_abp)
+    lex = None
+    if not word_vecs is None:
+        logging.info("Using word vectors as observations: Embedding matrix has %d entries, %d dimensions, max=%f and min=%f" % (word_vecs.shape[0], word_vecs.shape[1], word_vecs.max(), word_vecs.min()))
+        lex = GaussianModel((start_abp, word_vecs.shape[1]), word_vecs, name="Lex")
+
+## TODO: Look at how initialize_models works
+        models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, inflated_num_abp, lex=lex)
+
         if input_seqs_file is None:
             hid_seqs = [None] * len(ev_seqs)
         else:
@@ -198,6 +209,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             pcfg_replace_model(None, None, models, pcfg_model)
 
         sample.models = models
+        models.resample_all(decay, init=True)
         iter = 0
 
     else:
@@ -208,7 +220,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         max_state_check(hid_seqs, models, "reading sample from pickle file")
 
         pos_counts = models.pos.pairCounts[:].sum()
-        lex_counts = models.lex.pairCounts[:].sum()
+        #lex_counts = models.lex.pairCounts[:].sum()
 
         pcfg_model.set_log_mode('a')
         pcfg_model.start_logging()
@@ -217,6 +229,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         iter = sample.iter + 1
         pcfg_model.iter = iter
+
+    models.resetAll()
 
     # import pickle
     # fixed_model = working_dir+'/fixed.models.bin'
@@ -330,6 +344,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
                     # increment_counts(parse.state_list, ev_seqs[parse.index], models)
 
+## Commented out during merging of contlex 15 sep 2017
+#                    increment_counts(parse.state_list, ev_seqs[ parse.index ], models, inc)
                     # logging.info('Good parse:')
                     # logging.info(' '.join([x.str() for x in parse.state_list]))
                     # logging.info('The index is %d' % parse.index)
@@ -378,6 +394,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         else:
             pass
 
+        # Not part of master
+        #models.increment_global_counts()
+
         if num_processed < (end_ind - start_ind):
             logging.warning("Didn't receive the correct number of parses at iteration %d" % iter)
 
@@ -408,8 +427,6 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 ready_for_sample = False
 
             next_sample = Sample()
-            # next_sample.hid_seqs = hid_seqs
-
             next_sample.ev_seqs = ev_seqs
 
             prev_sample = sample
@@ -467,6 +484,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                                    annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
                 # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
         acc_logprob = 0
+#        models.resample_all(decay, from_global_counts)
+
         ## Update sentence indices for next batch:
         if end_ind == len(ev_seqs):
             start_ind = 0
@@ -479,6 +498,25 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         sample.models = models
 
+        # if not finite and return_to_finite:
+        #     finite = True
+        #     return_to_finite = False
+        #
+        # pos_counts = models.pos.pairCounts[:].sum() - num_sents
+        # #lex_counts = models.lex.pairCounts[:].sum() - num_sents
+        # #logging.info("Have %d pos counts, %d lex counts after sample - should equal number of tokens %d" % (pos_counts, lex_counts, num_tokens) )
+        #
+        # ## remove the counts from these sentences
+        # if batch_size < num_sents:
+        #     logging.info("Decrementing counts for sentence indices %d-%d" % (start_ind, end_ind) )
+        #     decrement_sentence_counts(hid_seqs, ev_seqs, models, start_ind, end_ind)
+        # else:
+        #     logging.info("Resetting all counts to zero for next iteration")
+        #     models.resetAll()
+        #     pos_counts = models.pos.pairCounts[:].sum()
+        #     #lex_counts = models.lex.pairCounts[:].sum()
+        #     #assert pos_counts == 0 and lex_counts == 0
+        #
         iter += 1
 
     logging.debug("Ending sampling")
@@ -509,6 +547,13 @@ def max_state_check(hid_seqs, models, location):
     if (ms < models.pos.dist.shape[1] - 2):
         logging.warning("Too few states in hid_seqs: there is at least one state that is never used during inference.")
 
+# def remove_unused_variables(models, hid_seqs):
+#     ## Have to check if it's greater than 2 -- empty state (0) and final state (-1) are not supposed to have any counts:
+#     while sum(models.pos.pairCounts.sum(0)==0) > 2:
+#         pos = np.where(models.pos.pairCounts.sum(0)==0)[0][1]
+#         models.remove_pos(pos)
+#         remove_pos_from_hid_seqs(hid_seqs, pos)
+#     max_state_check(hid_seqs, models, "removing unused variables")
 
 def remove_pos_from_hid_seqs(hid_seqs, pos):
     for a in hid_seqs:
@@ -590,7 +635,7 @@ def add_model_row_simple(model, base):
         logging.error("Addition of column resulted in nan!")
 
 
-def initialize_models(models, max_output, params, corpus_shape, depth, inflated_num_abp):
+def initialize_models(models, max_output, params, corpus_shape, depth, inflated_num_abp, lex=None):
     ## F model:
     models.F = [None] * depth
     ## J models:
@@ -603,28 +648,32 @@ def initialize_models(models, max_output, params, corpus_shape, depth, inflated_
 
     for d in range(0, depth):
         ## One fork model:
-        models.F[d] = Model((inflated_num_abp, 2), alpha=float(params.get('init_alpha')), name="Fork" + str(d))
+        models.F[d] = CategoricalModel((inflated_num_abp, 2), alpha=float(params.get('init_alpha')), name="Fork" + str(d))
 
         ## One join models:
-        models.J[d] = Model((inflated_num_abp, inflated_num_abp, 2), alpha=float(params.get('init_alpha')),
+        models.J[d] = CategoricalModel((inflated_num_abp, inflated_num_abp, 2), alpha=float(params.get('init_alpha')),
                             name="Join" + str(d))
 
         ## One active model:
-        models.A[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp),
+        models.A[d] = CategoricalModel((inflated_num_abp, inflated_num_abp, inflated_num_abp),
                             alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="Act" + str(d))
 
         ## Two awaited models:
-        models.B_J1[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp),
+        models.B_J1[d] = CategoricalModel((inflated_num_abp, inflated_num_abp, inflated_num_abp),
                                alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="B|J1_" + str(d))
-        models.B_J0[d] = Model((inflated_num_abp, inflated_num_abp, inflated_num_abp),
+        models.B_J0[d] = CategoricalModel((inflated_num_abp, inflated_num_abp, inflated_num_abp),
                                alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="B|J0_" + str(d))
 
     ## one pos model:
-    models.pos = Model((inflated_num_abp, inflated_num_abp), alpha=float(params.get('init_alpha')),
+    models.pos = CategoricalModel((inflated_num_abp, inflated_num_abp), alpha=float(params.get('init_alpha')),
                        corpus_shape=corpus_shape, name="POS")
 
     ## one lex model:
-    models.lex = Model((inflated_num_abp, max_output + 1), alpha=float(params.get('init_alpha')), name="Lex")
+    if lex is None:
+        logging.info("Initializing default lexical model as Categorical")
+        models.lex = CategoricalModel((inflated_num_abp, max_output + 1), alpha=float(params.get('init_alpha')), name="Lex")
+    else:
+        models.lex = lex
 
     models.append(models.F)
     models.append(models.J)
@@ -636,6 +685,31 @@ def initialize_models(models, max_output, params, corpus_shape, depth, inflated_
 
     return models
 
+# def resample_beta_g(models, gamma):
+#     logging.info("Resampling beta g")
+#     b_max = models.cont[0].dist.shape[-1]
+#     g_max = models.pos.dist.shape[-1]
+#     m = np.zeros((b_max,g_max-1))
+#
+#     for b in range(0, b_max):
+#         for g in range(0, g_max-1):
+#             if models.pos.pairCounts[b][g] == 0:
+#                 m[b][g] = 0
+#
+#             ## (rand() < (ialpha0 * ibeta(k)) / (ialpha0 * ibeta(k) + l - 1));
+#             else:
+#                 for l in range(1, int(models.pos.pairCounts[b][g])+1):
+#                     dart = np.random.random()
+#                     alpha_beta = models.pos.alpha * models.pos.beta[g]
+#                     m[b][g] += (dart < (alpha_beta / (alpha_beta + l - 1)))
+#
+#     if 0 in m.sum(0)[1:]:
+#         logging.warning("There seems to be an illegal value here:")
+#
+#     params = np.append(m.sum(0)[1:], gamma)
+#     models.pos.beta[1:] = 0
+#     models.pos.beta[1:] += sampler.sampleSimpleDirichlet(params)
+#     #logging.info("New beta value is %s" % model.pos.beta)
 
 # In the case that we are initializing this run with the output of a Previous
 # run, it is pretty simple. We just need a lot of checks to make sure the inputs

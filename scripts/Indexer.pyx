@@ -17,7 +17,7 @@ cdef class Indexer:
         self.a_max = models.A[0].dist.shape[-1]
         self.b_max = models.B_J0[0].dist.shape[-1]
         self.g_max = models.pos.dist.shape[-1]
-        self.state_size = self.fj_size * ((self.a_max * self.b_max) ** self.depth) * self.g_max 
+        self.state_size = self.fj_size * ((self.a_max * self.b_max) ** self.depth) * self.g_max
         self.a_size = self.a_max**self.depth
         self.b_size = self.b_max**self.depth
         self.EOS_index = 0
@@ -25,7 +25,7 @@ cdef class Indexer:
     def getVariableMaxes(self):
         return (self.a_max, self.b_max, self.g_max)
 
-    def get_state_size(self):   
+    def get_state_size(self):
         return self.state_size
 
     def get_EOS(self):
@@ -55,7 +55,7 @@ cdef class Indexer:
     #         self.EOS_index = self.getStateIndex(EOS_j, EOS_a, EOS_b, EOS_f, EOS_g)
     #     return self.EOS_index
     #     return int(3*self.state_size / 4)
-    
+
     #@profile
     def extractState(self, int index):
         (j, aStack, bStack, f, g) = self.extractStacks(index)
@@ -69,7 +69,7 @@ cdef class Indexer:
 
     cpdef public int extractPos(self, int index):
         cdef int j_ind, a_ind, b_ind, g, f_ind
-        
+
         (j_ind, a_ind, b_ind, f_ind, g) = np.unravel_index(index, (self.j_size, self.a_size, self.b_size,
                                                                    self.f_size, self.g_max))
         return g
@@ -78,15 +78,15 @@ cdef class Indexer:
     cpdef public extractStacks(self, int index):
         cdef int  a_ind, b_ind, g, f, j
         cdef np.ndarray a, b
-        
+
         (j_ind, a_ind, b_ind, f_ind, g) = np.unravel_index(index, (self.j_size, self.a_size, self.b_size,
                                                                    self.f_size, self.g_max))
         f = f_ind
         j = j_ind
-           
+
         a = np.array(np.unravel_index(a_ind, [self.a_max] * self.depth), dtype=int)
         b = np.array(np.unravel_index(b_ind, [self.b_max] * self.depth), dtype=int)
-    
+
         return j, a, b, f, g
 
 
@@ -106,6 +106,7 @@ cdef class Indexer:
                 return bStack[d]
         else:
             return 0
+
     ## We compose a state index from separate fj, a, b, and g indexes.
     ## Things get a little trickier at d == D because at time t=1 we technically have
     ## an expansion at d=-1, meaning the fj stack is completely empty. (At d=1 we just
@@ -117,12 +118,12 @@ cdef class Indexer:
         # print(type(j), j, type(a), a, type(b), b, type(f), f, type(g), g)
         a_stack  = np.ravel_multi_index(a, [self.a_max] * self.depth)
         b_stack = np.ravel_multi_index(b, [self.b_max] * self.depth)
-        
+
         index = np.ravel_multi_index((j, a_stack, b_stack, f, g), (self.j_size, self.a_size, self.b_size,
                                                                    self.f_size, self.g_max))
-    
+
         return index
-    
+
     # cpdef getStateTuple(self, int f, int j, np.ndarray a, np.ndarray b):
     #     cdef int start
     #     start = self.getStateIndex(f,j,a,b,0)
@@ -134,4 +135,3 @@ cdef class Indexer:
     #          f[i] = i % self.g_max
     #
     #     return f
-

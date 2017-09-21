@@ -59,7 +59,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=F
     pos1 = sample.hid_seqs[sent1_ind][word1_ind].g
     split = (pos0 == pos1) # true if splitting, false if merging
 
-    alpha_lex = np.array(params['h'][0,1:])
+    alpha_lex = np.array(models.lex.beta[1:]*models.lex.alpha)
     logging.debug("Lexical Dirichlet pseudocounts:")
     logging.debug(alpha_lex)
     alpha_pos_vec = models.pos.alpha * models.pos.beta[1:]
@@ -126,8 +126,7 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=F
     logging.debug("During split-merge the shape of root is %s and exp is %s" % (str(models.root[0].dist.shape), str(models.exp[0].dist.shape) ) )
     if split:
         logging.info("Performing split operation of pos tag %d at iteration %d" % (pos0,iter))
-        from uhhmm import break_g_stick
-        break_g_stick(new_models, new_sample, params) # add new pos tag variable
+        new_models.break_g_stick(new_sample.gamma) # add new pos tag variable
         pos1 = models.pos.dist.shape[1]-1
         # for the POS tag being split, assign half of the beta parameter to each of the two resulting tags
         new_models.pos.beta[pos0] = 0.5*new_models.pos.beta[pos0]
@@ -166,10 +165,10 @@ def perform_split_merge_operation(models, sample, ev_seqs, params, iter, equal=F
                 new_models.pos.count(state.b[depth], pos1, -1)
                 new_models.lex.count(pos0, token, 1)
                 new_models.lex.count(pos1, token, -1)
-        from uhhmm import remove_pos_from_models, remove_pos_from_hid_seqs
+        from uhhmm import remove_pos_from_hid_seqs
         # sum the beta parameters of the POS tags being merged:
         new_models.pos.beta[pos0] = new_models.pos.beta[pos0] + new_models.pos.beta[pos1]
-        remove_pos_from_models(new_models, pos1)
+        new_models.remove_pos(pos1)
         remove_pos_from_hid_seqs(new_sample.hid_seqs, pos1)
         if new_models.pos.dist.shape[1] == 3:
             logging.warn("POS now down to only 3 (1) states")

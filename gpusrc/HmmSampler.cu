@@ -249,7 +249,7 @@ void HmmSampler::set_models(Model * models){
     //    lexMatrix = NULL;
     //}
 
-    lexMatrix = p_model -> lex; 
+    lexMatrix = p_model -> lex;
     // print(*(lexMatrix->get_view()));
     // exp_array(lexMatrix->get_view()->values); // exp the lex dist // the gpu models are not logged, should not need this
 //     cout << "set_models 5" << endl;
@@ -366,28 +366,27 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
     int batch_max_len = get_max_len(sents);
     // np_sents is |batches| x max_len
     Dense* np_sents = get_sentence_array(sents, batch_max_len);
-    csr_matrix_view<IndexArrayView,IndexArrayView,ValueArrayView>* pi_view = pi -> get_view();
-    
+
     array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
 //    cout << "Forward in 2 " << endl;
     // initialize likelihood vector:
     for(int sent_ind = 0; sent_ind < sents.size(); sent_ind++){
         log_probs.push_back(0);
     }
-    
-    
+
+
     for(int ind = 0; ind < batch_max_len; ind++){
 //        cout << "Processing token index " << ind << " for " << batch_size << " sentences." << endl;
         Dense *cur_mat = dyn_prog[ind];
         Dense *prev_mat;
-        
+
         if(ind == 0){
             prev_mat = start_state;
         }else{
             // Grab the ind-1th row of dyn_prog and multiply it by the transition matrix and put it in
             // the ind^th row.
             prev_mat = dyn_prog[ind-1];
-        }            
+        }
 
         // prev_mat is |states| x |batches| at time ind-1
         // pi_view is |states| x |states| transition matrix with time t on rows and t-1 on columns (i.e. transposed)
@@ -400,7 +399,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
 //        cout << "performing observation multiplications" << endl;
 
         auto trans_done = Clock::now();
-        
+
         // for now incorporate the evidence sentence-by-sentence:
         for(int sent_ind = 0; sent_ind < sents.size(); sent_ind++){
             // not every sentence in the batch will need the full batch size
@@ -409,8 +408,8 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             }
 //            cout << "Processing sentence index " << sent_ind << endl;
             int token = sents[sent_ind][ind];
-                
-            // lex_column is |g| x 1 
+
+            // lex_column is |g| x 1
             array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
 //            if (sents[sent_ind].size() > 3){
 //                cout << "lex"<< endl;
@@ -462,7 +461,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
 //                cout << " ind "<< ind << " sent_ind " << sent_ind << "end log prob " << log10f(final_normalizer) << endl;
             }
         }
-        
+
         auto norm_done = Clock::now();
     }
 //    for (int i =0; i < sents[0].size(); i++){
@@ -483,7 +482,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
     int batch_size = sents.size();
     int batch_max_len = get_max_len(sents);
     // int prev_depth, next_f_depth, next_awa_depth;
-    //float sample_log_prob;//trans_prob, 
+    //float sample_log_prob;//trans_prob,
     // double t0, t1;
 //    array1d<float, device_memory> trans_slice;
     State sample_state;
@@ -499,12 +498,12 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
 //          cout << sent[token_ind] << " ";
 //        }
 //        cout << endl;
-       
+
         // Start with EOS
 //        if (sent.size() == 1) {
 //            sample_t = p_indexer->get_EOS_1wrd_full();
 //        } else {
-            sample_t = p_indexer->get_EOS_full(); 
+            sample_t = p_indexer->get_EOS_full();
 //        }
 
         for (int t = sent.size() - 1; t > -1; t --){
@@ -556,7 +555,7 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
     int g_max =  p_model -> g_max;
     int b_max = p_model -> b_max;
     get_row(pi->get_view(), sample_t, *trans_slice, pos_full_array, g_max, b_max);
-    // print(*trans_slice); 
+    // print(*trans_slice);
     // auto t12 = Clock::now();
     array2d<float, device_memory>::column_view dyn_prog_col = dyn_prog[t]->column(sent_ind);
     float dyn_prog_col_sum = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
@@ -599,7 +598,7 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
         // float temp_3 = un_normalized_sums[sample_t+1];
         // printf("%A\n", temp_3);
         // cout << "sample_t: " << sample_t << endl;
-        
+
     // }
     // cout << "backpass1reverseinner: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t12 - t11).count() * nano_to_sec << " s" << endl;
     // cout << "backpass1reverseinner: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t13 - t12).count() * nano_to_sec << " s" << endl;
@@ -625,8 +624,8 @@ std::tuple<std::vector<std::vector<State> >, std::vector<float>> HmmSampler::sam
         cerr << "Error in reverse sample: " << e.what() << endl;
         throw e;
     }
-    
-    
+
+
     return std::make_tuple(states, log_probs);
 }
 

@@ -49,5 +49,5 @@ newplot <- ggplot(data, aes(x=data[,xaxis],y=data[,yaxis])) +
 if (!is.na(tix)) {
     newplot <- newplot + ggtitle(title)
 }
-ggsave(filename=out, plot=newplot, width=4, height=2.25)
+ggsave(filename=out, plot=newplot, width=5, height=3)
 

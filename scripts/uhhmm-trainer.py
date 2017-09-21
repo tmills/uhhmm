@@ -51,6 +51,9 @@ def main(argv):
         with open(out_dir + "/config.ini", 'w') as configfile:
             config.write(configfile)
 
+    ## Write git hash of current branch to out directory
+    os.system('git rev-parse HEAD > %s/git-rev.txt' % (out_dir))
+
     input_file = config.get('io', 'input_file')
     working_dir = config.get('io', 'working_dir', fallback=out_dir)
     dict_file = config.get('io', 'dict_file')
@@ -72,9 +75,13 @@ def main(argv):
             if rand not in gold_seq.keys():
                 gold_seq[rand] = pos_seq[rand]
 
+    word_vecs = None
+    if 'word_vecs_file' in params:
+        word_vecs = io.read_word_vector_file(params.get('word_vecs_file'), io.read_dict_file(dict_file))
+
     (samples, stats) = uhhmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq),
-                                         lambda x: io.checkpoint(x, config), working_dir, pickle_file, gold_seq,
-                                         input_seqs_file=input_seqs_file, word_dict_file = dict_file)
+                                         lambda x: io.checkpoint(x,config), working_dir, pickle_file, gold_seq,
+                                         input_seqs_file=input_seqs_file, word_vecs=word_vecs,  word_dict_file = dict_file)
 
     if len(samples) > 0:
         io.write_output(samples[-1], stats, config, pos_seq)
@@ -82,6 +89,8 @@ def main(argv):
 
 def read_params(config):
     params = {}
+    for (key, val) in config.items('io'):
+        params[key] = val
     for (key, val) in config.items('params'):
         params[key] = val
 

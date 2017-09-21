@@ -33,9 +33,9 @@ def start_local_workers(host, jobs_port, results_port, models_port, maxLen, cpu_
     for i in range(0, cpu_workers+gpu_workers):
         if i >= gpu_workers:
             gpu = False
-            gpu_batch_size = 0 if gpu_workers > 0 else 1 
+            gpu_batch_size = 0 if gpu_workers > 0 else 1
         else:
-            gpu = True 
+            gpu = True
             gpu_batch_size = batch_size
 
         fs = PyzmqWorker.PyzmqWorker(host, jobs_port, results_port, models_port, maxLen, tid=i, gpu=gpu, batch_size=gpu_batch_size, level=logging.getLogger().getEffectiveLevel())
@@ -66,6 +66,10 @@ def main(args):
                     break
             else:
                 time.sleep(10)
+    else:
+        num_workers = 1
+        if len(args) >= 8:
+            num_workers = int(args[7])
 
     num_workers = 1
     if len(args) >= 8:
