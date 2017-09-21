@@ -173,12 +173,12 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         ## Add 1 to every start value for "Null/start" state
         inflated_num_abp = start_abp + 2
 
-    lex = None
-    if not word_vecs is None:
-        logging.info("Using word vectors as observations: Embedding matrix has %d entries, %d dimensions, max=%f and min=%f" % (word_vecs.shape[0], word_vecs.shape[1], word_vecs.max(), word_vecs.min()))
-        lex = GaussianModel((start_abp, word_vecs.shape[1]), word_vecs, name="Lex")
+        lex = None
+        if not word_vecs is None:
+            logging.info("Using word vectors as observations: Embedding matrix has %d entries, %d dimensions, max=%f and min=%f" % (word_vecs.shape[0], word_vecs.shape[1], word_vecs.max(), word_vecs.min()))
+            lex = GaussianModel((start_abp, word_vecs.shape[1]), word_vecs, name="Lex")
 
-## TODO: Look at how initialize_models works
+        ## TODO: Look at how initialize_models works
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, inflated_num_abp, lex=lex)
 
         if input_seqs_file is None:
@@ -209,7 +209,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             pcfg_replace_model(None, None, models, pcfg_model)
 
         sample.models = models
-        models.resample_all(decay, init=True)
+        #models.resample_all(decay, init=True)
         iter = 0
 
     else:

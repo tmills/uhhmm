@@ -90,7 +90,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                 if prev_state.a[d] == 0 or prev_state.b[d] == 0:
                     return indices, data, indices_full, data_full
 
-    cum_probs = np.zeros(2)
+    cum_probs = np.zeros(3)
     next_state = State.State(depth)
 
     # Populate previous state conditional dependencies
@@ -250,7 +250,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
 
                     logging.debug(' '.join(map(str,[prev_state.unfiltered_str(), '->', next_state.unfiltered_str(), cum_probs[2]])))
                     # the g is factored out
-                    range_probs = cum_probs[1] #* (models.pos.dist[b,:-1])
+                    range_probs = cum_probs[2] #* (models.pos.dist[b,:-1])
                     if full_pi:
                         if next_state.f == 0:
                             range_probs_full = cum_probs[2] * (np.ones_like(models.pos.dist[b, :-1]))
