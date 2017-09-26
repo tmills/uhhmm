@@ -79,7 +79,10 @@ def plot_multiple_chains(sample_chains, logprobs, burn_in=100):
         if i >= running_sum:
             cur_index += 1
             running_sum += num_sample_list[cur_index]
-        colors_per_point[i] = (cur_index+1) / num_chains  # one color per chain
+        if num_chains > 1:
+            colors_per_point[i] = (cur_index+1) / num_chains  # one color per chain
+        else:
+            colors_per_point[i] = i / total_samples
         # colors_per_point[i] = (i - sum(num_sample_list[:cur_index])) / num_sample_list[cur_index] #all colors in a chain for temporal
         markers[i] = all_markers[cur_index]
         if markers[i] != markers[i-1] or not markers:
