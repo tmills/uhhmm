@@ -151,7 +151,7 @@ class PCFG_model:
         self.unannealed_dists = {x: np.random.dirichlet(self.counts[x]) for x in self.counts}
         dists = {}
         if annealing_coeff != 1.0:
-            for x in dists:
+            for x in self.unannealed_dists:
                 dists[x] = self.unannealed_dists[x] ** annealing_coeff
             if normalize:
                 dists = {x: normalize_a_tensor(dists[x]) for x in dists}
