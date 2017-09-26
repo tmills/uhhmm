@@ -148,15 +148,15 @@ class PCFG_model:
         logging.info(
             "resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha, annealing_coeff))
         self.hypparam_log.write('\t'.join([str(x) for x in [self.iter, self.log_probs, self.alpha, annealing_coeff]]) + '\n')
-        self.unannealed_dists = {x: np.random.dirichlet(self.counts[x]) for x in self.counts}
         dists = {}
         if annealing_coeff != 1.0:
-            for x in self.unannealed_dists:
-                dists[x] = self.unannealed_dists[x] ** annealing_coeff
-            if normalize:
-                dists = {x: normalize_a_tensor(dists[x]) for x in dists}
+            anneal_counts = { x: self.counts[x] ** annealing_coeff for x in self.counts}
+            self.unannealed_dists = {x: np.random.dirichlet(anneal_counts[x]) for x in anneal_counts}
+            # if normalize:
+            #     dists = {x: normalize_a_tensor(dists[x]) for x in dists}
         else:
-            dists = self.unannealed_dists
+            self.unannealed_dists = {x: np.random.dirichlet(self.counts[x]) for x in self.counts}
+        dists = self.unannealed_dists
         # print(dists)
         # print(np.sum(dists[nltk.grammar.Nonterminal('1')], axis=0))
         self._log_dists(dists)
