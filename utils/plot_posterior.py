@@ -75,6 +75,7 @@ def plot_multiple_chains(sample_chains, logprobs, burn_in=100):
     # chain_colors = []
     chain_markers = []
     chain_labels= []
+    print('number of chains: ', num_chains)
     for i in range(total_samples):
         if i >= running_sum:
             cur_index += 1
