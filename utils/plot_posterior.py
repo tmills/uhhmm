@@ -185,6 +185,29 @@ def plot_multiple_chains(sample_chains, logprobs, burn_in=100):
     pp.close()
     plt.cla()
     plt.clf()
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    # num_sample_list.insert(0, 0)
+    print(num_sample_list, chain_markers)
+    for i in range(num_chains):
+        points = ax.scatter(bidigit_data_quad[sum(num_sample_list[:i]):sum(num_sample_list[:i+1]), 1], bidigit_data_quad[sum(num_sample_list[:i]):sum(num_sample_list[:i+1]), 2],
+                            # c=colors_per_point[sum(num_sample_list[:i]):sum(num_sample_list[:i+1])],
+                            c = 'b',
+                            s=np.ones_like(data_point_sizes[i]),
+                            marker='o', cmap=color_map
+                            , alpha=0.4, label='chain_'+str(i))
+    ax.set_xlabel('2nd Principle Component')
+    ax.set_ylabel('3rd Principle Component')
+    # ax.legend(patches, chain_labels)
+    ldg = ax.legend()
+    for handle in ldg.legendHandles:
+        handle._sizes = [30]
+    pp = PdfPages('chains_posterior_2d_nosize_notime' + '.pdf')
+    fig.savefig(pp, format='pdf')
+    pp.close()
+    plt.cla()
+    plt.clf()
     # fig = plt.figure()
     # ax = fig.add_subplot(111, projection='3d')
     # ax.plot_trisurf(bidigit_data_bi[:, 0], bidigit_data_bi[:, 1], data_point_sizes.reshape(-1))
