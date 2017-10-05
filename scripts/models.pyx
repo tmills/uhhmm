@@ -204,6 +204,9 @@ cdef class CategoricalModel(Model):
         m_copy.dist = self.dist.copy()
         return m_copy
 
+    def write_model(self, out_file, word_dict):
+        return
+
     def __reduce__(self):
         #logging.info("Reduced called")
         d = {}

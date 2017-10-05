@@ -7,6 +7,8 @@ from init_pcfg_strategies import *
 import logging
 import math
 from pcfg_model import PCFG_model, normalize_a_tensor
+from models import CategoricalModel
+
 """
 this file is for translating sequences of states to pcfg counts and back to uhhmm counts
 the main function is translate_through_pcfg
@@ -329,7 +331,6 @@ def pcfg_replace_model(hid_seq, ev_seq, models, pcfg_model, inc=1, J=25, normali
     d = len(models.A)
     d = d + 1  # calculate d+1 depth models for all pseudo count models, but not using them in _inc_counts
     abp_domain_size = models.A[0].dist.shape[0] - 2
-    lex_size = models.lex.dist.shape[-1]
     if not hid_seq and not ev_seq: # initialization without any parses
         pcfg_counts = {}
     elif not gold_pcfg_file and not strategy: # normal sampling
@@ -370,14 +371,17 @@ def pcfg_replace_model(hid_seq, ev_seq, models, pcfg_model, inc=1, J=25, normali
     _replace_model(models.pos, pseudo_P, inc, add_noise, noise_sigma)
     # print(_calc_p_model((gamma_star, preterm_marginal_distr),d,abp_domain_size, normalize))
     # print("W")
-    pseudo_W = _calc_w_model(sampled_pcfg, abp_domain_size, lex_size, normalize)
-    _replace_model(models.lex, pseudo_W, inc, add_noise, noise_sigma)
+    if isinstance(models.lex, CategoricalModel):
+        lex_size =  models.lex.dist.shape[-1]
+        pseudo_W = _calc_w_model(sampled_pcfg, abp_domain_size, lex_size, normalize)
+        _replace_model(models.lex, pseudo_W, inc, add_noise, noise_sigma)
+
     # print(_calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize))
-    logging.info("TOTAL COUNTS FOR ALL MODELS IN PCFG REACCOUNTS F {}, J {}, A {}, B[J0] {}, B[J1] {}, P {}, W {}"
+    logging.info("TOTAL COUNTS FOR ALL MODELS IN PCFG REACCOUNTS F {}, J {}, A {}, B[J0] {}, B[J1] {}, P {}" #", W {}"
           .format(np.sum(pseudo_F[:-1]), np.sum(pseudo_J[:-1]),
                   np.sum(pseudo_A[:-1]), np.sum(pseudo_B[0][:-1]),
-                  np.sum(pseudo_B[1][:-1]), np.sum(pseudo_P[:-1])
-                  , np.sum(pseudo_W[:-1])))
+                  np.sum(pseudo_B[1][:-1]), np.sum(pseudo_P[:-1])))
+                  #, np.sum(pseudo_W[:-1])))
 
 # annealing follows this schedule
 # for anneal_likelihood_phase amount of iters, the temperature goes down by the amount that is
