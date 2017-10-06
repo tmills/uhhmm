@@ -150,8 +150,8 @@ class PCFG_model:
         self.hypparam_log.write('\t'.join([str(x) for x in [self.iter, self.log_probs, self.alpha, annealing_coeff]]) + '\n')
         dists = {}
         if annealing_coeff != 1.0:
-            anneal_counts = { x: self.counts[x] * annealing_coeff for x in self.counts}
-            self.unannealed_dists = {x: np.random.dirichlet(anneal_counts[x]) for x in anneal_counts}
+            anneal_counts = { x: (self.counts[x] - self.alpha) * annealing_coeff for x in self.counts}
+            self.unannealed_dists = {x: np.random.dirichlet(anneal_counts[x] + self.alpha) for x in anneal_counts}
             # if normalize:
             #     dists = {x: normalize_a_tensor(dists[x]) for x in dists}
         else:
