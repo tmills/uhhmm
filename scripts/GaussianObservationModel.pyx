@@ -27,10 +27,11 @@ cdef class GaussianObservationModel(PosDependentObservationModel.PosDependentObs
         token_vec = self.lex.embeddings[token]
 
         retVec = [-np.inf]
-        for g in range(1,g_max-1):
+        for g in range(1,self.lex.shape[0]-1):
+            #print("Computing probability for pos index %d" % (g))
             log_prob = 0.0
             ## Vectorizing:
-            #print("From mean vector: ", self.lex.dist[g].mean())
+            #print("From mean vector index %d : %s " % (g, str(self.lex.dist[g].mean())))
             vec_prob = self.lex.dist[g].pdf(token_vec)
             if vec_prob.min() <= 0.0:
                 print("Found vector with minimum at 0: ", vec_prob)
@@ -39,7 +40,7 @@ cdef class GaussianObservationModel(PosDependentObservationModel.PosDependentObs
                 print("Found nan in log probs: ", vec_log_prob)
                 print("From mean vector: ", self.lex.dist[g].mean())
                 print("Sampled probs:, ", vec_prob)
-                
+
             #print("Sampled probs:, ", vec_prob)
             retVec.append(vec_log_prob)
 

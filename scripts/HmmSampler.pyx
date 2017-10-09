@@ -73,7 +73,7 @@ cdef class HmmSampler(Sampler.Sampler):
         self.models = models[0]
         unlog_models(self.models)
         #self.lexMatrix = np.matrix(self.models.lex.dist, copy=False)
-        self.depth = len(self.models.fj)
+        self.depth = len(self.models.F)
         self.indexer = Indexer.Indexer(self.models)
 
         #g_len = self.models.pos.dist.shape[1]
@@ -155,7 +155,7 @@ cdef class HmmSampler(Sampler.Sampler):
                     forward[index,:] =  exponentiated / exponentiated.sum()
                     normalizer = exponentiated.sum()
                 else:
-                    #print("Received regular probs from obs model: ", lex_prob)
+                    print("Received regular probs from obs model: ", lex_prob)
                     ## Original way of incorporating lex probs, if observation
                     ## model passed back a standard probability:
                     forward[index,:] = np.multiply(forward[index,:], lex_prob)
@@ -201,7 +201,7 @@ cdef class HmmSampler(Sampler.Sampler):
             sample_log_prob = 0
             maxes = self.indexer.getVariableMaxes()
             totalK = self.indexer.get_state_size()
-            depth = len(self.models.fj)
+            depth = len(self.models.F)
 
             ## Normalize and grab the sample from the forward probs at the end of the sentence
             last_index = len(sent)-1
@@ -326,17 +326,15 @@ cdef int old_get_sample(np.ndarray dist):
             return i
 
 def unlog_models(models):
-    depth = len(models.fj)
+    depth = len(models.F)
     for d in range(0, depth):
-        models.fj[d].dist = 10**models.fj[d].dist
+        models.F[d].dist = 10**models.F[d].dist
+        models.J[d].dist = 10**models.J[d].dist
 
-        models.act[d].dist = 10**models.act[d].dist
-        models.root[d].dist = 10**models.root[d].dist
+        models.A[d].dist = 10**models.A[d].dist
 
-        models.cont[d].dist = 10**models.cont[d].dist
-        models.exp[d].dist = 10**models.exp[d].dist
-        models.next[d].dist = 10**models.next[d].dist
-        models.start[d].dist = 10**models.start[d].dist
+        models.B_J0[d].dist = 10**models.B_J0[d].dist
+        models.B_J1[d].dist = 10**models.B_J1[d].dist
 
     models.pos.dist = 10**models.pos.dist
     if type(models.lex.dist).__name__ == 'ndarray':

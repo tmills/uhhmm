@@ -176,7 +176,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         lex = None
         if not word_vecs is None:
             logging.info("Using word vectors as observations: Embedding matrix has %d entries, %d dimensions, max=%f and min=%f" % (word_vecs.shape[0], word_vecs.shape[1], word_vecs.max(), word_vecs.min()))
-            lex = GaussianModel((start_abp, word_vecs.shape[1]), word_vecs, name="Lex")
+            lex = GaussianModel((inflated_num_abp, word_vecs.shape[1]), word_vecs, name="Lex")
 
         ## TODO: Look at how initialize_models works
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, inflated_num_abp, lex=lex)

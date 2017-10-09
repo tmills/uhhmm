@@ -364,7 +364,7 @@ genmodel/%.morf.model: %.txt genmodel
 
 # Generates linetrees from UHHMM sample output and renames the file
 # appropriately for use with syneval
-%.uhhmm.linetrees: last_sample$$(subst .,,$$(suffix %)).brackets$$(subst $$(word 1, $$(subst ., , $$*)),,$$(basename $$*)).linetrees
+%.uhhmm.linetrees: last_sample$$(subst .,,$$(suffix %)).linetrees
 	cat $< > $@
 
 %.uhhmm.fjabpmodel: $(SCRIPTS)/uhhmmModel2condModel.py p_act_act_$$(subst .,,$$(suffix %)).txt p_act_root_$$(subst .,,$$(suffix %)).txt p_awa_cont_$$(subst .,,$$(suffix %)).txt \
@@ -394,7 +394,7 @@ p_lex_given_pos$$(subst .,,$$(suffix %)).txt p_pos_$$(subst .,,$$(suffix %)).txt
   
 # Generates a space-delimited table of recall measures by iteration
 # for each sample file in the user-supplied project directory
-/%.uhhmm-iter.constitevallist: $(SCRIPTS)/iters2constitevallist.py $$(foreach file, $$(wildcard $$(dir /%)last_sample*txt), /$$(basename $$(basename $$*)).$$(notdir $$(basename $$(basename $$*)))-$$(subst last_sample,,$$(basename $$(notdir $$(file))))-$$(subst .,,$$(suffix $$(basename $$*)))$$(suffix $$*).constiteval.txt) 
+/%.uhhmm-iter.constitevallist: $(SCRIPTS)/iters2constitevallist.py $$(foreach file, $$(wildcard $$(dir /%)last_sample*linetrees), /$$(basename $$(basename $$*)).$$(notdir $$(basename $$(basename $$*)))-$$(subst last_sample,,$$(basename $$(notdir $$(file))))-$$(subst .,,$$(suffix $$(basename $$*)))$$(suffix $$*).constiteval.txt) 
 	python $^ > $@
 
 # Because of oddities in how Make handles wildcard expansion in prereqs,
@@ -405,8 +405,6 @@ p_lex_given_pos$$(subst .,,$$(suffix %)).txt p_pos_$$(subst .,,$$(suffix %)).txt
 .PRECIOUS: %.logprob_curve.jpg
 %.logprob_curve.jpg: $(SCRIPTS)/plot_curve.r $$(dir %)logprobs.txt
 	$^ -x Iteration -y 'Log Probability' -o $@
-
-%.plots: %.learning_curves %.logprob_curve.jpg;
 
 # Generates several learning curve plots for UHHMM output
 # by iteration as compared to a constituency gold standard.
@@ -419,4 +417,4 @@ p_lex_given_pos$$(subst .,,$$(suffix %)).txt p_pos_$$(subst .,,$$(suffix %)).txt
 #
 # Output will be saved in *.jpg files contained in the target directory.
 #
-%.uhhmm_learning_curves: %.learning_curves %.logprobs.jpg;
+%.plots: %.learning_curves %.logprob_curve.jpg;
