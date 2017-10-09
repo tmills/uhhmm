@@ -443,7 +443,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                                                                                                             anneal_length))
             logging.info("The log prob for this iter is {}".format(acc_logprob))
             pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, sample_alpha_flag=sample_alpha_flag)
-        elif super_cooling and super_cooling_start_iter >= iter:
+        elif super_cooling and super_cooling_start_iter <= iter:
             cur_cooling_iter = iter - super_cooling_start_iter
             ac_coeff = calc_simulated_annealing(cur_cooling_iter, super_cooling_length, 1,
                                                 super_cooling_target_ac)

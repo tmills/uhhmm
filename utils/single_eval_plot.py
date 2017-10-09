@@ -191,7 +191,10 @@ hyperparams = pandas.read_table(os.path.join(last_sample_folder, 'pcfg_hypparams
 fig, ax = plt.subplots()
 all_results[0].append('logprob')
 x_data = hyperparams.iter[burn_in:first_n_iter]
-if len(x_data) != len(output_last_samples):
+if len(x_data) > len(output_last_samples):
+    burn_in = burn_in + 1
+    x_data = hyperparams.iter[burn_in:first_n_iter]
+elif len(x_data) < len(output_last_samples):
     burn_in = burn_in - 1
     x_data = hyperparams.iter[burn_in:first_n_iter]
 assert len(x_data) == len(output_last_samples), str(len(x_data)) + ' ' + str(len(output_last_samples))
@@ -246,6 +249,7 @@ def calc_branching_score(t):
     return l_branch, r_branch
 
 def calc_phrase_stats(f_name, prec_thres=0.6):
+    eps = 1e-6
     l_branch = 0
     r_branch = 0
     current_counters = []
@@ -296,7 +300,8 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
             acc_num = sum((tree_counter & gold_counters[phrase_cat][index_tree]).values())
             nolabel_recalls[index] += acc_num
 
-    nolabel_recalls = [ x / phrases_lengths[index] for index, x in enumerate(nolabel_recalls)]
+    nolabel_recalls = [ x / phrases_lengths[index] if phrases_lengths[index]
+                        != 0  else 0 for index, x in enumerate(nolabel_recalls)]
 
     for index_tree, tree_counter in enumerate(current_counters):
         for cat, cat_counter in tree_counter.items():
@@ -317,7 +322,7 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
     for index, phrase_cat in enumerate(phrases):
         for cat, cat_acc in total_acc_number[index].items():
             prec = cat_acc / total_hyp_cat_number[index][cat]
-            rec = cat_acc / phrases_lengths[index]
+            rec = cat_acc / phrases_lengths[index] if phrases_lengths[index] != 0 else 0
             f1 = 0 if prec == 0 or rec == 0 else 1.0 / (0.5 / prec + (0.5 / rec))
             performances[index].append(Performance(cat, prec, rec, f1))
 
@@ -340,7 +345,7 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
                 acc_num = sum([ total_acc_number[index][cat] for cat in this_best_aggregate_scores_index[index] + [best_cat.id]])
                 total_num = sum([total_hyp_cat_number[index][cat] for cat in this_best_aggregate_scores_index[index] + [best_cat.id]])
                 prec = acc_num / total_num
-                rec = acc_num / phrases_lengths[index]
+                rec = acc_num / phrases_lengths[index] if phrases_lengths[index] != 0 else 0
                 f1 = 0 if (prec == 0 or rec == 0 ) else 1.0 / (0.5 / prec + (0.5 / rec))
                 # if best_cat_index == 0:
                 #     assert f1 == this_best_aggregate_scores[index], "{}, {}, {}， {}".format(prec, rec, f1, this_best_aggregate_scores[index])
