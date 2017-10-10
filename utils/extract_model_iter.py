@@ -1,6 +1,14 @@
 import argparse
 import operator
 import os
+
+# this script is used for converting one model from the DBPCFG system to a format that synproc uses
+# example command: python utils/extract_model_iter.py --iter 1000 --output-path outputs/abcabab_anneal6
+# --iter provides the iteration index for the model
+# --output-path provides the path where the model files live (pcfg_term and pcfg_nonterm)
+# the output model file will be in the same folder as the output-path, and will be named
+# pcfg_model_iterNNNN.txt
+
 argparser = argparse.ArgumentParser()
 
 argparser.add_argument('--iter', required=True, type=int, help='the iter number for the model')
