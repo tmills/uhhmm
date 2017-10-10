@@ -50,4 +50,4 @@ pcfg.sort(key=operator.itemgetter(0, 3), reverse=True)
 
 with open(output_file_path, 'w') as out:
     for rule in pcfg:
-        print('G {} : {} {} = {}'.format(*rule), file=out)
+        print('G\t{}\t:\t{}\t{}\t=\t{}'.format(*rule), file=out)
