@@ -12,5 +12,6 @@ with open(fn) as i, open(fn+'.proper', 'w') as o:
             if word.startswith('(') and word.endswith(')'):
                 continue
             else:
-                line = line.replace(word, '(X ' + word + ')')
+                line = line.replace(word, '(' + word + ')')
+        line = re.sub('\(\s+', '\(X ', line)
         print(line, file=o)
