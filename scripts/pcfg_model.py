@@ -28,6 +28,8 @@ class PCFG_model:
         self.hypparams_log_path = os.path.join(log_dir, 'pcfg_hypparams.txt')
         self.word_dict = self._read_word_dict_file(word_dict_file)
         self.log_probs = 0
+        self.counts = {}
+        self.annealed_counts = {}
 
     def set_log_mode(self, mode):
         self.log_mode = mode  # decides whether append to log or restart log
@@ -150,11 +152,12 @@ class PCFG_model:
         self.hypparam_log.write('\t'.join([str(x) for x in [self.iter, self.log_probs, self.alpha, annealing_coeff]]) + '\n')
         dists = {}
         if annealing_coeff != 1.0:
-            anneal_counts = { x: (self.counts[x] - self.alpha) * annealing_coeff for x in self.counts}
-            self.unannealed_dists = {x: np.random.dirichlet(anneal_counts[x] + self.alpha) for x in anneal_counts}
+            self.anneal_counts = { x: (self.counts[x] - self.alpha) * annealing_coeff for x in self.counts}
+            self.unannealed_dists = {x: np.random.dirichlet(self.anneal_counts[x] + self.alpha) for x in self.anneal_counts}
             # if normalize:
             #     dists = {x: normalize_a_tensor(dists[x]) for x in dists}
         else:
+            self.anneal_counts = self.counts
             self.unannealed_dists = {x: np.random.dirichlet(self.counts[x]) for x in self.counts}
         dists = self.unannealed_dists
         # print(dists)

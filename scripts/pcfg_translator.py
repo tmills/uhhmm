@@ -80,8 +80,13 @@ def extract_counts(trees, abp_domain_size):
     pcfg = {}
     top_cat = nltk.grammar.Nonterminal('0')
     zero_lexical = nltk.grammar.Production(top_cat, ('-ROOT-',))
+    l_branches = 0
+    r_branches = 0
     for tree in trees:
         # rules = _extract_counts_single_tree(tree, nonterms)
+        l_branch, r_branch = calc_branching_score(tree)
+        l_branches += l_branch
+        r_branches += r_branch
         top_node = tree.label()
         top_rule = nltk.grammar.Production(top_cat, (nltk.grammar.Nonterminal(top_node), top_cat))
         pcfg_rules = tree.productions() + [top_rule, zero_lexical]
@@ -94,6 +99,8 @@ def extract_counts(trees, abp_domain_size):
         total = sum(pcfg[lhs].values())
         for rhs in pcfg[lhs]:
             pcfg[lhs][rhs] /= total
+    if r_branches / (l_branches + r_branches) > 0.95:
+        logging.warning('VERY RIGHT BRANCHING GRAMMAR DETECTED!!')
     return pcfg, pcfg_counts
 
 def _build_nonterminals(abp_domain_size):
@@ -397,6 +404,18 @@ def calc_simulated_annealing(cur_anneal_iter, length_of_annealing, init_ac_coeff
         return 1
     return ac_coeffecient
 
+# used in calc right branching warning.
+def calc_branching_score(t):
+    r_branch = 0
+    l_branch = 0
+    for position in t.treepositions():
+        # print(t[position])
+        if not (isinstance(t[position],str) or isinstance(t[position][0],str)):
+            if len(t[position][0]) == 2:
+                l_branch += 1
+            if len(t[position][1]) == 2:
+                r_branch += 1
+    return l_branch, r_branch
 
 def main():
     tree = ["-::ACT0/AWA0::+::POS1::1 -::ACT1/AWA1::+::POS1::1 +::ACT1/AWA1::-::POS1::2",
