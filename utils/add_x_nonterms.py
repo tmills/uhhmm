@@ -7,7 +7,7 @@ fn = sys.argv[1]
 
 with open(fn) as i, open(fn+'.proper', 'w') as o:
     for line in i:
-        all_words = re.findall('\(?[^\(\)\s]+\)?', line)
+        all_words = re.findall('[\s\(]+[^\(\)\s]+[\)\s]+', line)
         for word in all_words:
             if word.startswith('(') and word.endswith(')'):
                 continue
