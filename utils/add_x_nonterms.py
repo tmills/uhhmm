@@ -7,5 +7,10 @@ fn = sys.argv[1]
 
 with open(fn) as i, open(fn+'.proper', 'w') as o:
     for line in i:
-        line = re.sub('\(\s*', '(X ', line)
+        all_words = re.findall('\(?[^\(\)\s]+\)?', line)
+        for word in all_words:
+            if word.startswith('(') and word.endswith(')'):
+                continue
+            else:
+                line = line.replace(word, '(X ' + word + ')')
         print(line, file=o)
