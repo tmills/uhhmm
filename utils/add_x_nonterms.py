@@ -14,4 +14,4 @@ with open(fn) as i, open(fn+'.proper', 'w') as o:
             else:
                 line = line.replace(word, '(' + word + ')')
         line = re.sub('\(\s*', '(X ', line)
-        print(line, file=o)
+        o.write(line, file=o)
