@@ -18,6 +18,7 @@ class PCFG_model:
         self.size = len(self.indices_keys)
         self.alpha_range = []
         self.alpha = 0
+        self.counts = {}
         self.init_counts()
         self.unannealed_dists = {}
         self.log_dir = log_dir
@@ -28,7 +29,6 @@ class PCFG_model:
         self.hypparams_log_path = os.path.join(log_dir, 'pcfg_hypparams.txt')
         self.word_dict = self._read_word_dict_file(word_dict_file)
         self.log_probs = 0
-        self.counts = {}
         self.annealed_counts = {}
 
     def set_log_mode(self, mode):
@@ -53,7 +53,7 @@ class PCFG_model:
             self.term_log.write('\t'.join(term_header) + '\n')
         self.hypparam_log = open(self.hypparams_log_path, self.log_mode)
         if self.log_mode == 'w':
-            self.hypparam_log.write('iter\tlogprob\talpha\tac\n')
+            self.hypparam_log.write('iter\tlogprob\talpha\P5oiNoVQAZp9tac\n')
 
     def _log_dists(self, dists):
         non_term_header = [self.iter, ]
