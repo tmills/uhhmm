@@ -6,6 +6,7 @@ import numpy as np
 import os.path
 import sys
 from PyzmqMessage import ModelWrapper
+from models import CategoricalModel
 import scipy.sparse
 from FullDepthCompiler import FullDepthCompiler, unlog_models, relog_models
 import pickle
@@ -123,7 +124,11 @@ class DistributedModelCompiler(FullDepthCompiler):
         pi = pi.tocsc()
         row_indices = list(itertools.product(range(b_max), repeat=self.depth))
         if self.gpu == True:
-            lex_dist = 10**(models.lex.dist.astype(np.float32))
+            if isinstance(models.lex, CategoricalModel):
+                lex_dist = 10**(models.lex.dist.astype(np.float32))
+            else:
+                lex_dist = models.lex.dist
+
             pos_dist = models.pos.dist
             pos_dist[:, -1].fill(0)
             pos_dist[-1, :].fill(0)

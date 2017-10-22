@@ -18,6 +18,7 @@
 #include "cusp/elementwise.h"
 #include "cusp/functional.h"
 #include "cusp/print.h"
+#include "obs_models.h"
 #include "myarrays.cu"
 #include "Indexer.cu"
 #include "State.cu"
@@ -57,6 +58,54 @@ Model::~Model(){
 
 int Model::get_depth(){
     return depth;
+}
+
+Sparse * tile(int g_len, int state_size);
+void PosDependentObservationModel::set_models(Model * models){
+    cout << "PosDependenctObsModel::set_models called" << endl;
+    p_indexer = new Indexer(models);
+    // this function is in HmmSampler.cu. Need to figure out a way to get
+    // them in touch.
+    lexMultiplier = tile(models->g_max, p_indexer->get_state_size());
+    cout << "PosDependentObsModel::set_models done" << endl;
+}
+
+Array * PosDependentObservationModel::get_probability_vector(int token){
+    cout << "PosDependenctObsModel::get_prob_vec called" << endl;
+    array2d<float, device_memory>::column_view posProbs = get_pos_probability_vector(token);
+    Array * retVal = new Array(0.0, p_indexer->get_state_size());
+    multiply(*lexMultiplier, posProbs, *retVal);
+    cout << "PosDependenctObsModel::get_prob_vec done." << endl;
+    return retVal;
+}
+
+void CategoricalObservationModel::set_models(Model * models){
+    cout << "CatObsModel::set_models called" << endl;
+    PosDependentObservationModel::set_models(models);
+    lexMatrix = models -> lex;
+    cout << "CatObsModel::set_models done" << endl;
+}
+
+array2d<float, device_memory>::column_view CategoricalObservationModel::get_pos_probability_vector(int token){
+    cout << "CatObsModel::get_pos_prob called" << endl;
+    array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
+    array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
+    cout << "CatObsModel::get_pos_prob returning" << endl;
+    return lex_column;
+}
+
+void GaussianObservationModel::set_models(Model * models){
+    cout << "GaussianObsModel::set_models called" << endl;
+    PosDependentObservationModel::set_models(models);
+    cout << "GaussianObsModel::set_models done" << endl;
+}
+
+array2d<float, device_memory>::column_view GaussianObservationModel::get_pos_probability_vector(int token){
+    cerr << "Error: This is not implemented yet!" << endl;
+    array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
+    array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
+    cout << "CatObsModel::get_pos_prob returning" << endl;
+    return lex_column;
 }
 
 // taken away the new tensor
@@ -184,8 +233,6 @@ void get_row(csr_matrix_view<IndexArrayView, IndexArrayView, ValueArrayView>* s,
 Array* pos_full_array, int g_max, int b_max){
     blas::fill(result, 0.0f);
     int pi_row_index = i / g_max;
-    int b_index = pi_row_index % b_max;
-    int g_index = i % g_max;
 //    cout <<"get row in"<< endl;
 //    cout << pi_row_index << "pi row index" << endl;
     if (s->row_offsets[pi_row_index] - s->row_offsets[pi_row_index+1] != 0){
@@ -249,17 +296,11 @@ void HmmSampler::set_models(Model * models){
     //    lexMatrix = NULL;
     //}
 
-    lexMatrix = p_model -> lex;
     // print(*(lexMatrix->get_view()));
     // exp_array(lexMatrix->get_view()->values); // exp the lex dist // the gpu models are not logged, should not need this
 //     cout << "set_models 5" << endl;
     pos_matrix = p_model -> pos;
 //    cusp::print(*pos_matrix);
-    if (lexMultiplier != NULL){
-        delete lexMultiplier;
-        lexMultiplier = NULL;
-    }
-    lexMultiplier = tile(g_len, p_indexer->get_state_size());
 //    cout << "set_models 6" << endl;
     expand_mat = expand(g_len, p_indexer->get_state_size());
 //    cout << "set_models 7" << endl;
@@ -367,7 +408,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
     // np_sents is |batches| x max_len
     Dense* np_sents = get_sentence_array(sents, batch_max_len);
 
-    array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
+    //array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
 //    cout << "Forward in 2 " << endl;
     // initialize likelihood vector:
     for(int sent_ind = 0; sent_ind < sents.size(); sent_ind++){
@@ -410,45 +451,28 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             int token = sents[sent_ind][ind];
 
             // lex_column is |g| x 1
-            array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
-//            if (sents[sent_ind].size() > 3){
-//                cout << "lex"<< endl;
-//                print(lex_column);
-//            }
-//             cout << "6" << endl;
-            // lexMultiplier is state_size x |g|, expanded_lex is state_size x 1
-//             cout << "Multiplying lex multiplier by lex column" << endl;
-//            cout << "lex column" << endl;
-//            print(lex_column);
-            multiply(* lexMultiplier, lex_column, * expanded_lex);
-//            if (sents[sent_ind].size() > 3){
-//                cout << "expanded lex" << endl;
-//                print(*expanded_lex);
-//            }
+            //array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
 
-//             cout << "lex finished" << endl;
+            //             cout << "Multiplying lex multiplier by lex column" << endl;
+
+            // lexMultiplier is state_size x |g|, expanded_lex is state_size x 1
+            //multiply(* lexMultiplier, lex_column, * expanded_lex);
+
+
             // dyn_prog_row is 1 x state_size
             // dyn_prog_column is state_size x 1
             array2d<float, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
-//             cout << "Multiplying expanded_lex by dyn prog row" << endl;
-//            vector<int> v = {8, 19406, 24314, 26426};
-//            if (sents[sent_ind].size() > 3 && ind < 4){
-//                cout << "column view" << endl;
-//                cout << "ind" << ind << " " << dyn_prog_col[v[ind]] << endl;
-//                cout << "lex" << ind << " " << (*expanded_lex)[v[ind]] << endl;
-//                cout << "pos" << ind << " " << (*pos_full_array)[v[ind]] << endl;
-//            }
+            
+            Array * expanded_lex = obs_model->get_probability_vector(token); 
             blas::xmy(*expanded_lex, dyn_prog_col, dyn_prog_col);
 //             cout << "Computing normalizer" << endl;
             normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
 //             cout << "Normalizing over col with result: " << normalizer << endl;
 //            cout << "Scaling by normalizer" << endl;
             blas::scal(dyn_prog_col, 1.0f/normalizer);
-//            cout << "normed column" << endl;
-//            print(dyn_prog_col);
-//                cout << "Adding logged normalizer to sentence logprobs" << endl;
+
             log_probs[sent_ind] += log10f(normalizer);
-//            cout << " ind "<< ind << " sent_ind " << sent_ind << " token " << token << " log prob " << log10f(normalizer) << " " << normalizer << endl;
+
             if (sents[sent_ind].size() - 1 == ind){
                 int EOS = p_indexer -> get_EOS_full();
 //                cout << EOS << endl;
@@ -478,7 +502,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
     std::vector<std::vector<State>> sample_seqs;
     std::vector<State> sample_seq;
     std::vector<int> sample_t_seq;
-    int last_index, sample_t, sample_depth; // , t, ind; totalK, depth,
+    int sample_t; // , t, ind; totalK, depth,
     int batch_size = sents.size();
     int batch_max_len = get_max_len(sents);
     // int prev_depth, next_f_depth, next_awa_depth;
@@ -629,17 +653,23 @@ std::tuple<std::vector<std::vector<State> >, std::vector<float>> HmmSampler::sam
     return std::make_tuple(states, log_probs);
 }
 
-HmmSampler::HmmSampler() : seed(std::time(0)){
-    mt.seed(seed);
-}
 
-HmmSampler::HmmSampler(int seed) : seed(seed){
+HmmSampler::HmmSampler() : HmmSampler(std::time(0), ModelType::CATEGORICAL_MODEL){ }
+HmmSampler::HmmSampler(int seed) : HmmSampler(seed, ModelType::CATEGORICAL_MODEL) { }
+HmmSampler::HmmSampler(int seed, ModelType model_type) : seed(seed){
     if (seed == 0){
         mt.seed(std::time(0));
     } else{
         mt.seed(seed);
     }
+
+    if (model_type == ModelType::CATEGORICAL_MODEL) {
+        obs_model = new CategoricalObservationModel();
+    }else if(model_type == ModelType::GAUSSIAN_MODEL) {
+        obs_model = new GaussianObservationModel();
+    }
 }
+
 HmmSampler::~HmmSampler(){
     if(dyn_prog != NULL){
         for(int i = 0; i < max_sent_len; i++){
@@ -653,7 +683,7 @@ HmmSampler::~HmmSampler(){
     delete p_indexer;
     //delete lexMatrix;
     //delete dyn_prog;
-    delete lexMultiplier;
+    //delete lexMultiplier;
     //delete pi;
     delete trans_slice;
     //delete expanded_lex;
@@ -661,5 +691,5 @@ HmmSampler::~HmmSampler(){
     delete expand_mat;
     delete dyn_prog_part;
     delete pos_full_array;
-
+    delete obs_model;
 }

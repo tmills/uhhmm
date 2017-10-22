@@ -11,6 +11,23 @@ cdef extern from "HmmSampler.h":
         Model(int, int, float*, int, int*, int, int*, int, float*, int, int, int, int, int, int, int, float*, int, int) except +
         int get_depth()
 
+cdef extern from "HmmSampler.h":
+    cdef cppclass ModelType:
+        pass
+
+cdef extern from "HmmSampler.h" namespace "ModelType":
+    cdef ModelType CATEGORICAL_MODEL
+    cdef ModelType GAUSSIAN_MODEL
+ 
+cdef class PyModelType:
+    cdef ModelType thisobj
+    def __cinit__(self, int val):
+        self.thisobj = <ModelType> val
+
+    def get_model_type(self):
+        cdef c = {<int>CATEGORICAL_MODEL : "CATEGORICAL_MODEL", <int>GAUSSIAN_MODEL : "GAUSSIAN_MODEL"}
+        return c[<int>self.thisobj]
+ 
 cdef class GPUModel:
     cdef Model* c_model
     def __cinit__(self, models):
@@ -72,6 +89,7 @@ cdef extern from "HmmSampler.h":
     cdef cppclass HmmSampler:
         HmmSampler() except +
         HmmSampler(int seed) except +
+        HmmSampler(int seed, ModelType model_type) except +
         void set_models(Model*)
         void initialize_dynprog(int, int)
         vector[float] forward_pass(vector[vector[int]], int)

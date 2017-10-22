@@ -51,7 +51,7 @@ int Indexer::get_EOS_full(){
 //    return 3*state_size / 4;
 //}
 tuple<int, vector<int>, vector<int>, int, int> Indexer::extractStacks(int index){
-    int fj_ind, a_ind, b_ind, g, f, j; //max_d, f_val,j_val, 
+    int a_ind, b_ind, g, f, j; //max_d, f_val,j_val, 
     auto result = unravel_index(index, stack_dims);
     j = result[0];
     a_ind = result[1];
@@ -81,4 +81,3 @@ State Indexer::extractState(int index){
     state.g = g;
     return state;
 }
-

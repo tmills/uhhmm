@@ -1,4 +1,3 @@
-
 #ifndef HmmSampler_hpp
 #define HmmSampler_hpp
 
@@ -10,6 +9,7 @@
 #include <vector>
 #include <tuple>
 #include <random>
+//#include "obs_models.h"
 //#include "State.h"
 //using namespace cusp;
 
@@ -22,13 +22,14 @@ class Dense;
 class Array;
 class Sparse;
 class Indexer;
+class ObservationModel;
 //state class
 class State{
 public:
     State();
     State(int d);
     State(int d, State state);
-    
+
     int max_awa_depth();
     int max_act_depth();
     bool depth_check();
@@ -73,9 +74,11 @@ public:
     Array* pos;
 };
 
+enum class ModelType { CATEGORICAL_MODEL, GAUSSIAN_MODEL };
 
 class HmmSampler{
 public:
+    HmmSampler(int seed, ModelType model_type);
     HmmSampler(int seed);
     HmmSampler();
     ~HmmSampler();
@@ -94,11 +97,11 @@ private:
     Array* make_pos_full_array(Array* pos_matrix ,int g_max, int b_max, int depth, int state_size);
     Model * p_model = NULL;
     Indexer * p_indexer = NULL;
-    DenseView* lexMatrix = NULL;
+    //DenseView* lexMatrix = NULL;
     Dense** dyn_prog = NULL;
     //std::vector<Dense*> dyn_prog;
     Dense* start_state = NULL;
-    Sparse* lexMultiplier = NULL;
+    //Sparse* lexMultiplier = NULL;
     SparseView* pi = NULL;
     Array* trans_slice = NULL;
     Array* pos_matrix = NULL;
@@ -108,6 +111,7 @@ private:
     Array* expanded_lex = NULL;
     Array* sum_dict = NULL;
     Array* pos_full_array = NULL;
+    ObservationModel* obs_model = NULL;
     std::mt19937 mt;
     std::uniform_real_distribution<float> dist{0.0f,1.0f};
     int max_sent_len = 0;
