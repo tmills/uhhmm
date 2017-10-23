@@ -53,7 +53,7 @@ class PCFG_model:
             self.term_log.write('\t'.join(term_header) + '\n')
         self.hypparam_log = open(self.hypparams_log_path, self.log_mode)
         if self.log_mode == 'w':
-            self.hypparam_log.write('iter\tlogprob\talpha\P5oiNoVQAZp9tac\n')
+            self.hypparam_log.write('iter\tlogprob\talpha\tac\n')
 
     def _log_dists(self, dists):
         non_term_header = [self.iter, ]
