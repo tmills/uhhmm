@@ -23,6 +23,7 @@ arg_parser.add_argument('-gold-trees', default=None, type=str, help='the path to
 arg_parser.add_argument('-first-n-iter', default=None, type=int, help='the first N of iterations considered')
 arg_parser.add_argument('-burn-in', default=50, type=int, help='burn in period')
 arg_parser.add_argument('-max-threads', default=20, type=int)
+arg_parser.add_argument('-with-deps', action='store_true', default=False, help='no from deps trees calc')
 args = arg_parser.parse_args()
 last_sample_folder = args.folder
 gold_trees_file = args.gold_trees
@@ -49,6 +50,13 @@ def bash_command(cmd):
             break
     return p
 
+def check_finished():
+    global process_pool
+    while True:
+        process_pool = [x for x in process_pool if x.poll() is None]
+        if len(process_pool) == 0:
+            return True
+
 gold_trees = [nltk.Tree.fromstring(x.strip()) for x in open(gold_trees_file)]
 
 modelblocks_path = open('user-modelblocks-location.txt').readline().strip()
@@ -70,36 +78,50 @@ output_last_samples = [x for x in output_files if re.match('last_sample[0-9]+\.l
                         else True)]
 
 output_last_samples.sort(key=lambda x: int(re.match('last_sample([0-9]+)\.linetrees', x).group(1)))
-print(output_last_samples)
+# print(output_last_samples)
+
+
+start_iter = burn_in
+end_iter = burn_in + len(output_last_samples)
+print("start iter: {}; end iter: {}".format(start_iter, end_iter))
 
 rule_f_names = []
 model_f_names = []
 head_model_names = []
 deps_f_names = []
 
-for f in output_last_samples:
-    f_name = os.path.join(last_sample_folder, f)
-    rule_f_name = f_name.replace('linetrees', 'rules')
-    p = bash_command(build_rules_command.format(f_name, modelblocks_path, rule_f_name))
-    rule_f_names.append(rule_f_name)
+if args.with_deps:
 
-for index, rule_f_name in enumerate(rule_f_names):
-    model_f_name = rule_f_name.replace('rules', 'model')
-    p = bash_command(build_model_command.format(rule_f_name, rule_f_name, model_f_name))
-    model_f_names.append(model_f_name)
+    for f in output_last_samples:
+        f_name = os.path.join(last_sample_folder, f)
+        rule_f_name = f_name.replace('linetrees', 'rules')
+        p = bash_command(build_rules_command.format(f_name, modelblocks_path, rule_f_name))
+        rule_f_names.append(rule_f_name)
+    else:
+        check_finished()
 
-for index, model_f_name in enumerate(model_f_names):
-    head_model_name = model_f_name.replace('model', 'head.model')
-    p = bash_command(build_head_model_command.format(model_f_name, modelblocks_path, head_model_name))
-    head_model_names.append(head_model_name)
+    for index, rule_f_name in enumerate(rule_f_names):
+        model_f_name = rule_f_name.replace('rules', 'model')
+        p = bash_command(build_model_command.format(rule_f_name, rule_f_name, model_f_name))
+        model_f_names.append(model_f_name)
+    else:
+        check_finished()
+
+    for index, model_f_name in enumerate(model_f_names):
+        head_model_name = model_f_name.replace('model', 'head.model')
+        p = bash_command(build_head_model_command.format(model_f_name, modelblocks_path, head_model_name))
+        head_model_names.append(head_model_name)
+    else:
+        check_finished()
 
 
-for index, f_name in enumerate(output_last_samples):
-    f_name = os.path.join(last_sample_folder, f_name)
-    deps_f_name = f_name.replace('linetrees', 'fromdeps.linetrees')
-    p = bash_command(convert_to_deps_command.format(f_name, modelblocks_path, head_model_names[index], modelblocks_path, deps_f_name))
-    deps_f_names.append(deps_f_name)
-
+    for index, f_name in enumerate(output_last_samples):
+        f_name = os.path.join(last_sample_folder, f_name)
+        deps_f_name = f_name.replace('linetrees', 'fromdeps.linetrees')
+        p = bash_command(convert_to_deps_command.format(f_name, modelblocks_path, head_model_names[index], modelblocks_path, deps_f_name))
+        deps_f_names.append(deps_f_name)
+    else:
+        check_finished()
 
 end_f_names = []
 
@@ -113,7 +135,8 @@ for f in output_last_samples + deps_f_names:
     end_f_names.append(end_f_name)
     # print(preprocess_command.format(f_name, modelblocks_path, modelblocks_path, modelblocks_path, modelblocks_path, end_f_name))
     p = bash_command(preprocess_command.format(f_name, modelblocks_path, modelblocks_path, modelblocks_path, modelblocks_path, end_f_name))
-
+else:
+    check_finished()
 
 evalb_f_names = []
 print('running EVALB on the line trees')
@@ -122,7 +145,8 @@ for end_f_name in end_f_names:
     # print(eval_command.format(evalb_params_file, gold_trees_file, end_f_name, evalb_name))
     p2 = bash_command(eval_command.format(evalb_params_file, gold_trees_file, end_f_name, evalb_name))
     evalb_f_names.append(evalb_name)
-
+else:
+    check_finished()
 
 indices = []
 prec = []
@@ -166,10 +190,13 @@ titles = ['Precision', 'Recall', 'F1', 'Precision-deps', 'Recall-deps', 'F1-deps
 data = list(zip(indices, prec, rec, f1))
 data.sort(key=operator.itemgetter(0))
 data = np.array(data)
-
-data_deps = list(zip(deps_indices, deps_prec, deps_rec, deps_f1))
-data_deps.sort(key=operator.itemgetter(0))
-data_deps = np.array(data_deps)
+print(data.shape)
+if args.with_deps:
+    data_deps = list(zip(deps_indices, deps_prec, deps_rec, deps_f1))
+    data_deps.sort(key=operator.itemgetter(0))
+    data_deps = np.array(data_deps)
+else:
+    data_deps = np.zeros(data.shape)
 
 data = np.hstack((data, data_deps[:, 1:]))
 fig, ax = plt.subplots()
@@ -190,28 +217,24 @@ hyperparams = pandas.read_table(os.path.join(last_sample_folder, 'pcfg_hypparams
 
 fig, ax = plt.subplots()
 all_results[0].append('logprob')
-x_data = hyperparams.iter[burn_in:first_n_iter]
-if len(x_data) > len(output_last_samples):
-    burn_in = burn_in + 1
-    x_data = hyperparams.iter[burn_in:first_n_iter]
-elif len(x_data) < len(output_last_samples):
-    burn_in = burn_in - 1
-    x_data = hyperparams.iter[burn_in:first_n_iter]
+# print(hyperparams.iter)
+x_data = hyperparams.iter[ (hyperparams.iter >= start_iter) & (hyperparams.iter < end_iter)]
+
 assert len(x_data) == len(output_last_samples), str(len(x_data)) + ' ' + str(len(output_last_samples))
-all_results[1].append(hyperparams.logprob[burn_in:first_n_iter].get_values())
-line_1 = ax.plot(x_data, hyperparams.logprob[burn_in:first_n_iter], 'b-')
+all_results[1].append(hyperparams.logprob[(hyperparams.iter >= start_iter) & (hyperparams.iter < end_iter)].get_values())
+line_1 = ax.plot(x_data, hyperparams.logprob[(hyperparams.iter >= start_iter) & (hyperparams.iter < end_iter)], 'b-')
 ax.set_ylabel('logprob', color='b')
 ax.tick_params('y', color='b')
 if hasattr(hyperparams, 'val_logprob'):
     ax2 = ax.twinx()
-    line_2 = ax2.plot(hyperparams.iter[burn_in:first_n_iter], np.nan_to_num(hyperparams.val_logprob[burn_in:first_n_iter]), 'r-')
+    line_2 = ax2.plot(x_data, np.nan_to_num(hyperparams.val_logprob[(hyperparams.iter >= start_iter) & (hyperparams.iter < end_iter)]), 'r-')
     ax2.set_ylabel('dev logprob', color='r')
     ax2.tick_params('y',color='r')
 ax.set_xlabel('iteration')
 # ax.legend(lines, ('Training', 'Dev'))
 fig.tight_layout()
-pp = PdfPages(os.path.join(last_sample_folder, 'logprobs' + '_'+ str(min(hyperparams.iter[burn_in:first_n_iter]))+
-                           '_' + str(max(hyperparams.iter[burn_in:first_n_iter]))) + '.pdf')
+pp = PdfPages(os.path.join(last_sample_folder, 'logprobs' + '_'+ str(min(x_data))+
+                           '_' + str(max(x_data))) + '.pdf')
 fig.savefig(pp, format='pdf')
 pp.close()
 plt.cla()
