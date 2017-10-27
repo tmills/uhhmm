@@ -202,9 +202,17 @@ data = np.hstack((data, data_deps[:, 1:]))
 fig, ax = plt.subplots()
 all_results.append(['iters']+titles)
 all_results.append([data])
-lines = ax.plot(data[:, 0], data[:,1], data[:,0], data[:,2], data[:,0], data[:,3], data[:,0], data[:,4], data[:,0], data[:,5], data[:,0], data[:,6])
+if args.with_deps:
+    lines = ax.plot(data[:, 0], data[:,1], data[:,0], data[:,2], data[:,0], data[:,3], data[:,0], data[:,4], data[:,0], data[:,5], data[:,0], data[:,6])
+else:
+    lines = ax.plot(data[:, 0], data[:,1], data[:,0], data[:,2], data[:,0], data[:,3])
 ax.set_ylabel('percentage')
-ax.legend(lines, ('Precision', "Recall", "F1", 'Precision-deps', 'Recall-deps', 'F1-deps'))
+
+if args.with_deps:
+    ax.legend(lines, ('Precision', "Recall", "F1", 'Precision-deps', 'Recall-deps', 'F1-deps'))
+else:
+    ax.legend(lines, ('Precision', "Recall", "F1"))
+
 pp = PdfPages(os.path.join(last_sample_folder, 'evalb' + '_'+ str(min(indices))+'_' + str(max(indices))) + '.pdf')
 fig.savefig(pp, format='pdf')
 pp.close()
@@ -311,12 +319,9 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
     label_dist = [x/total_num_labels for x in overall_label_counter.values()]
     label_dist_entropy = stats.entropy(label_dist)
     num_non_term_only_label = sum(non_term_only_label.values())
-    this_best_scores = [0,0,0]
-    this_best_aggregate_scores = [0, 0, 0]
-    best_cats = [0,0,0]
+
     total_acc_number = [Counter(), Counter(), Counter()]
     total_hyp_cat_number = [Counter(), Counter(), Counter()]
-    aggregate_counters = [Counter(), Counter(), Counter()]
     nolabel_recalls = [0, 0, 0]
     for index_tree, tree_counter in enumerate(current_counter_nolabel):
         for index, phrase_cat in enumerate(phrases):
@@ -332,14 +337,7 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
                 acc_num = sum(( cat_counter & gold_counters[phrase_cat][index_tree]).values())
                 total_acc_number[index][cat] += acc_num
                 total_hyp_cat_number[index][cat] += sum(cat_counter.values())
-                # prec = acc_num / sum(cat_counter.values())
-                # rec = acc_num / phrases_lengths[index]
-                # f1 = 0 if prec == 0 or rec == 0 else 1.0 / (0.5 / prec + (0.5 / rec))
-                # if f1 > this_best_scores[index]:
-                #     this_best_scores[index] = f1
-                #     best_cats[index] = cat
-                # if prec > prec_thres:
-                #     aggregate_counters[index] += cat_counter
+
     Performance = namedtuple('Performance', 'id prec rec f1')
     performances = [[],[],[]] # compute the performances of each cat
     for index, phrase_cat in enumerate(phrases):
