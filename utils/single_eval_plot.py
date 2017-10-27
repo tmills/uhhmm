@@ -303,7 +303,7 @@ def calc_phrase_stats(f_name, prec_thres=0.6):
                 overall_label_counter[sub_t.label()] += 1
                 if len(sub_t.leaves()) > 1:
                     non_term_only_label[sub_t.label()] &= True
-                    if sub_t.label() not in current_counters:
+                    if sub_t.label() not in current_counters[num_total_trees - 1]:
                         current_counters[num_total_trees - 1][sub_t.label()] = Counter()
                     try:
                         if not d2_checked and isinstance(sub_t[1][0][1], nltk.Tree):
