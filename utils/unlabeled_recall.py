@@ -61,7 +61,9 @@ NP_length = sum([sum(x.values()) for x in gold_counters_test['NP']])
 VP_length = sum([sum(x.values()) for x in gold_counters_test['VP']])
 PP_length = sum([sum(x.values()) for x in gold_counters_test['PP']])
 phrases_lengths_test = [NP_length, VP_length, PP_length]
-
+print(phrases_lengths)
+print(phrases_lengths_dev)
+print(phrases_lengths_test)
 def simple_brackets_converter(bracketed): # use for sents like ((no more) (milk shake))
     strings = []
     bracket_spans = []
@@ -154,10 +156,12 @@ def calc_phrase_stats_labeled(f_name, prec_thres=0.6):
             counters.append({})
             current_counter_nolabel.append(Counter())
             for sub_t in this_t.subtrees():
+                # if ' '.join(sub_t.leaves()) == 'want to play with them':
+                #     print('1', counters[-1], sub_t)
                 overall_label_counter[sub_t.label()] += 1
                 if len(sub_t.leaves()) > 1:
                     non_term_only_label[sub_t.label()] &= True
-                    if sub_t.label() not in counters:
+                    if sub_t.label() not in counters[local_index]:
                         counters[local_index][sub_t.label()] = Counter()
                     try:
                         if not d2_checked and isinstance(sub_t[1][0][1], nltk.Tree):
@@ -167,6 +171,9 @@ def calc_phrase_stats_labeled(f_name, prec_thres=0.6):
                         pass
                     counters[local_index][sub_t.label()][' '.join(sub_t.leaves())] += 1
                     current_counter_nolabel[num_total_trees - 1][' '.join(sub_t.leaves())] += 1
+                    # if ' '.join(sub_t.leaves()) == 'want to play with them':
+                    #     print('2', counters[-1])
+                    #     exit()
                 else:
                     non_term_only_label[sub_t.label()] &= False
     total_num_labels = sum(overall_label_counter.values())
@@ -198,6 +205,9 @@ def calc_phrase_stats_labeled(f_name, prec_thres=0.6):
                 acc_num = sum(( cat_counter & gold_counters_dev[phrase_cat][index_tree]).values())
                 total_acc_number[index][cat] += acc_num
                 total_hyp_cat_number[index][cat] += sum(cat_counter.values())
+                # if acc_num != sum(gold_counters_dev[phrase_cat][index_tree].values()):
+                #     print(cat, cat_counter)
+                #     print(phrase_cat, gold_counters_dev[phrase_cat][index_tree])
     # test
     for index_tree, tree_counter in enumerate(current_counters_test):
         for cat, cat_counter in tree_counter.items():
@@ -218,6 +228,7 @@ def calc_phrase_stats_labeled(f_name, prec_thres=0.6):
 
     for phrase in performances:
         phrase.sort(key=lambda x: x.f1, reverse=True)
+        print(phrase)
     this_best_scores = [phrase[0].f1 for phrase in performances]
     this_best_aggregate_scores = [phrase[0].f1 for phrase in performances]
     this_best_aggregate_scores_index = [[phrase[0].id] for phrase in performances]
