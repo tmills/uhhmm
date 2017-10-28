@@ -198,7 +198,7 @@ scripts/CHmmSampler.so: gpusrc/ChmmSampler.o gpusrc/libhmm.a
 	${CXX} -pthread -shared -Wl,-O1 -Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,relro -g -fstack-protector-strong -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2 -std=c++11 $^ -Lgpusrc/ -lhmm -L${CUDA_PATH}/lib64 -lcudart -o $@
 
 gpusrc/ChmmSampler.o: gpusrc/CHmmSampler.cpp gpusrc/HmmSampler.h
-	${CXX} -pthread -DNDEBUG -g -fwrapv -O2 -Wall -g -fstack-protector-strong -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2 -fPIC -I$(NUMPY_INC) -I/usr/include/${PYTHON_VERSION} -I/usr/local/include/ -c $< -w -std=c++11  -L${CUDA_PATH}/lib64 -lcudart -L/usr/lib/x86_64-linux-gnu -l${PYTHON_VERSION} -Lgpusrc/ -lhmm -o $@
+	${CXX} -pthread -DNDEBUG -g -fwrapv -O2 -Wall -g -fstack-protector-strong -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2 -fPIC -I$(NUMPY_INC) -Icusplibrary/ -I/usr/include/${PYTHON_VERSION} -I/usr/local/include/ -c $< -w -std=c++11  -L${CUDA_PATH}/lib64 -lcudart -L/usr/lib/x86_64-linux-gnu -l${PYTHON_VERSION} -Lgpusrc/ -lhmm -o $@
 
 gpusrc/CHmmSampler.cpp: gpusrc/CHmmSampler.pyx gpusrc/HmmSampler.h
 	cython --cplus gpusrc/CHmmSampler.pyx
@@ -210,7 +210,7 @@ gpusrc/libhmm.a: gpusrc/hmmsampler.o gpusrc/temp.o
 gpusrc/hmmsampler.o: gpusrc/temp.o
 	${CUDA_PATH}/bin/nvcc -dlink -o $@ $^ -lcudart --shared -Xcompiler -fPIC -m64 -L${CUDA_PATH}/lib64 -Xlinker -rpath -Xlinker ${CUDA_PATH}/lib64
 
-gpusrc/temp.o: gpusrc/HmmSampler.cu gpusrc/State.cu gpusrc/HmmSampler.h
+gpusrc/temp.o: gpusrc/HmmSampler.cu gpusrc/State.cu gpusrc/HmmSampler.h gpusrc/obs_models.h
 	${CUDA_PATH}/bin/nvcc -rdc=true -c -o $@ $< -Icusplibrary/ -std=c++11 --shared -Xcompiler -fPIC -m64
 
 config/myconfig.ini: config/d1train.ini

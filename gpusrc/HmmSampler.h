@@ -46,7 +46,8 @@ class Model{
 public:
     Model(int pi_num_rows,int pi_num_cols,float* pi_vals, int pi_vals_size, int* pi_row_offsets, int pi_row_offsets_size
     , int* pi_col_indices, int pi_col_indices_size, float* lex_vals, int lex_vals_size, int lex_num_rows,
-    int lex_num_cols, int a_max, int b_max, int g_max, int depth, float* pos_vals, int pos_vals_size, int EOS_index);
+    int lex_num_cols, int a_max, int b_max, int g_max, int depth, float* pos_vals, int pos_vals_size, 
+    int embed_num_words, int embed_num_dims, int embed_vals_size, float* embed_vals, int EOS_index);
     ~Model();
     int get_depth();
     int pi_num_rows;
@@ -68,8 +69,13 @@ public:
     int lex_num_cols;
     float* pos_vals;
     int pos_vals_size;
+    int embed_num_words;
+    int embed_num_dims;
+    int embed_vals_size;
+    float* embed_vals;
     const unsigned int depth;
     DenseView * lex;
+    DenseView * embed;
     SparseView * pi;
     Array* pos;
 };
@@ -108,7 +114,7 @@ private:
     Dense* dyn_prog_part = NULL;
     Sparse* expand_mat = NULL;
     int seed;
-    Array* expanded_lex = NULL;
+    //Array* expanded_lex = NULL;
     Array* sum_dict = NULL;
     Array* pos_full_array = NULL;
     ObservationModel* obs_model = NULL;

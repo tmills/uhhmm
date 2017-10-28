@@ -123,11 +123,20 @@ class DistributedModelCompiler(FullDepthCompiler):
         # if gpu then dumping out two models, the one used by worker should be *.bin.gpu
         pi = pi.tocsc()
         row_indices = list(itertools.product(range(b_max), repeat=self.depth))
+        embeddings = None
         if self.gpu == True:
             if isinstance(models.lex, CategoricalModel):
                 lex_dist = 10**(models.lex.dist.astype(np.float32))
             else:
-                lex_dist = models.lex.dist
+                lex_dist = np.zeros( (len(models.lex.dist), 2) )
+                for word_ind,dist in enumerate(models.lex.dist):
+                    lex_dist[word_ind,0] = dist.mean()
+                    lex_dist[word_ind,1] = dist.stdev()
+
+                embeddings = models.embeddings
+
+            if embeddings is None:
+                embeddings = np.zeros((0,0))
 
             pos_dist = models.pos.dist
             pos_dist[:, -1].fill(0)
@@ -202,7 +211,7 @@ class DistributedModelCompiler(FullDepthCompiler):
             #             logging.info(' '.join(map(str, [state_t_1.str(), '->', state_t.str(), pi[index_t_1, index_t],
             #                                             'pos line:', pos_dist[]])))
 
-            model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, corrected_pos_dist,
+            model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, corrected_pos_dist, embeddings,
                                                         indexer.get_EOS_full()), self.depth)
             # logging.info("EOS index is "+str(indexer.get_EOS_full()))
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')

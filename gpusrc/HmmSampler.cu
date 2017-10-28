@@ -39,14 +39,16 @@ typedef cusparray::view ArrayView;
 Model::Model(int pi_num_rows, int pi_num_cols, float* pi_vals, int pi_vals_size, int* pi_row_offsets,
 int pi_row_offsets_size, int* pi_col_indices, int pi_col_indices_size, float* lex_vals, int lex_vals_size,
 int lex_num_rows, int lex_num_cols, int a_max, int b_max, int g_max, int depth, float* pos_vals, int pos_vals_size,
-int EOS_index):
+int embed_num_words, int embed_num_dims, int embed_vals_size, float* embed_vals, int EOS_index):
 pi_num_rows(pi_num_rows), pi_num_cols(pi_num_cols), pi_vals(pi_vals),
 pi_vals_size(pi_vals_size), pi_row_offsets(pi_row_offsets), pi_row_offsets_size(pi_row_offsets_size),
 pi_col_indices(pi_col_indices), pi_col_indices_size(pi_col_indices_size), lex_vals(lex_vals),
 lex_vals_size(lex_vals_size), lex_num_rows(lex_num_rows), lex_num_cols(lex_num_cols), a_max(a_max),
-b_max(b_max), g_max(g_max), depth(depth), pos_vals(pos_vals), pos_vals_size(pos_vals_size), EOS_index(EOS_index){
+b_max(b_max), g_max(g_max), depth(depth), pos_vals(pos_vals), pos_vals_size(pos_vals_size), 
+embed_vals(embed_vals), embed_num_words(embed_num_words), embed_num_dims(embed_num_dims), embed_vals_size(embed_vals_size), EOS_index(EOS_index){
     pi = new SparseView(pi_num_rows, pi_num_cols, pi_vals_size, pi_row_offsets, pi_col_indices, pi_vals, pi_row_offsets_size, pi_col_indices_size);
     lex = new DenseView(lex_num_rows, lex_num_cols, lex_vals_size, lex_vals);
+    embed = new DenseView(embed_num_words, embed_num_dims, embed_vals_size, embed_vals);
     pos = new Array(pos_vals, pos_vals_size);
 }
 
@@ -60,37 +62,59 @@ int Model::get_depth(){
     return depth;
 }
 
+PosDependentObservationModel::~PosDependentObservationModel(){
+    cout << "PosDep destructor called" << endl;
+    delete p_indexer;
+    delete lexMultiplier;
+}
+
 Sparse * tile(int g_len, int state_size);
 void PosDependentObservationModel::set_models(Model * models){
-    cout << "PosDependenctObsModel::set_models called" << endl;
+    //cout << "PosDependentObsModel::set_models called" << endl;
+    delete p_indexer;
     p_indexer = new Indexer(models);
-    // this function is in HmmSampler.cu. Need to figure out a way to get
-    // them in touch.
     lexMultiplier = tile(models->g_max, p_indexer->get_state_size());
-    cout << "PosDependentObsModel::set_models done" << endl;
+    //cout << "PosDependentObsModel::set_models done" << endl;
 }
 
 Array * PosDependentObservationModel::get_probability_vector(int token){
-    cout << "PosDependenctObsModel::get_prob_vec called" << endl;
+    //cout << "PosDependentObsModel::get_prob_vec called" << endl;
     array2d<float, device_memory>::column_view posProbs = get_pos_probability_vector(token);
-    Array * retVal = new Array(0.0, p_indexer->get_state_size());
+    //cout << "pos probs size = " << posProbs.size() << endl;
+
+    // debugging info:
+    //Sparse::view lexView(*lexMultiplier);
+    //cout << "lexMultiplier size = " << lexView.size() << endl;
+    //ValueArrayView probsView(posProbs);
+
+    float f[p_indexer->get_state_size()];
+    for(int i=0; i < p_indexer->get_state_size(); i++) f[i] = 0.0;
+    Array * retVal = new Array(f, p_indexer->get_state_size());
     multiply(*lexMultiplier, posProbs, *retVal);
-    cout << "PosDependenctObsModel::get_prob_vec done." << endl;
+
+    //ValueArrayView view(*retVal);
+    //cout << "PosDependentObsModel::get_prob_vec done with size: " << view.size() << endl;
     return retVal;
 }
 
+CategoricalObservationModel::~CategoricalObservationModel(){
+    std::cout << "CatObs destructor called" << std::endl;
+    PosDependentObservationModel::~PosDependentObservationModel();
+    delete lexMatrix;
+}
+
 void CategoricalObservationModel::set_models(Model * models){
-    cout << "CatObsModel::set_models called" << endl;
+    //cout << "CatObsModel::set_models called" << endl;
     PosDependentObservationModel::set_models(models);
     lexMatrix = models -> lex;
-    cout << "CatObsModel::set_models done" << endl;
+    //cout << "CatObsModel::set_models done" << endl;
 }
 
 array2d<float, device_memory>::column_view CategoricalObservationModel::get_pos_probability_vector(int token){
-    cout << "CatObsModel::get_pos_prob called" << endl;
+    //cout << "CatObsModel::get_pos_prob called" << endl;
     array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
     array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
-    cout << "CatObsModel::get_pos_prob returning" << endl;
+    //cout << "CatObsModel::get_pos_prob returning" << endl;
     return lex_column;
 }
 
@@ -313,7 +337,7 @@ void HmmSampler::set_models(Model * models){
     }
     trans_slice = new Array(p_indexer->get_state_size(), 0.0f);
 //    cout << "set_models 8" << endl;
-    expanded_lex = trans_slice;
+    //expanded_lex = trans_slice;
     sum_dict = trans_slice;
     int b_len = p_model -> b_max;
 //    cout << "pos full array" << endl;
@@ -322,6 +346,7 @@ void HmmSampler::set_models(Model * models){
 //    cout << "set_models 9" << endl;
 //    print(*pos_full_array);
     // cout.precision(float_limit::max_digits10);
+    obs_model->set_models(models);
 }
 
 Array* HmmSampler::make_pos_full_array(Array* pos_matrix ,int g_max, int b_max, int depth, int state_size){
@@ -450,27 +475,18 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
 //            cout << "Processing sentence index " << sent_ind << endl;
             int token = sents[sent_ind][ind];
 
-            // lex_column is |g| x 1
-            //array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
-
-            //             cout << "Multiplying lex multiplier by lex column" << endl;
-
-            // lexMultiplier is state_size x |g|, expanded_lex is state_size x 1
-            //multiply(* lexMultiplier, lex_column, * expanded_lex);
-
-
             // dyn_prog_row is 1 x state_size
             // dyn_prog_column is state_size x 1
             array2d<float, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
-            
-            Array * expanded_lex = obs_model->get_probability_vector(token); 
+//            cout << "Getting observation probability" << endl;
+            Array * expanded_lex = obs_model->get_probability_vector(token);
             blas::xmy(*expanded_lex, dyn_prog_col, dyn_prog_col);
-//             cout << "Computing normalizer" << endl;
+//            cout << "Computing normalizer" << endl;
             normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
 //             cout << "Normalizing over col with result: " << normalizer << endl;
 //            cout << "Scaling by normalizer" << endl;
             blas::scal(dyn_prog_col, 1.0f/normalizer);
-
+//            cout << "Adding normalizer" << endl;
             log_probs[sent_ind] += log10f(normalizer);
 
             if (sents[sent_ind].size() - 1 == ind){
@@ -654,9 +670,14 @@ std::tuple<std::vector<std::vector<State> >, std::vector<float>> HmmSampler::sam
 }
 
 
-HmmSampler::HmmSampler() : HmmSampler(std::time(0), ModelType::CATEGORICAL_MODEL){ }
-HmmSampler::HmmSampler(int seed) : HmmSampler(seed, ModelType::CATEGORICAL_MODEL) { }
+HmmSampler::HmmSampler() : HmmSampler(std::time(0), ModelType::CATEGORICAL_MODEL){
+    cout << "Empty constructor called, initializing with defaults: seed=0 and categorical model" << endl;
+}
+HmmSampler::HmmSampler(int seed) : HmmSampler(seed, ModelType::CATEGORICAL_MODEL) {
+    cout << "One-arg constructor called, initializing with default categorical model" << endl;
+}
 HmmSampler::HmmSampler(int seed, ModelType model_type) : seed(seed){
+    cout << "Two-arg constructor called" << endl;
     if (seed == 0){
         mt.seed(std::time(0));
     } else{
@@ -664,13 +685,16 @@ HmmSampler::HmmSampler(int seed, ModelType model_type) : seed(seed){
     }
 
     if (model_type == ModelType::CATEGORICAL_MODEL) {
+        cout << "Creating categorical model" << endl;
         obs_model = new CategoricalObservationModel();
     }else if(model_type == ModelType::GAUSSIAN_MODEL) {
+        cout << "Creating gaussian model" << endl;
         obs_model = new GaussianObservationModel();
     }
 }
 
 HmmSampler::~HmmSampler(){
+    cout << "HmmSampler destructor called" << endl;
     if(dyn_prog != NULL){
         for(int i = 0; i < max_sent_len; i++){
             delete dyn_prog[i];
@@ -691,5 +715,5 @@ HmmSampler::~HmmSampler(){
     delete expand_mat;
     delete dyn_prog_part;
     delete pos_full_array;
-    delete obs_model;
+    //delete obs_model;
 }
