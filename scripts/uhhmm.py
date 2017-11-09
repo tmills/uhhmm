@@ -55,7 +55,6 @@ class Stats:
         self.gamma = 0
         self.vi = 0
 
-
 # This is the main entry point for this module.
 # Arg 1: ev_seqs : a list of lists of integers, representing
 # the EVidence SEQuenceS seen by the user (e.g., words in a sentence
@@ -67,7 +66,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     sent_lens = list(map(len, ev_seqs))
     total_sent_lens = sum(sent_lens)
     maxLen = max(map(len, ev_seqs))
-    max_output = max(map(max, ev_seqs))
+    max_output = max(map(max, ev_seqs)) # vocab_size, which is the max index of the word indices
     num_sents = len(ev_seqs)
     num_tokens = np.sum(sent_lens)
 
@@ -124,8 +123,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     MAP = int(params.get("MAP", 0))
     normalize_flag = int(params.get("normalize_flag", 1))
     alpha_pcfg_range = params.get('alpha_pcfg_range',
-                                  [0.1, 1.0])  # a comma separated list of lower and upper bounds of alpha-pcfg
+                                  [0., 1.0])  # a comma separated list of lower and upper bounds of alpha-pcfg
     init_alpha = float(params.get("init_alpha", 0.2))
+    alpha_scale = float(params.get("alpha_scale", 0.0))
     sample_alpha_flag = int(params.get("sample_alpha_flag", 0))
 
     # super cooling
@@ -164,8 +164,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     start_ind = 0
     end_ind = min(num_sents, batch_size)
 
-    pcfg_model = PCFG_model(start_abp, max_output, log_dir=working_dir, word_dict_file = word_dict_file)
-    pcfg_model.set_alpha(alpha_pcfg_range, alpha=init_alpha)
+    pcfg_model = PCFG_model(start_abp, max_output, num_sents, num_tokens, log_dir=working_dir, word_dict_file = word_dict_file)
+    pcfg_model.set_alpha(alpha_pcfg_range, alpha=init_alpha, alpha_scale=alpha_scale)
 
     logging.info("Initializing state")
 
@@ -437,7 +437,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         t0 = time.time()
 
         cur_anneal_iter = iter - random_restarts
-        if (cur_anneal_iter >= anneal_length and anneal_length > 1) or anneal_length == 1:  # if annealing is finished
+        if ((cur_anneal_iter >= anneal_length and anneal_length > 1) or anneal_length == 1) and not \
+                (super_cooling and super_cooling_start_iter <= iter):  # if annealing is finished
             logging.warn(
                 "number of iterations {} is larger than annealing length {}! Doing normal sampling!".format(iter,
                                                                                                             anneal_length))

@@ -8,16 +8,39 @@ import os.path
 def normalize_a_tensor(tensor):
     return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-20)  # to supress zero division warning
 
+def calculate_alpha(num_terms, num_sents, nonterminal_mask, num_term_types, num_nonterminal_types, scale):
+    assert scale <= 1, "the scale hyperparameter for beta cannot be larger than 1!"
+    num_terminal_nodes = num_terms
+    num_nonterminal_nodes = num_terms - num_sents
+    num_nonterminal_rules = np.sum(nonterminal_mask)
+    total_non_term_pseudo_counts = scale * num_nonterminal_nodes
+    total_term_pseudo_counts = scale * num_terminal_nodes
+    avg_non_term_pseudo_counts = total_non_term_pseudo_counts / num_nonterminal_rules / num_nonterminal_types
+    avg_term_pseudo_counts = total_term_pseudo_counts / num_term_types/ num_nonterminal_types
+    assert avg_term_pseudo_counts <= 1, "the average terminal pseudo count is larger than 1! please tune down th" \
+                                        "e scale hyperparameter!"
+    non_term_betas = nonterminal_mask * avg_non_term_pseudo_counts
+    term_betas = (nonterminal_mask == 0).astype(float) * avg_term_pseudo_counts
+    beta = term_betas + non_term_betas
+    logging.info('the average non-terminal pseudo count is {}, and terminal {}'.format(avg_term_pseudo_counts
+                                                                                       , avg_term_pseudo_counts))
+    return beta, avg_non_term_pseudo_counts, avg_term_pseudo_counts
+
+
 
 class PCFG_model:
-    def __init__(self, abp_domain_size, len_vocab, log_dir='.', iter=0, word_dict_file=None):
+    def __init__(self, abp_domain_size, len_vocab, num_sents, num_words, log_dir='.', iter=0, word_dict_file=None):
         self.abp_domain_size = abp_domain_size
         self.len_vocab = len_vocab
+        self.num_sents = num_sents
+        self.num_words = num_words
+        self.non_terminal_rule_mask = []
         self.nonterms = [nltk.grammar.Nonterminal(str(x)) for x in range(abp_domain_size + 1)]
         self.indices_keys, self.keys_indices = self.build_pcfg_indices(abp_domain_size, len_vocab)
         self.size = len(self.indices_keys)
         self.alpha_range = []
         self.alpha = 0
+        self.nonterm_alpha, self.term_alpha = 0, 0
         self.counts = {}
         self.init_counts()
         self.unannealed_dists = {}
@@ -86,16 +109,23 @@ class PCFG_model:
         return self.size
 
     def init_counts(self):
-        self.counts = {x: np.zeros(len(self.indices_keys[x])) + self.alpha for x in self.indices_keys}
+        self.counts = {x: np.zeros(len(self.indices_keys[x])) + self.alpha
+                              for x in self.indices_keys}
 
-    def set_alpha(self, alpha_range, alpha=0.0):
+    def set_alpha(self, alpha_range, alpha=0.0, alpha_scale=0.0):
         if isinstance(alpha_range, list):
             self.alpha_range = alpha_range
         else:
             self.alpha_range = [float(x) for x in alpha_range.split(',')]
-        if alpha != 0.0:
+        if alpha != 0 and alpha_scale != 0:
+            logging.warning("Do NOT set init_alpha and alpha_scale at the same time."
+                            "init_alpha will be ignored.")
+        if alpha_scale != 0:
+            self.alpha, self.nonterm_alpha, self.term_alpha = calculate_alpha(self.num_words, self.num_sents, self.non_terminal_rule_mask,
+                                         self.len_vocab, self.abp_domain_size, alpha_scale)
+        elif alpha != 0.0:
             assert alpha >= alpha_range[0] and alpha <= alpha_range[1]
-            self.alpha = alpha
+            self.alpha, self.nonterm_alpha, self.term_alpha = alpha, alpha, alpha
         else:
             self.alpha = sum(alpha_range) / len(alpha_range)
 
@@ -149,7 +179,9 @@ class PCFG_model:
     def _sample_model(self, annealing_coeff=1.0, normalize=False):
         logging.info(
             "resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha, annealing_coeff))
-        self.hypparam_log.write('\t'.join([str(x) for x in [self.iter, self.log_probs, self.alpha, annealing_coeff]]) + '\n')
+        if self.log_probs != 0:
+            self.hypparam_log.write('\t'.join([str(x) for x in [self.iter, self.log_probs,
+                                                            (self.nonterm_alpha, self.term_alpha), annealing_coeff]]) + '\n')
         dists = {}
         if annealing_coeff != 1.0:
             self.anneal_counts = { x: (self.counts[x] - self.alpha) * annealing_coeff for x in self.counts}
@@ -184,10 +216,12 @@ class PCFG_model:
                                                        (self.nonterms[child], self.nonterms[parent]))
                         keys_indices[rule.lhs()][rule.rhs()] = len(keys_indices[rule.lhs()])
                         indices_keys[rule.lhs()].append(rule.rhs())
+                        self.non_terminal_rule_mask.append(1)
                 else:
                     rule = nltk.grammar.Production(self.nonterms[parent], ('-ROOT-',))
                     keys_indices[rule.lhs()][rule.rhs()] = len(keys_indices[rule.lhs()])
                     indices_keys[rule.lhs()].append(rule.rhs())
+                    self.non_terminal_rule_mask.append(0)
             else:
 
                 for l_child in range(1, abp_domain_size + 1):
@@ -196,11 +230,13 @@ class PCFG_model:
                                                        (self.nonterms[l_child], self.nonterms[r_child]))
                         keys_indices[rule.lhs()][rule.rhs()] = len(keys_indices[rule.lhs()])
                         indices_keys[rule.lhs()].append(rule.rhs())
+                        self.non_terminal_rule_mask.append(1)
                 for lex in range(1, len_vocab + 1):
                     rule = nltk.grammar.Production(self.nonterms[parent], (str(lex),))
                     keys_indices[rule.lhs()][rule.rhs()] = len(keys_indices[rule.lhs()])
                     indices_keys[rule.lhs()].append(rule.rhs())
-
+                    self.non_terminal_rule_mask.append(0)
+        self.non_terminal_rule_mask = np.array(self.non_terminal_rule_mask)
         return indices_keys, keys_indices
 
     def _read_word_dict_file(self, word_dict_file):
