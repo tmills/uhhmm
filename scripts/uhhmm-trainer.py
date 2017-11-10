@@ -26,7 +26,7 @@ def main(argv):
 
     path = argv[0]
     if not os.path.exists(path):
-        sys.stderr.write("Input file/dir does not exist!")
+        sys.stderr.write("Input file/dir does not exist!\n")
         sys.exit(-1)
 
     config = configparser.ConfigParser()
@@ -77,8 +77,8 @@ def main(argv):
 
     word_vecs = None
     if 'word_vecs_file' in params:
-        sys.stderr.write("This functionality is at alpha stage and disabled in master.\n")
-        sys.exit(-1)
+        #sys.stderr.write("This functionality is at alpha stage and disabled in master.\n")
+        #sys.exit(-1)
         word_vecs = io.read_word_vector_file(params.get('word_vecs_file'), io.read_dict_file(dict_file))
 
     (samples, stats) = uhhmm.sample_beam(word_seq, params, lambda x: io.write_output(x, None, config, pos_seq),

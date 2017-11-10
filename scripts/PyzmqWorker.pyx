@@ -32,6 +32,8 @@ import CategoricalObservationModel
 import GaussianObservationModel
 import models
 from WorkDistributerServer import get_local_ip
+import CHmmSampler
+
 
 ## This function was required because of some funkiness on ubuntu systems where reverse dns lookup was returning a loopback ip
 ## This will try the easy way and if it returns something with 127. will make an outside connectino to known DNS (8.8.8.8) and
@@ -127,14 +129,23 @@ cdef class PyzmqWorker:
             elif model_wrapper.model_type == ModelWrapper.HMM and self.gpu:
                 import CHmmSampler
                 msg.file_path = msg.file_path + '.gpu'
+                lex = model_wrapper.model[0].lex
                 model_wrapper = self.get_model(msg)[0]
 
                 # print('1 worker loading file.')
+                logging.info("Creating gpu hmm sampler")
                 sampler = CHmmSampler.GPUHmmSampler(self.seed)
                 # print('2 init sampler on GPU')
                 # print(model_wrapper.model)
-                gpu_model = CHmmSampler.GPUModel(model_wrapper.model)
+                if isinstance(lex, models.CategoricalModel):
+                    logging.info("Creating gpu model with categorical observation model.")
+                    gpu_model = CHmmSampler.GPUModel(model_wrapper.model, CHmmSampler.ModelType.CATEGORICAL_MODEL)
+                else:
+                    logging.info("Creating gpu model with gaussian observation model.")
+                    gpu_model = CHmmSampler.GPUModel(model_wrapper.model, CHmmSampler.ModelType.CATEGORICAL_MODEL)
+
                 # print('3 loading in models')
+                logging.info("Passing gpu model from python to cuda")
                 sampler.set_models(gpu_model)
                 # print('4 setting in models')
                 # self.model_file_sig = get_file_signature(msg)

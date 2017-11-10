@@ -12,21 +12,9 @@ cdef extern from "HmmSampler.h":
         int get_depth()
 
 cdef extern from "HmmSampler.h":
-    cdef cppclass ModelType:
-        pass
-
-cdef extern from "HmmSampler.h" namespace "ModelType":
-    cdef ModelType CATEGORICAL_MODEL
-    cdef ModelType GAUSSIAN_MODEL
-
-cdef class PyModelType:
-    cdef ModelType thisobj
-    def __cinit__(self, int val):
-        self.thisobj = <ModelType> val
-
-    def get_model_type(self):
-        cdef c = {<int>CATEGORICAL_MODEL : "CATEGORICAL_MODEL", <int>GAUSSIAN_MODEL : "GAUSSIAN_MODEL"}
-        return c[<int>self.thisobj]
+    cpdef enum ModelType:
+        CATEGORICAL_MODEL,
+        GAUSSIAN_MODEL
 
 cdef class GPUModel:
     cdef Model* c_model
@@ -81,13 +69,7 @@ cdef wrap_state(State& c_state):
     state.g = c_state.g
     return state
 
-# cdef class PyState:
-#     cdef State* c_state
-#     def __cinit__(self, State state):
-#         self.c_state = &state
-#     def get_states(self):
-#         return {'f' = self.c_state.f, 'j' = self.c_state.j, 'a' = self.c_state.a, 'b' = self.c_state.b, 'g' = self.c_state.g,\
-#         'depth' = self.c_state.depth}
+
 ## sampler class
 cdef extern from "HmmSampler.h":
     cdef cppclass HmmSampler:

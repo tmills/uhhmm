@@ -128,15 +128,17 @@ class DistributedModelCompiler(FullDepthCompiler):
             if isinstance(models.lex, CategoricalModel):
                 lex_dist = 10**(models.lex.dist.astype(np.float32))
             else:
-                lex_dist = np.zeros( (len(models.lex.dist), 2) )
-                for word_ind,dist in enumerate(models.lex.dist):
-                    lex_dist[word_ind,0] = dist.mean()
-                    lex_dist[word_ind,1] = dist.stdev()
-
                 embeddings = models.embeddings
+                embed_dim = embeddings.shape[1]
+                lex_dist = np.zeros( (len(models.lex.dist), 2 * embed_dim ) )
+                for pos_ind,dist in enumerate(models.lex.dist):
+                    ## This gets us the K-dimensional distribution for pos tag indexed by pos_ind
+                    lex_dist[pos_ind,:embed_dim] += dist.mean()
+                    lex_dist[pos_ind,embed_dim:] += dist.stdev()
+
 
             if embeddings is None:
-                embeddings = np.zeros((0,0))
+                embeddings = np.zeros((2,2)).astype('float32')
 
             pos_dist = models.pos.dist
             pos_dist[:, -1].fill(0)

@@ -5,6 +5,7 @@
 #include <thrust/reduce.h>
 #include <thrust/execution_policy.h>
 #include <thrust/scatter.h>
+#include <thrust/random/normal_distribution.h>
 #include <tuple>
 #include <ctime>
 #include <utility>
@@ -32,6 +33,10 @@ using namespace std;
 typedef std::chrono::high_resolution_clock Clock;
 float nano_to_sec = 1.0e-9f;
 __device__ int G_SIZE;
+__device__ float PI=3.14159265;
+// 1 / sqrt(2*pi)
+__device__ float RECIP_SQRT_2_PI = 0.39894;
+
 typedef std::numeric_limits<float> float_limit;
 typedef cusp::array1d<float,cusp::device_memory> cusparray;
 typedef cusparray::view ArrayView;
@@ -44,7 +49,7 @@ pi_num_rows(pi_num_rows), pi_num_cols(pi_num_cols), pi_vals(pi_vals),
 pi_vals_size(pi_vals_size), pi_row_offsets(pi_row_offsets), pi_row_offsets_size(pi_row_offsets_size),
 pi_col_indices(pi_col_indices), pi_col_indices_size(pi_col_indices_size), lex_vals(lex_vals),
 lex_vals_size(lex_vals_size), lex_num_rows(lex_num_rows), lex_num_cols(lex_num_cols), a_max(a_max),
-b_max(b_max), g_max(g_max), depth(depth), pos_vals(pos_vals), pos_vals_size(pos_vals_size), 
+b_max(b_max), g_max(g_max), depth(depth), pos_vals(pos_vals), pos_vals_size(pos_vals_size),
 embed_vals(embed_vals), embed_num_words(embed_num_words), embed_num_dims(embed_num_dims), embed_vals_size(embed_vals_size), EOS_index(EOS_index){
     pi = new SparseView(pi_num_rows, pi_num_cols, pi_vals_size, pi_row_offsets, pi_col_indices, pi_vals, pi_row_offsets_size, pi_col_indices_size);
     lex = new DenseView(lex_num_rows, lex_num_cols, lex_vals_size, lex_vals);
@@ -74,12 +79,15 @@ void PosDependentObservationModel::set_models(Model * models){
     delete p_indexer;
     p_indexer = new Indexer(models);
     lexMultiplier = tile(models->g_max, p_indexer->get_state_size());
+    g = models->g_max;
     //cout << "PosDependentObsModel::set_models done" << endl;
 }
 
 Array * PosDependentObservationModel::get_probability_vector(int token){
     //cout << "PosDependentObsModel::get_prob_vec called" << endl;
-    array2d<float, device_memory>::column_view posProbs = get_pos_probability_vector(token);
+    Array posProbs(g, 0);
+    //array2d<float, device_memory>::column_view posProbs = get_pos_probability_vector(token);
+    get_pos_probability_vector(token, &posProbs);
     //cout << "pos probs size = " << posProbs.size() << endl;
 
     // debugging info:
@@ -110,26 +118,91 @@ void CategoricalObservationModel::set_models(Model * models){
     //cout << "CatObsModel::set_models done" << endl;
 }
 
-array2d<float, device_memory>::column_view CategoricalObservationModel::get_pos_probability_vector(int token){
+void CategoricalObservationModel::get_pos_probability_vector(int token, Array* output){
     //cout << "CatObsModel::get_pos_prob called" << endl;
     array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
     array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
+    //thrust::fill(output->begin(), output->end(), 0);
+    thrust::copy(thrust::device, lex_column.begin(), lex_column.end(), output->begin());
     //cout << "CatObsModel::get_pos_prob returning" << endl;
-    return lex_column;
 }
 
 void GaussianObservationModel::set_models(Model * models){
     cout << "GaussianObsModel::set_models called" << endl;
     PosDependentObservationModel::set_models(models);
-    cout << "GaussianObsModel::set_models done" << endl;
+    //lexMatrix = models -> lex;
+    embeddings = models -> embed;
+    embed_dims = models -> embed_num_dims;
+    cout << "GaussianObsModel::set_models done: embedding matrix has dimensionality " << embed_dims << endl;
 }
 
-array2d<float, device_memory>::column_view GaussianObservationModel::get_pos_probability_vector(int token){
+class normal_logpdf_firstfactor : public thrust::unary_function<float, float> {
+public:
+    __device__
+    float operator()(const float & stdev) const {
+        return RECIP_SQRT_2_PI / stdev;
+    }
+};
+
+class normal_logpdf_squarederror : public thrust::binary_function<float,float,float> {
+public:
+    __device__
+    float operator()(const float & x, const float & mu) const {
+        return pow(x-mu, 2.0);
+    }
+};
+
+class normal_logpdf_twostdevsquared : public thrust::unary_function<float,float> {
+public:
+    __device__
+    float operator()(const float &stdev) const {
+        return 2 * pow(stdev, 2.0);
+    }
+};
+
+class normal_logpdf_secondfactor : public thrust::binary_function<float,float,float> {
+public:
+    __device__
+    float operator()(const float& numerator, const float& denominator){
+        return exp(-numerator / denominator);
+    }
+};
+
+void GaussianObservationModel::get_pos_probability_vector(int token, Array * output){
     cerr << "Error: This is not implemented yet!" << endl;
-    array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
-    array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
-    cout << "CatObsModel::get_pos_prob returning" << endl;
-    return lex_column;
+    array2d_view<ValueArrayView, row_major>* embed_view = embeddings -> get_view();
+    array2d<float, device_memory>::row_view embed_vec = embed_view -> row(token);
+    int a_max, b_max, g_max;
+    std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();
+    thrust::fill(output->begin(), output->end(), 0.0);
+
+    (*output)[0] = std::numeric_limits<float>::min();
+
+    thrust::device_vector<float> normalizer(embed_dims);
+    thrust::device_vector<float> errors(embed_dims);
+    thrust::device_vector<float> stdev_squared(embed_dims);
+    thrust::device_vector<float> second_factor(embed_dims);
+    thrust::device_vector<float> final_prob(embed_dims);
+
+    for(int g = 1; g < g_max; g++){
+        thrust::device_vector<float> means(lexMatrix->get_view() -> row(g).begin(), lexMatrix->get_view() -> row(g).begin() + embed_dims );
+        thrust::device_vector<float> stdevs(lexMatrix->get_view() -> row(g).begin() + embed_dims, lexMatrix->get_view() -> row(g).end());
+
+        // calculate the normalization term (unary function)
+        thrust::transform(stdevs.begin(), stdevs.end(), normalizer.begin(), normal_logpdf_firstfactor());
+        // calculate the numerator of the exponentiated factor (binary function):
+        thrust::transform(embed_view->row(token).begin(), embed_view->row(token).end(), means.begin(), errors.begin(), normal_logpdf_squarederror());
+        // calculate the denominator of the exponentiated factor (unary):
+        thrust::transform(stdevs.begin(), stdevs.end(), stdev_squared.begin(), normal_logpdf_twostdevsquared());
+        // calculate the exponentiated term (binary)
+        thrust::transform(errors.begin(), errors.end(), stdev_squared.begin(), second_factor.begin(), normal_logpdf_secondfactor());
+        // finalize output with simple multiplication:
+        thrust::transform(normalizer.begin(), normalizer.end(), second_factor.begin(), final_prob.begin(), thrust::multiplies<float>());
+
+        //thrust::transform(embed_view.begin(), embed_view.end(), temp.begin(), normal_logpdf(&means, &stdevs));
+        (*output)[g] = thrust::reduce(final_prob.begin(), final_prob.end());
+    }
+    //cout << "CatObsModel::get_pos_prob returning: " << *output << endl;
 }
 
 // taken away the new tensor
@@ -671,13 +744,13 @@ std::tuple<std::vector<std::vector<State> >, std::vector<float>> HmmSampler::sam
 
 
 HmmSampler::HmmSampler() : HmmSampler(std::time(0), ModelType::CATEGORICAL_MODEL){
-    cout << "Empty constructor called, initializing with defaults: seed=0 and categorical model" << endl;
+    //cout << "Empty constructor called, initializing with defaults: seed=0 and categorical model" << endl;
 }
 HmmSampler::HmmSampler(int seed) : HmmSampler(seed, ModelType::CATEGORICAL_MODEL) {
-    cout << "One-arg constructor called, initializing with default categorical model" << endl;
+    //cout << "One-arg constructor called, initializing with default categorical model" << endl;
 }
 HmmSampler::HmmSampler(int seed, ModelType model_type) : seed(seed){
-    cout << "Two-arg constructor called" << endl;
+    //cout << "Two-arg constructor called" << endl;
     if (seed == 0){
         mt.seed(std::time(0));
     } else{
@@ -685,7 +758,7 @@ HmmSampler::HmmSampler(int seed, ModelType model_type) : seed(seed){
     }
 
     if (model_type == ModelType::CATEGORICAL_MODEL) {
-        cout << "Creating categorical model" << endl;
+        //cout << "Creating categorical model" << endl;
         obs_model = new CategoricalObservationModel();
     }else if(model_type == ModelType::GAUSSIAN_MODEL) {
         cout << "Creating gaussian model" << endl;
@@ -694,7 +767,7 @@ HmmSampler::HmmSampler(int seed, ModelType model_type) : seed(seed){
 }
 
 HmmSampler::~HmmSampler(){
-    cout << "HmmSampler destructor called" << endl;
+    //cout << "HmmSampler destructor called" << endl;
     if(dyn_prog != NULL){
         for(int i = 0; i < max_sent_len; i++){
             delete dyn_prog[i];
