@@ -22,7 +22,7 @@ def calculate_alpha(num_terms, num_sents, nonterminal_mask, num_term_types, num_
     non_term_betas = nonterminal_mask * avg_non_term_pseudo_counts
     term_betas = (nonterminal_mask == 0).astype(float) * avg_term_pseudo_counts
     beta = term_betas + non_term_betas
-    logging.info('the average non-terminal pseudo count is {}, and terminal {}'.format(avg_term_pseudo_counts
+    logging.info('the average non-terminal pseudo count is {}, and terminal {}'.format(avg_non_term_pseudo_counts
                                                                                        , avg_term_pseudo_counts))
     return beta, avg_non_term_pseudo_counts, avg_term_pseudo_counts
 
@@ -144,7 +144,10 @@ class PCFG_model:
 
     def _reset_counts(self):
         for parent in self.counts:
-            self.counts[parent].fill(self.alpha)
+            if isinstance(self.alpha, np.ndarray):
+                self.counts[parent] = np.copy(self.alpha)
+            else:
+                self.counts[parent].fill(self.alpha)
 
     def _update_counts(self, pcfg_counts):
         for parent in pcfg_counts:
