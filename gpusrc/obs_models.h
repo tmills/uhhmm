@@ -15,7 +15,7 @@ protected:
 public:
     virtual ~ObservationModel(){}
     virtual void set_models(Model * models) = 0;
-    virtual Array * get_probability_vector(int token) = 0;
+    virtual void get_probability_vector(int token, Array* output) = 0;
 };
 
 class PosDependentObservationModel : public ObservationModel {
@@ -25,7 +25,7 @@ private:
 public:
     virtual ~PosDependentObservationModel();
     virtual void set_models(Model * models);
-    virtual Array * get_probability_vector(int token);
+    virtual void get_probability_vector(int token, Array* output);
     virtual void get_pos_probability_vector(int token, Array* output) = 0;
 };
 

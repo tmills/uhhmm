@@ -51,16 +51,24 @@ pi_col_indices(pi_col_indices), pi_col_indices_size(pi_col_indices_size), lex_va
 lex_vals_size(lex_vals_size), lex_num_rows(lex_num_rows), lex_num_cols(lex_num_cols), a_max(a_max),
 b_max(b_max), g_max(g_max), depth(depth), pos_vals(pos_vals), pos_vals_size(pos_vals_size),
 embed_vals(embed_vals), embed_num_words(embed_num_words), embed_num_dims(embed_num_dims), embed_vals_size(embed_vals_size), EOS_index(EOS_index){
+    // cout << "Entering model constructor" << endl;
     pi = new SparseView(pi_num_rows, pi_num_cols, pi_vals_size, pi_row_offsets, pi_col_indices, pi_vals, pi_row_offsets_size, pi_col_indices_size);
     lex = new DenseView(lex_num_rows, lex_num_cols, lex_vals_size, lex_vals);
     embed = new DenseView(embed_num_words, embed_num_dims, embed_vals_size, embed_vals);
     pos = new Array(pos_vals, pos_vals_size);
+    // cout << "Done with model constructor" << endl;
 }
 
 Model::~Model(){
-    delete lex;
-    delete pi;
-    delete pos;
+    // cout << "Entering model destructor" << endl;
+    if(lex != NULL){ delete lex;} else{ cout << "lex was already null" << endl;}
+    if(pi != NULL) { delete pi;} else{ cout << "pi was already null" << endl;}
+    if(pos != NULL) { delete pos;} else{ cout << "pos was already null" << endl;}
+    lex = NULL;
+    pi = NULL;
+    pos = NULL;
+    //if(embed != NULL) delete embed;
+    // cout << "Done with model destructor" << endl;
 }
 
 int Model::get_depth(){
@@ -83,31 +91,21 @@ void PosDependentObservationModel::set_models(Model * models){
     //cout << "PosDependentObsModel::set_models done" << endl;
 }
 
-Array * PosDependentObservationModel::get_probability_vector(int token){
+void PosDependentObservationModel::get_probability_vector(int token, Array* retVal){
     //cout << "PosDependentObsModel::get_prob_vec called" << endl;
     Array posProbs(g, 0);
-    //array2d<float, device_memory>::column_view posProbs = get_pos_probability_vector(token);
     get_pos_probability_vector(token, &posProbs);
     //cout << "pos probs size = " << posProbs.size() << endl;
 
     // debugging info:
-    //Sparse::view lexView(*lexMultiplier);
     //cout << "lexMultiplier size = " << lexView.size() << endl;
-    //ValueArrayView probsView(posProbs);
 
-    float f[p_indexer->get_state_size()];
-    for(int i=0; i < p_indexer->get_state_size(); i++) f[i] = 0.0;
-    Array * retVal = new Array(f, p_indexer->get_state_size());
     multiply(*lexMultiplier, posProbs, *retVal);
-
-    //ValueArrayView view(*retVal);
     //cout << "PosDependentObsModel::get_prob_vec done with size: " << view.size() << endl;
-    return retVal;
 }
 
 CategoricalObservationModel::~CategoricalObservationModel(){
     std::cout << "CatObs destructor called" << std::endl;
-    PosDependentObservationModel::~PosDependentObservationModel();
     delete lexMatrix;
 }
 
@@ -169,7 +167,6 @@ public:
 };
 
 void GaussianObservationModel::get_pos_probability_vector(int token, Array * output){
-    cerr << "Error: This is not implemented yet!" << endl;
     array2d_view<ValueArrayView, row_major>* embed_view = embeddings -> get_view();
     array2d<float, device_memory>::row_view embed_vec = embed_view -> row(token);
     int a_max, b_max, g_max;
@@ -199,7 +196,6 @@ void GaussianObservationModel::get_pos_probability_vector(int token, Array * out
         // finalize output with simple multiplication:
         thrust::transform(normalizer.begin(), normalizer.end(), second_factor.begin(), final_prob.begin(), thrust::multiplies<float>());
 
-        //thrust::transform(embed_view.begin(), embed_view.end(), temp.begin(), normal_logpdf(&means, &stdevs));
         (*output)[g] = thrust::reduce(final_prob.begin(), final_prob.end());
     }
     //cout << "CatObsModel::get_pos_prob returning: " << *output << endl;
@@ -416,7 +412,7 @@ void HmmSampler::set_models(Model * models){
 //    cout << "pos full array" << endl;
     int depth = p_model -> get_depth();
     pos_full_array = make_pos_full_array(pos_matrix, g_len, b_len, depth, state_size);
-//    cout << "set_models 9" << endl;
+    //cout << "set_models 9" << endl;
 //    print(*pos_full_array);
     // cout.precision(float_limit::max_digits10);
     obs_model->set_models(models);
@@ -505,6 +501,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
     int batch_max_len = get_max_len(sents);
     // np_sents is |batches| x max_len
     Dense* np_sents = get_sentence_array(sents, batch_max_len);
+    Array expanded_lex(p_indexer->get_state_size(), 0);
 
     //array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
 //    cout << "Forward in 2 " << endl;
@@ -551,9 +548,9 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             // dyn_prog_row is 1 x state_size
             // dyn_prog_column is state_size x 1
             array2d<float, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
-//            cout << "Getting observation probability" << endl;
-            Array * expanded_lex = obs_model->get_probability_vector(token);
-            blas::xmy(*expanded_lex, dyn_prog_col, dyn_prog_col);
+            //cout << "Getting observation probability" << endl;
+            obs_model->get_probability_vector(token, &expanded_lex);
+            blas::xmy(expanded_lex, dyn_prog_col, dyn_prog_col);
 //            cout << "Computing normalizer" << endl;
             normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
 //             cout << "Normalizing over col with result: " << normalizer << endl;
@@ -750,7 +747,7 @@ HmmSampler::HmmSampler(int seed) : HmmSampler(seed, ModelType::CATEGORICAL_MODEL
     //cout << "One-arg constructor called, initializing with default categorical model" << endl;
 }
 HmmSampler::HmmSampler(int seed, ModelType model_type) : seed(seed){
-    //cout << "Two-arg constructor called" << endl;
+    //cout << "Two-arg constructor called for sampler" << samplerNum << endl;
     if (seed == 0){
         mt.seed(std::time(0));
     } else{
@@ -758,7 +755,7 @@ HmmSampler::HmmSampler(int seed, ModelType model_type) : seed(seed){
     }
 
     if (model_type == ModelType::CATEGORICAL_MODEL) {
-        //cout << "Creating categorical model" << endl;
+        // cout << "Creating categorical model" << endl;
         obs_model = new CategoricalObservationModel();
     }else if(model_type == ModelType::GAUSSIAN_MODEL) {
         cout << "Creating gaussian model" << endl;
@@ -767,7 +764,7 @@ HmmSampler::HmmSampler(int seed, ModelType model_type) : seed(seed){
 }
 
 HmmSampler::~HmmSampler(){
-    //cout << "HmmSampler destructor called" << endl;
+    //cout << "HmmSampler destructor called for sampler " << samplerNum << endl;
     if(dyn_prog != NULL){
         for(int i = 0; i < max_sent_len; i++){
             delete dyn_prog[i];
@@ -788,5 +785,5 @@ HmmSampler::~HmmSampler(){
     delete expand_mat;
     delete dyn_prog_part;
     delete pos_full_array;
-    //delete obs_model;
+    //if(obs_model != NULL) delete obs_model;
 }

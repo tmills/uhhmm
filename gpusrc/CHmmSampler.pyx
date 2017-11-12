@@ -18,7 +18,7 @@ cdef extern from "HmmSampler.h":
 
 cdef class GPUModel:
     cdef Model* c_model
-    def __cinit__(self, models, model_type):
+    def __cinit__(self, models):
         (pi, lex_dist, maxes, depth, pos_dist, embed_matrix, EOS_index) = models
         # int a_max, b_max, g_max
         (a_max, b_max, g_max) = maxes
@@ -83,14 +83,14 @@ cdef extern from "HmmSampler.h":
 
 
 cdef class GPUHmmSampler:
-    cdef HmmSampler hmmsampler
-    def __cinit__(self, int seed = 0):
-        if seed != 0:
-            print("Calling hmmsampler with seed !=0")
-            self.hmmsampler = HmmSampler(seed)
-        else:
-            print("Calling hmmsampler with seed ==0")
-            self.hmmsampler = HmmSampler()
+    cdef HmmSampler* hmmsampler
+    def __cinit__(self, int seed = 0, ModelType model_type=CATEGORICAL_MODEL):
+        print("Calling hmmsampler with seed = %d" % (seed))
+        print("Calling hmmsampler with model_type=%s" % (model_type))
+        self.hmmsampler = new HmmSampler(seed, model_type)
+    def __dealloc__(self):
+        print("Calling GPUHmmSampler deallocate method to free sampler memory")
+        del self.hmmsampler
     def set_models(self, GPUModel model):
         self.hmmsampler.set_models(model.c_model)
     def initialize_dynprog(self, int batch_size, int k):

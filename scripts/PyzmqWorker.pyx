@@ -85,13 +85,12 @@ cdef class PyzmqWorker:
             if self.quit:
                 break
             # logging.info("GPU for worker is %s" % self.gpu)
-            sampler = None
             #  Socket to talk to server
             logging.debug("Worker %d sending request for new model" % self.tid)
             models_socket.send(b'0')
-            logging.debug("Waiting for new model location from server.")
+            logging.debug("Worker %d waiting for new model location from server." % self.tid)
             msg = models_socket.recv_pyobj()
-            logging.debug("Received new model location from server.")
+            logging.debug("Worker %d received new model location from server." % self.tid)
             # if self.gpu:
             #     msg = msg + '.gpu' # use gpu model for model
 
@@ -105,60 +104,63 @@ cdef class PyzmqWorker:
             logging.debug("Worker %d preparing to process new model" % self.tid)
 
             if model_wrapper.model_type == ModelWrapper.HMM and not self.gpu:
-                #print("Observation model type is %s" % (type(model_wrapper.model[0].lex)))
-                if isinstance(model_wrapper.model[0].lex, models.CategoricalModel):
-                    obs_model = CategoricalObservationModel.CategoricalObservationModel()
-                else:
-                    obs_model = GaussianObservationModel.GaussianObservationModel()
-
                 if self.batch_size > 0:
+                    logging.info("Worker %d doing finite model inference on the CPU" % (self.tid))
+                    #print("Observation model type is %s" % (type(model_wrapper.model[0].lex)))
+                    if isinstance(model_wrapper.model[0].lex, models.CategoricalModel):
+                        obs_model = CategoricalObservationModel.CategoricalObservationModel()
+                    else:
+                        obs_model = GaussianObservationModel.GaussianObservationModel()
+
                     sampler = HmmSampler.HmmSampler(seed=self.seed, obs_model=obs_model)
                     sampler.set_models(model_wrapper.model)
                     self.processSentences(sampler, model_wrapper.model[1], jobs_socket, results_socket)
                 else:
-                    time.sleep(1)
+                    time.sleep(2)
+                    
             elif model_wrapper.model_type == ModelWrapper.INFINITE:
+                logging.info("Worker %d doing infinite model inference" % (self.tid))
                 sampler = DepthOneInfiniteSampler.InfiniteSampler(self.seed)
                 sampler.set_models(model_wrapper.model)
                 self.processSentences(sampler, model_wrapper.model, jobs_socket, results_socket)
 
             elif model_wrapper.model_type == ModelWrapper.COMPILE:
+                logging.info("Worker %d in compile stage" % (self.tid))
                 self.indexer = Indexer.Indexer(model_wrapper.model)
                 self.processRows(model_wrapper.model, jobs_socket, results_socket, depth_limit=model_wrapper.depth)
 
             elif model_wrapper.model_type == ModelWrapper.HMM and self.gpu:
+                logging.info("Worker %d doing finite model inference on the GPU" % (self.tid))
                 import CHmmSampler
                 msg.file_path = msg.file_path + '.gpu'
                 lex = model_wrapper.model[0].lex
                 model_wrapper = self.get_model(msg)[0]
 
                 # print('1 worker loading file.')
-                logging.info("Creating gpu hmm sampler")
-                sampler = CHmmSampler.GPUHmmSampler(self.seed)
                 # print('2 init sampler on GPU')
                 # print(model_wrapper.model)
                 if isinstance(lex, models.CategoricalModel):
-                    logging.info("Creating gpu model with categorical observation model.")
-                    gpu_model = CHmmSampler.GPUModel(model_wrapper.model, CHmmSampler.ModelType.CATEGORICAL_MODEL)
+                    logging.info("Creating gpu sampler with categorical observation model.")
+                    sampler = CHmmSampler.GPUHmmSampler(self.seed, CHmmSampler.ModelType.CATEGORICAL_MODEL)
                 else:
-                    logging.info("Creating gpu model with gaussian observation model.")
-                    gpu_model = CHmmSampler.GPUModel(model_wrapper.model, CHmmSampler.ModelType.CATEGORICAL_MODEL)
+                    logging.info("Creating gpu sampler with gaussian observation model.")
+                    sampler = CHmmSampler.GPUHmmSampler(self.seed, CHmmSampler.ModelType.GAUSSIAN_MODEL)
+
+                gpu_model = CHmmSampler.GPUModel(model_wrapper.model)
 
                 # print('3 loading in models')
-                logging.info("Passing gpu model from python to cuda")
                 sampler.set_models(gpu_model)
                 # print('4 setting in models')
                 # self.model_file_sig = get_file_signature(msg)
                 pi = 0 # placeholder
                 self.processSentences(sampler, pi, jobs_socket, results_socket)
+                ## Free memory of gpu model
+                model_wrapper = None
 
             else:
                 logging.error("Received a model type that I don't know how to process!")
 
             logging.debug("Worker %d received new models..." % self.tid)
-
-            ## Tell the sink that i'm done:
-#            results_socket.send_pyobj(PyzmqParse(-1,None,0))
 
 
         logging.debug("Worker %d disconnecting sockets and finishing up" % self.tid)
