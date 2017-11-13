@@ -1,40 +1,48 @@
+import logging
+import os.path
+
 import nltk
 import numpy as np
-import logging
 from scipy.stats import dirichlet
-import os.path
 
 
 def normalize_a_tensor(tensor):
-    return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-20)  # to supress zero division warning
+    return tensor / (
+    np.sum(tensor, axis=-1, keepdims=True) + 1e-20)  # to supress zero division warning
 
-def calculate_alpha(num_terms, num_sents, nonterminal_mask, num_term_types, num_nonterminal_types, scale):
+
+def calculate_alpha(num_terms, num_sents, non_root_nonterm_mask, num_term_types,
+                    num_nonterminal_types, scale):
     assert scale <= 1, "the scale hyperparameter for beta cannot be larger than 1!"
+    logging.info("num of sents : {}; num of tokens: {}; num of types : {}; num of nonterm types: {"
+                 "}".format(num_sents, num_terms, num_term_types, num_nonterminal_types))
     num_terminal_nodes = num_terms
     num_nonterminal_nodes = num_terms - num_sents
-    num_nonterminal_rules = np.sum(nonterminal_mask)
+    num_nonterminal_rules = np.sum(non_root_nonterm_mask)
     total_non_term_pseudo_counts = scale * num_nonterminal_nodes
     total_term_pseudo_counts = scale * num_terminal_nodes
     avg_non_term_pseudo_counts = total_non_term_pseudo_counts / num_nonterminal_rules / num_nonterminal_types
-    avg_term_pseudo_counts = total_term_pseudo_counts / num_term_types/ num_nonterminal_types
+    avg_term_pseudo_counts = total_term_pseudo_counts / num_term_types / num_nonterminal_types
     assert avg_term_pseudo_counts <= 1, "the average terminal pseudo count is larger than 1! please tune down th" \
                                         "e scale hyperparameter!"
-    non_term_betas = nonterminal_mask * avg_non_term_pseudo_counts
-    term_betas = (nonterminal_mask == 0).astype(float) * avg_term_pseudo_counts
+    non_term_betas = non_root_nonterm_mask * avg_non_term_pseudo_counts
+    term_betas = (non_root_nonterm_mask == 0).astype(float) * avg_term_pseudo_counts
     beta = term_betas + non_term_betas
-    logging.info('the average non-terminal pseudo count is {}, and terminal {}'.format(avg_non_term_pseudo_counts
-                                                                                       , avg_term_pseudo_counts))
+    logging.info('the average non-terminal pseudo count is {:.2f}, and terminal {:.2f}. '
+                 'scale is {}'.format(
+        avg_non_term_pseudo_counts
+        , avg_term_pseudo_counts, scale))
     return beta, avg_non_term_pseudo_counts, avg_term_pseudo_counts
 
 
-
 class PCFG_model:
-    def __init__(self, abp_domain_size, len_vocab, num_sents, num_words, log_dir='.', iter=0, word_dict_file=None):
+    def __init__(self, abp_domain_size, len_vocab, num_sents, num_words, log_dir='.', iter=0,
+                 word_dict_file=None):
         self.abp_domain_size = abp_domain_size
         self.len_vocab = len_vocab
         self.num_sents = num_sents
         self.num_words = num_words
-        self.non_terminal_rule_mask = []
+        self.non_root_nonterm_mask = []
         self.nonterms = [nltk.grammar.Nonterminal(str(x)) for x in range(abp_domain_size + 1)]
         self.indices_keys, self.keys_indices = self.build_pcfg_indices(abp_domain_size, len_vocab)
         self.size = len(self.indices_keys)
@@ -42,7 +50,7 @@ class PCFG_model:
         self.alpha = 0
         self.nonterm_alpha, self.term_alpha = 0, 0
         self.counts = {}
-        self.init_counts()
+        # self.init_counts()
         self.unannealed_dists = {}
         self.log_dir = log_dir
         self.log_mode = 'w'
@@ -109,8 +117,18 @@ class PCFG_model:
         return self.size
 
     def init_counts(self):
-        self.counts = {x: np.zeros(len(self.indices_keys[x])) + self.alpha
-                              for x in self.indices_keys}
+        if isinstance(self.alpha, np.ndarray):
+            print(list(self.indices_keys.keys()))
+            print(list(map(len, self.indices_keys.values())))
+            for x in self.indices_keys:
+                if x.symbol() == '0':
+                    self.counts[x] = np.ones(len(self.indices_keys[x]))
+                else:
+                    self.counts[x] = np.zeros(len(self.indices_keys[x])) + self.alpha
+
+        else:
+            self.counts = {x: np.zeros(len(self.indices_keys[x])) + self.alpha
+                           for x in self.indices_keys}
 
     def set_alpha(self, alpha_range, alpha=0.0, alpha_scale=0.0):
         if isinstance(alpha_range, list):
@@ -121,13 +139,15 @@ class PCFG_model:
             logging.warning("Do NOT set init_alpha and alpha_scale at the same time."
                             "init_alpha will be ignored.")
         if alpha_scale != 0:
-            self.alpha, self.nonterm_alpha, self.term_alpha = calculate_alpha(self.num_words, self.num_sents, self.non_terminal_rule_mask,
-                                         self.len_vocab, self.abp_domain_size, alpha_scale)
+            self.alpha, self.nonterm_alpha, self.term_alpha = \
+                calculate_alpha(self.num_words, self.num_sents, self.non_root_nonterm_mask,
+                                self.len_vocab, self.abp_domain_size, alpha_scale)
         elif alpha != 0.0:
             assert alpha >= alpha_range[0] and alpha <= alpha_range[1]
             self.alpha, self.nonterm_alpha, self.term_alpha = alpha, alpha, alpha
         else:
             self.alpha = sum(alpha_range) / len(alpha_range)
+        self.init_counts()
 
     def sample(self, pcfg_counts, annealing_coeff=1.0, normalize=False,
                sample_alpha_flag=False):  # used as the normal sampling procedure
@@ -145,7 +165,10 @@ class PCFG_model:
     def _reset_counts(self):
         for parent in self.counts:
             if isinstance(self.alpha, np.ndarray):
-                self.counts[parent] = np.copy(self.alpha)
+                if parent.symbol() == '0':
+                    self.counts[parent].fill(1)
+                else:
+                    self.counts[parent] = np.copy(self.alpha)
             else:
                 self.counts[parent].fill(self.alpha)
 
@@ -176,33 +199,49 @@ class PCFG_model:
             mh_ratio = new_f_val - old_f_val
             if mh_ratio > acceptance_thres:
                 self.alpha = new_alpha
-                logging.info('pcfg alpha samples a new value {} with log ratio {}/{}'.format(new_alpha, mh_ratio,
-                                                                                             acceptance_thres))
+                logging.info(
+                    'pcfg alpha samples a new value {} with log ratio {}/{}'.format(new_alpha,
+                                                                                    mh_ratio,
+                                                                                    acceptance_thres))
 
     def _sample_model(self, annealing_coeff=1.0, normalize=False):
         logging.info(
-            "resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha, annealing_coeff))
+            "resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha,
+                                                                                   annealing_coeff))
         if self.log_probs != 0:
             self.hypparam_log.write('\t'.join([str(x) for x in [self.iter, self.log_probs,
-                                                            (self.nonterm_alpha, self.term_alpha), annealing_coeff]]) + '\n')
+                                                                (self.nonterm_alpha,
+                                                                 self.term_alpha),
+                                                                annealing_coeff]]) + '\n')
         dists = {}
         if annealing_coeff != 1.0:
-            self.anneal_counts = { x: (self.counts[x] - self.alpha) * annealing_coeff for x in self.counts}
-            self.unannealed_dists = {x: np.random.dirichlet(self.anneal_counts[x] + self.alpha) for x in self.anneal_counts}
+            self.anneal_counts = {x: (self.counts[x] - self.alpha) * annealing_coeff if x.symbol()
+                                                                                        != '0' else
+                                                            (self.counts[x] - 1) * annealing_coeff
+                                                            for x in self.counts}
+            self.unannealed_dists = {x: np.random.dirichlet(self.anneal_counts[x] + self.alpha)
+            if x.symbol() != "0" else
+            np.random.dirichlet(self.anneal_counts[x] + 1)
+                                     for x in self.anneal_counts}
             # if normalize:
             #     dists = {x: normalize_a_tensor(dists[x]) for x in dists}
         else:
             self.anneal_counts = self.counts
             self.unannealed_dists = {x: np.random.dirichlet(self.counts[x]) for x in self.counts}
         dists = self.unannealed_dists
+        for dist in dists.values():
+            assert np.all(dist != 0), "there are 0s in distributions from Dirichlet!"
         # print(dists)
         # print(np.sum(dists[nltk.grammar.Nonterminal('1')], axis=0))
         self._log_dists(dists)
+        print(dists)
+        print(list(map(len, dists.values())))
         return dists
 
     def _translate_model_to_pcfg(self, dists):
         pcfg = {x: {} for x in dists}
         for parent in pcfg:
+            print(parent)
             for index, value in enumerate(dists[parent]):
                 rhs = self[(parent, index)]
                 pcfg[parent][rhs] = value
@@ -216,30 +255,32 @@ class PCFG_model:
                 for child in range(abp_domain_size + 1):  # from 0 - domain_size
                     if child != 0:
                         rule = nltk.grammar.Production(self.nonterms[parent],
-                                                       (self.nonterms[child], self.nonterms[parent]))
+                                                       (
+                                                       self.nonterms[child], self.nonterms[parent]))
                         keys_indices[rule.lhs()][rule.rhs()] = len(keys_indices[rule.lhs()])
                         indices_keys[rule.lhs()].append(rule.rhs())
-                        self.non_terminal_rule_mask.append(1)
                 else:
                     rule = nltk.grammar.Production(self.nonterms[parent], ('-ROOT-',))
                     keys_indices[rule.lhs()][rule.rhs()] = len(keys_indices[rule.lhs()])
                     indices_keys[rule.lhs()].append(rule.rhs())
-                    self.non_terminal_rule_mask.append(0)
             else:
 
                 for l_child in range(1, abp_domain_size + 1):
                     for r_child in range(1, abp_domain_size + 1):
                         rule = nltk.grammar.Production(self.nonterms[parent],
-                                                       (self.nonterms[l_child], self.nonterms[r_child]))
+                                                       (self.nonterms[l_child],
+                                                        self.nonterms[r_child]))
                         keys_indices[rule.lhs()][rule.rhs()] = len(keys_indices[rule.lhs()])
                         indices_keys[rule.lhs()].append(rule.rhs())
-                        self.non_terminal_rule_mask.append(1)
+                        if parent == 1:
+                            self.non_root_nonterm_mask.append(1)
                 for lex in range(1, len_vocab + 1):
                     rule = nltk.grammar.Production(self.nonterms[parent], (str(lex),))
                     keys_indices[rule.lhs()][rule.rhs()] = len(keys_indices[rule.lhs()])
                     indices_keys[rule.lhs()].append(rule.rhs())
-                    self.non_terminal_rule_mask.append(0)
-        self.non_terminal_rule_mask = np.array(self.non_terminal_rule_mask)
+                    if parent == 1:
+                        self.non_root_nonterm_mask.append(0)
+        self.non_root_nonterm_mask = np.array(self.non_root_nonterm_mask)
         return indices_keys, keys_indices
 
     def _read_word_dict_file(self, word_dict_file):
@@ -249,6 +290,7 @@ class PCFG_model:
             (word, index) = line.rstrip().split(" ")
             word_dict[int(index)] = word
         return word_dict
+
 
 if __name__ == '__main__':
     abp_domain_size = 5
@@ -265,5 +307,6 @@ if __name__ == '__main__':
     pcfg_model._update_counts(pcfg_counts_model)
     pcfg_model_dict = pcfg_model.sample(pcfg_counts_model, annealing_coeff=0.5, normalize=True)
     print(
-        pcfg_model_dict[nltk.grammar.Nonterminal('1')][(nltk.grammar.Nonterminal('1'), nltk.grammar.Nonterminal('3'))])
+        pcfg_model_dict[nltk.grammar.Nonterminal('1')][
+            (nltk.grammar.Nonterminal('1'), nltk.grammar.Nonterminal('3'))])
     print(pcfg_model_dict[nltk.grammar.Nonterminal('1')])
