@@ -128,7 +128,7 @@ void CategoricalObservationModel::get_pos_probability_vector(int token, Array* o
 void GaussianObservationModel::set_models(Model * models){
     cout << "GaussianObsModel::set_models called" << endl;
     PosDependentObservationModel::set_models(models);
-    //lexMatrix = models -> lex;
+    lexMatrix = models -> lex;
     embeddings = models -> embed;
     embed_dims = models -> embed_num_dims;
     cout << "GaussianObsModel::set_models done: embedding matrix has dimensionality " << embed_dims << endl;
@@ -167,6 +167,7 @@ public:
 };
 
 void GaussianObservationModel::get_pos_probability_vector(int token, Array * output){
+    // cout << "GaussianObservationModel::get_pos_probability_vector called" << endl;
     array2d_view<ValueArrayView, row_major>* embed_view = embeddings -> get_view();
     array2d<float, device_memory>::row_view embed_vec = embed_view -> row(token);
     int a_max, b_max, g_max;
@@ -175,30 +176,41 @@ void GaussianObservationModel::get_pos_probability_vector(int token, Array * out
 
     (*output)[0] = std::numeric_limits<float>::min();
 
+    // cout << "  Initializing intermediate vectors" << endl;
     thrust::device_vector<float> normalizer(embed_dims);
     thrust::device_vector<float> errors(embed_dims);
     thrust::device_vector<float> stdev_squared(embed_dims);
     thrust::device_vector<float> second_factor(embed_dims);
     thrust::device_vector<float> final_prob(embed_dims);
 
+
     for(int g = 1; g < g_max; g++){
+        // cout << "  Getting prob estimate p(token_" << token << "|POS_" << g << ")" << endl;
+        // cout << "  Loading means" << endl;
         thrust::device_vector<float> means(lexMatrix->get_view() -> row(g).begin(), lexMatrix->get_view() -> row(g).begin() + embed_dims );
+        // cout << "  Loading standard deviations" << endl;
         thrust::device_vector<float> stdevs(lexMatrix->get_view() -> row(g).begin() + embed_dims, lexMatrix->get_view() -> row(g).end());
 
+        // cout << "  Calculating normalizing term first..." << endl;
         // calculate the normalization term (unary function)
         thrust::transform(stdevs.begin(), stdevs.end(), normalizer.begin(), normal_logpdf_firstfactor());
         // calculate the numerator of the exponentiated factor (binary function):
+        // cout << "  Calculating squared error term..." << endl;
         thrust::transform(embed_view->row(token).begin(), embed_view->row(token).end(), means.begin(), errors.begin(), normal_logpdf_squarederror());
         // calculate the denominator of the exponentiated factor (unary):
+        // cout << "  Calculating two stdevs squared..." << endl;
         thrust::transform(stdevs.begin(), stdevs.end(), stdev_squared.begin(), normal_logpdf_twostdevsquared());
         // calculate the exponentiated term (binary)
+        // cout << "  Calculating second factor ratio" << endl;
         thrust::transform(errors.begin(), errors.end(), stdev_squared.begin(), second_factor.begin(), normal_logpdf_secondfactor());
         // finalize output with simple multiplication:
+        // cout << "  Calculating final probability vector" << endl;
         thrust::transform(normalizer.begin(), normalizer.end(), second_factor.begin(), final_prob.begin(), thrust::multiplies<float>());
 
+        // cout << "  Reducing probability vectors across dimensions to POS tag probability." << endl;
         (*output)[g] = thrust::reduce(final_prob.begin(), final_prob.end());
     }
-    //cout << "CatObsModel::get_pos_prob returning: " << *output << endl;
+    // cout << "GaussianObservationModel::get_pos_probability_vector returning" << endl;
 }
 
 // taken away the new tensor
@@ -548,7 +560,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             // dyn_prog_row is 1 x state_size
             // dyn_prog_column is state_size x 1
             array2d<float, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
-            //cout << "Getting observation probability" << endl;
+            // cout << "Getting observation probability" << endl;
             obs_model->get_probability_vector(token, &expanded_lex);
             blas::xmy(expanded_lex, dyn_prog_col, dyn_prog_col);
 //            cout << "Computing normalizer" << endl;
