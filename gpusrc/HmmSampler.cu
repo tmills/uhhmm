@@ -41,6 +41,10 @@ typedef std::numeric_limits<float> float_limit;
 typedef cusp::array1d<float,cusp::device_memory> cusparray;
 typedef cusparray::view ArrayView;
 
+void debug_print_vector(thrust::device_vector<float> vec){
+  thrust::copy(vec.begin(), vec.end(), std::ostream_iterator<float>(cout, " "));
+}
+
 Model::Model(int pi_num_rows, int pi_num_cols, float* pi_vals, int pi_vals_size, int* pi_row_offsets,
 int pi_row_offsets_size, int* pi_col_indices, int pi_col_indices_size, float* lex_vals, int lex_vals_size,
 int lex_num_rows, int lex_num_cols, int a_max, int b_max, int g_max, int depth, float* pos_vals, int pos_vals_size,
@@ -87,13 +91,13 @@ void PosDependentObservationModel::set_models(Model * models){
     delete p_indexer;
     p_indexer = new Indexer(models);
     lexMultiplier = tile(models->g_max, p_indexer->get_state_size());
-    g = models->g_max;
+    g_size = models->g_max;
     //cout << "PosDependentObsModel::set_models done" << endl;
 }
 
 void PosDependentObservationModel::get_probability_vector(int token, Array* retVal){
     //cout << "PosDependentObsModel::get_prob_vec called" << endl;
-    Array posProbs(g, 0);
+    Array posProbs(g_size, 0);
     get_pos_probability_vector(token, &posProbs);
     //cout << "pos probs size = " << posProbs.size() << endl;
 
@@ -126,12 +130,22 @@ void CategoricalObservationModel::get_pos_probability_vector(int token, Array* o
 }
 
 void GaussianObservationModel::set_models(Model * models){
-    cout << "GaussianObsModel::set_models called" << endl;
+    // cout << "GaussianObsModel::set_models called" << endl;
     PosDependentObservationModel::set_models(models);
     lexMatrix = models -> lex;
     embeddings = models -> embed;
     embed_dims = models -> embed_num_dims;
-    cout << "GaussianObsModel::set_models done: embedding matrix has dimensionality " << embed_dims << endl;
+
+    // for(int g = 1; g < g_size; g++){
+    //   thrust::device_vector<float> means(lexMatrix->get_view() -> row(g).begin(), lexMatrix->get_view() -> row(g).begin() + embed_dims );
+    //   cout << "Means for pos" << g << ":";
+    //   debug_print_vector(means);
+    //   cout << endl;
+    // }
+
+
+    // cout << "GaussianObsModel::set_models done: embedding matrix has dimensionality " << embed_dims << endl;
+
 }
 
 class normal_logpdf_firstfactor : public thrust::unary_function<float, float> {
@@ -166,6 +180,7 @@ public:
     }
 };
 
+
 void GaussianObservationModel::get_pos_probability_vector(int token, Array * output){
     // cout << "GaussianObservationModel::get_pos_probability_vector called" << endl;
     array2d_view<ValueArrayView, row_major>* embed_view = embeddings -> get_view();
@@ -188,8 +203,15 @@ void GaussianObservationModel::get_pos_probability_vector(int token, Array * out
         // cout << "  Getting prob estimate p(token_" << token << "|POS_" << g << ")" << endl;
         // cout << "  Loading means" << endl;
         thrust::device_vector<float> means(lexMatrix->get_view() -> row(g).begin(), lexMatrix->get_view() -> row(g).begin() + embed_dims );
+        // cout << "Means for pos" << g << ":";
+        // debug_print_vector(means);
+        // cout << endl;
+
         // cout << "  Loading standard deviations" << endl;
         thrust::device_vector<float> stdevs(lexMatrix->get_view() -> row(g).begin() + embed_dims, lexMatrix->get_view() -> row(g).end());
+        // cout << "Stdevs for pos" << g << ":";
+        // debug_print_vector(stdevs);
+        // cout << endl;
 
         // cout << "  Calculating normalizing term first..." << endl;
         // calculate the normalization term (unary function)

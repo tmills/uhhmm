@@ -21,7 +21,8 @@ public:
 class PosDependentObservationModel : public ObservationModel {
 private:
     Sparse* lexMultiplier = NULL;
-    int g;
+protected:
+    int g_size;
 public:
     virtual ~PosDependentObservationModel();
     virtual void set_models(Model * models);

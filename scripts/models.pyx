@@ -76,7 +76,7 @@ cdef class GaussianModel(Model):
         sample_means = []
         sample_stdevs = []
         for pos_ind in range(len(self.pairCounts)-1):
-            logging.info("Pair counts for POS%d with %d tokens assigned:" % (pos_ind, len(self.pairCounts[pos_ind])))
+            #logging.info("Pair counts for POS%d with %d tokens assigned:" % (pos_ind, len(self.pairCounts[pos_ind])))
             #logging.info(self.pairCounts[pos_ind])
             stds = np.zeros(self.embed_dims) + stdev_mean
             if len(self.pairCounts[pos_ind]) > 0:
@@ -86,8 +86,8 @@ cdef class GaussianModel(Model):
                 sample_means.append(sample_mean)
                 sample_stdevs.append(sample_stdev)
                 self.dist[pos_ind] = scipy.stats.norm(sample_mean, stds)
-                if pos_ind > 0:
-                    logging.info("POS index=%d has distribution with mean %s and stdev %s" % (pos_ind, sample_mean, sample_stdev))
+#                if pos_ind > 0:
+#                    logging.info("POS index=%d has distribution with mean %s and stdev %s" % (pos_ind, sample_mean, sample_stdev))
 
                 ## FIXME: (see above)
     #            stds = np.zeros(len(sample_means)) + stdev_mean
