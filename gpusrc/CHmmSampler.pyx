@@ -8,7 +8,7 @@ import State as PyState
 ## model class
 cdef extern from "HmmSampler.h":
     cdef cppclass Model: # no nullary constructor
-        Model(int, int, float*, int, int*, int, int*, int, float*, int, int, int, int, int, int, int, float*, int, int, int, int, float*, int) except +
+        Model(int, int, double*, int, int*, int, int*, int, double*, int, int, int, int, int, int, int, double*, int, int, int, int, double*, int) except +
         int get_depth()
 
 cdef extern from "HmmSampler.h":
@@ -28,17 +28,17 @@ cdef class GPUModel:
         pi_num_cols = pi.shape[1]
         embed_num_rows = embed_matrix.shape[0]
         embed_num_cols = embed_matrix.shape[1]
-        cdef np.ndarray[float, ndim=1, mode="c"] pi_data = pi.data
+        cdef np.ndarray[double, ndim=1, mode="c"] pi_data = pi.data
         cdef int pi_data_size = pi_data.size
         cdef np.ndarray[int, ndim=1, mode="c"] pi_indices = pi.indices
         cdef int pi_indices_size = pi_indices.size
         cdef np.ndarray[int, ndim=1, mode="c"] pi_indptr = pi.indptr
         cdef int pi_indptr_size = pi_indptr.size
-        cdef np.ndarray[float, ndim=2, mode="c"] lex = lex_dist
+        cdef np.ndarray[double, ndim=2, mode="c"] lex = lex_dist
         cdef int lex_dist_size = lex_dist.size
-        cdef np.ndarray[float, ndim=1, mode="c"] pos = pos_dist
+        cdef np.ndarray[double, ndim=1, mode="c"] pos = pos_dist
         cdef int pos_dist_size = pos_dist.size
-        cdef np.ndarray[float, ndim=2, mode="c"] embed = embed_matrix
+        cdef np.ndarray[double, ndim=2, mode="c"] embed = embed_matrix
         cdef int embed_dist_size = embed_matrix.size
         #print("First 10 elements of data array are: %s" % (pi_data[0:10]) )
         self.c_model = new Model(pi_num_rows, pi_num_cols, &pi_data[0], pi_data_size, &pi_indptr[0], pi_indptr_size,
@@ -78,7 +78,7 @@ cdef extern from "HmmSampler.h":
         HmmSampler(int seed, ModelType model_type) except +
         void set_models(Model*)
         void initialize_dynprog(int, int)
-        vector[float] forward_pass(vector[vector[int]], int)
+        vector[double] forward_pass(vector[vector[int]], int)
         vector[vector[State]] reverse_sample(vector[vector[int]], int)
 
 

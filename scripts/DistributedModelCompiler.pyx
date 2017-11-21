@@ -38,8 +38,8 @@ class DistributedModelCompiler(FullDepthCompiler):
             data_type = np.float64
             data_type_bytes = 8
         else:
-            data_type = np.float32
-            data_type_bytes = 4
+            data_type = np.float64
+            data_type_bytes = 8
         indptr = np.zeros(totalK+1)
         indices =  np.zeros((total_connection,),dtype=data_type)
         data = np.zeros((total_connection,), dtype=data_type)
@@ -108,15 +108,15 @@ class DistributedModelCompiler(FullDepthCompiler):
         # logging.info('Last ptr %d; length of data: %d' % (indptr[-1], flat_data.shape[0]))
         logging.info("Creating csr transition matrix from sparse indices")
         if self.gpu == False:
-            pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK / g_max), dtype=np.float64)
+            pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK / g_max), dtype=data_type)
             if full_pi:
                 pi_full = scipy.sparse.csr_matrix((data_full, indices_full, indptr_full), (totalK, totalK),
-                                              dtype=np.float64)
+                                              dtype=data_type)
         else:
             # logging.info("Dumping out the GPU version of PI.")
-            pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK / g_max), dtype=np.float32)
+            pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK / g_max), dtype=data_type)
             if full_pi:
-                pi_full = scipy.sparse.csr_matrix((data_full,indices_full,indptr_full), (totalK, totalK ), dtype=np.float32)
+                pi_full = scipy.sparse.csr_matrix((data_full,indices_full,indptr_full), (totalK, totalK ), dtype=data_type)
         fn = working_dir+'/models.bin'
         out_file = open(fn, 'wb')
         # logging.info("Transforming and writing csc model")
@@ -126,11 +126,11 @@ class DistributedModelCompiler(FullDepthCompiler):
         embeddings = None
         if self.gpu == True:
             if isinstance(models.lex, CategoricalModel):
-                lex_dist = 10**(models.lex.dist.astype(np.float32))
+                lex_dist = 10**(models.lex.dist.astype(data_type))
             else:
-                embeddings = models.lex.embeddings.astype('float32')
+                embeddings = models.lex.embeddings.astype(data_type)
                 embed_dim = embeddings.shape[1]
-                lex_dist = np.zeros( (len(models.lex.dist), 2 * embed_dim ) ).astype('float32')
+                lex_dist = np.zeros( (len(models.lex.dist), 2 * embed_dim ) ).astype(data_type)
                 for pos_ind,dist in enumerate(models.lex.dist):
                     ## This gets us the K-dimensional distribution for pos tag indexed by pos_ind
                     lex_dist[pos_ind,:embed_dim] += dist.mean()
@@ -138,7 +138,7 @@ class DistributedModelCompiler(FullDepthCompiler):
 
 
             if embeddings is None:
-                embeddings = np.zeros((2,2)).astype('float32')
+                embeddings = np.zeros((2,2)).astype(data_type)
 
             pos_dist = models.pos.dist
             pos_dist[:, -1].fill(0)
@@ -192,7 +192,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                                 corrected_pos_dist[bf_index, g_index] = 1
                             else:
                                 corrected_pos_dist[bf_index, g_index] = 0
-            corrected_pos_dist = np.ravel(corrected_pos_dist.astype(np.float32))
+            corrected_pos_dist = np.ravel(corrected_pos_dist.astype(data_type))
 
             assert corrected_pos_dist.shape[0]== g_max*(b_max**self.depth)*2, "Size of POS array {} should be analytically equal to {}".format
             (pos_dist.shape[0], g_max*(b_max**self.depth)*2)

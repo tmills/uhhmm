@@ -10,12 +10,12 @@ SCRIPTS  := $(THISDIR)/scripts
 CUDA_PATH:=/usr/local/cuda
 PYTHON_VERSION:=$(shell python3 --version | sed 's,Python \([0-9]\.[0-9]\)\.[0-9],python\1,')
 NUMPY_INC=$(shell python3 -c 'import numpy; print(numpy.get_include())')
-#NUMPY_INC=env/lib/${PYTHON_VERSION}/site-packages/numpy/core/include 
+#NUMPY_INC=env/lib/${PYTHON_VERSION}/site-packages/numpy/core/include
 #/usr/local/lib/python3.4/dist-packages/numpy/core/include
 PY3_LOC=env/bin/${PYTHON_VERSION}
 VPATH := genmodel data
 
-  
+
 #################################
 #
 # COLING 2016 Repro
@@ -31,18 +31,18 @@ VPATH := genmodel data
 #
 coling2016: projects/eve/a4-b4-g8-d2-fin/eve.nt.lower.nounary.nolabel.uhhmm \
             projects/eve/a4-b4-g8-d2-fin/eve.induc.uhhmm
-            
+
 # If running on a system with a GPU, use
 # this target for a big speed increase
 coling2016-GPU: projects/eve/a4-b4-g8-d2-P-fin/eve.nt.lower.nounary.nolabel.uhhmm \
             projects/eve/a4-b4-g8-d2-P-fin/eve.induc.uhhmm
 
-            
-            
+
+
 #################################
 #
 # Includes to external resources
-# 
+#
 #################################
 
 # Modelblocks:
@@ -54,7 +54,7 @@ coling2016-GPU: projects/eve/a4-b4-g8-d2-P-fin/eve.nt.lower.nounary.nolabel.uhhm
 # recipes to execute without MB.
 #
 
-MSG1 := The current config file, 
+MSG1 := The current config file,
 MSG2 := , points to an incorrect location (
 MSG3 := ). Fix it before re-running make.
 
@@ -114,7 +114,7 @@ user-lorelei-location.txt:
 	@echo 'ATTENTION: I had to create "$@" for you, which may be wrong'
 	@echo 'edit it to point at your lorelei language pack repository, and re-run make to continue!'
 	@echo ''
-  
+
 
 
 #################################
@@ -123,11 +123,11 @@ user-lorelei-location.txt:
 #
 #################################
 
-# One-liner to set up and run an UHHMM instance. Creates 
+# One-liner to set up and run an UHHMM instance. Creates
 # user-specified project directory, generates input
-# data files in it, generates a config file, and calls the 
+# data files in it, generates a config file, and calls the
 # UHHMM learner.
-# 
+#
 # The stem follows the following template:
 #
 #   <data-basename>.<postprocessing>.<config-params>.uhhmm
@@ -205,21 +205,21 @@ gpusrc/CHmmSampler.cpp: gpusrc/CHmmSampler.pyx gpusrc/HmmSampler.h
 
 gpusrc/libhmm.a: gpusrc/hmmsampler.o gpusrc/temp.o
 	ar cru $@ $^
-	ranlib $@ 
+	ranlib $@
 
 gpusrc/hmmsampler.o: gpusrc/temp.o
 	${CUDA_PATH}/bin/nvcc -dlink -o $@ $^ -lcudart --shared -Xcompiler -fPIC -m64 -L${CUDA_PATH}/lib64 -Xlinker -rpath -Xlinker ${CUDA_PATH}/lib64
 
-gpusrc/temp.o: gpusrc/HmmSampler.cu gpusrc/State.cu gpusrc/HmmSampler.h gpusrc/obs_models.h
+gpusrc/temp.o: gpusrc/HmmSampler.cu gpusrc/State.cu gpusrc/HmmSampler.h gpusrc/obs_models.h gpusrc/myarrays.cu gpusrc/myarrays.h
 	${CUDA_PATH}/bin/nvcc -rdc=true -c -o $@ $< -Icusplibrary/ -std=c++11 --shared -Xcompiler -fPIC -m64
 
 config/myconfig.ini: config/d1train.ini
 	cp $< $@
-  
+
 clean:
 	rm -f scripts/*.{c,so}
-  
-  
+
+
 
 #################################
 #
@@ -244,10 +244,10 @@ gendata/simplewiki_d1.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj0
 	cat $< | grep -v "#" | $(SCRIPTS)/extract_d1_trees.sh | grep "^(S" | $(SCRIPTS)/trees2poswords.sh > $@
 
 gendata/simplewiki_d2_5k.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
-	cat $< $(SCRIPTS)/extract_d2_trees.sh | grep "^(S" | $(SCRIPTS)/trees2poswords.sh | sort -R --random-source /dev/zero | head -5000 > $@ 
+	cat $< $(SCRIPTS)/extract_d2_trees.sh | grep "^(S" | $(SCRIPTS)/trees2poswords.sh | sort -R --random-source /dev/zero | head -5000 > $@
 
 gendata/simplewiki_d2_all.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
-	cat $< $(SCRIPTS)/extract_d2_trees.sh | $(SCRIPTS)/remove_wiki_junk.sh | $(SCRIPTS)/trees2poswords.sh > $@ 
+	cat $< $(SCRIPTS)/extract_d2_trees.sh | $(SCRIPTS)/remove_wiki_junk.sh | $(SCRIPTS)/trees2poswords.sh > $@
 
 gendata/simplewiki_all.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
 	cat $< | $(SCRIPTS)/remove_wiki_junk.sh | $(SCRIPTS)/trees2poswords.sh > $@
@@ -327,10 +327,10 @@ gendata/ktb.linetrees.txt: gendata/ktb.trees.txt
 %.rb.brackets: %.words.txt
 	cat $^ | perl $(SCRIPTS)/words2rb.pl > $@
 
-  
+
 
 #################################
-# 
+#
 # Targets for building input
 # files for morphologically-rich
 # languages (tested on Korean
@@ -342,12 +342,12 @@ gendata/ktb.linetrees.txt: gendata/ktb.trees.txt
 
 %.morf.txt: %.txt genmodel/%.morf.model
 	cat $< | morfessor-segment -l genmodel/$*.morf.model - | perl $(SCRIPTS)/morf2sents.pl > $@
- 
+
 # Requires Modelblocks
 genmodel/%.morf.model: %.txt genmodel
 	morfessor-train -s $@ $<
 
-  
+
 
 #################################
 #
@@ -391,10 +391,10 @@ p_lex_given_pos$$(subst .,,$$(suffix %)).txt p_pos_$$(subst .,,$$(suffix %)).txt
 # Generates a CoNLL-style table with test tags in column 4 and gold tags in column 5
 %.posgold.conll: %.conll $$(basename $$(basename %)).conll
 	paste <(cut -f -3 $<) <(cut -f 4 $(word 2, $^)) <(cut -f 5- $<) | sed 's/\t\t\+//g' > $@
-  
+
 # Generates a space-delimited table of recall measures by iteration
 # for each sample file in the user-supplied project directory
-/%.uhhmm-iter.constitevallist: $(SCRIPTS)/iters2constitevallist.py $$(foreach file, $$(wildcard $$(dir /%)last_sample*linetrees), /$$(basename $$(basename $$*)).$$(notdir $$(basename $$(basename $$*)))-$$(subst last_sample,,$$(basename $$(notdir $$(file))))-$$(subst .,,$$(suffix $$(basename $$*)))$$(suffix $$*).constiteval.txt) 
+/%.uhhmm-iter.constitevallist: $(SCRIPTS)/iters2constitevallist.py $$(foreach file, $$(wildcard $$(dir /%)last_sample*linetrees), /$$(basename $$(basename $$*)).$$(notdir $$(basename $$(basename $$*)))-$$(subst last_sample,,$$(basename $$(notdir $$(file))))-$$(subst .,,$$(suffix $$(basename $$*)))$$(suffix $$*).constiteval.txt)
 	python $^ > $@
 
 # Because of oddities in how Make handles wildcard expansion in prereqs,
@@ -408,7 +408,7 @@ p_lex_given_pos$$(subst .,,$$(suffix %)).txt p_pos_$$(subst .,,$$(suffix %)).txt
 
 # Generates several learning curve plots for UHHMM output
 # by iteration as compared to a constituency gold standard.
-# 
+#
 # Stem template:
 #     <corpus>.uhhmm.<post-processing>.uhhmm-iter.uhhmm_learning_curves
 #

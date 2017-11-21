@@ -34,8 +34,9 @@ class GaussianObservationModel : public PosDependentObservationModel {
 private:
     DenseView* lexMatrix = NULL;
     DenseView* embeddings = NULL;
+    // DenseView* normalMatrix = NULL;
     int embed_dims;
-    thrust::device_vector<float> *temp = NULL;
+    // thrust::device_vector<double> *temp = NULL;
     //DenseView*** distributions = NULL;
 public:
     ~GaussianObservationModel(){

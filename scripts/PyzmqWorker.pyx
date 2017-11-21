@@ -33,7 +33,7 @@ import GaussianObservationModel
 import models
 from WorkDistributerServer import get_local_ip
 import CHmmSampler
-
+import threading
 
 ## This function was required because of some funkiness on ubuntu systems where reverse dns lookup was returning a loopback ip
 ## This will try the easy way and if it returns something with 127. will make an outside connectino to known DNS (8.8.8.8) and
@@ -45,6 +45,7 @@ def get_local_ip():
 cdef class PyzmqWorker:
     def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, gpu=False, batch_size=8, seed=0, level=logging.INFO):
         #Process.__init__(self)
+        logging.info("Thread created with id %s" % (threading.get_ident()))
         self.host = host
         self.jobs_port = jobs_port
         self.results_port = results_port
@@ -66,6 +67,7 @@ cdef class PyzmqWorker:
 
     def run(self):
         logging.basicConfig(level=self.debug_level)
+        logging.info("Thread starting run() method with id=%s" % (threading.get_ident()))
         context = zmq.Context()
         models_socket = context.socket(zmq.REQ)
         url = "tcp://%s:%d" % (self.host, self.models_port)
@@ -117,7 +119,7 @@ cdef class PyzmqWorker:
                     self.processSentences(sampler, model_wrapper.model[1], jobs_socket, results_socket)
                 else:
                     time.sleep(2)
-                    
+
             elif model_wrapper.model_type == ModelWrapper.INFINITE:
                 logging.info("Worker %d doing infinite model inference" % (self.tid))
                 sampler = DepthOneInfiniteSampler.InfiniteSampler(self.seed)

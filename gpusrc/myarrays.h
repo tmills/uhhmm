@@ -7,32 +7,32 @@
 #include "cusp/csr_matrix.h"
 using namespace cusp;
 typedef cusp::array1d<int,cusp::device_memory> IndexArray;
-typedef cusp::array1d<float,cusp::device_memory> ValueArray;
+typedef cusp::array1d<double,cusp::device_memory> ValueArray;
 typedef typename IndexArray::view IndexArrayView;
 typedef typename ValueArray::view ValueArrayView;
 
-class Array : public array1d<float, device_memory>{
+class Array : public array1d<double, device_memory>{
 public:
-    Array(float* vals, int num_vals);
+    Array(double* vals, int num_vals);
     Array(int num_vals, int val);
     Array(int num_vals);
 };
 
-class Sparse : public csr_matrix<int, float, device_memory>{
+class Sparse : public csr_matrix<int, double, device_memory>{
 public:
-    Sparse(int num_rows, int num_cols, int num_vals, int* row_offsets, int* col_ptrs, float* vals);
+    Sparse(int num_rows, int num_cols, int num_vals, int* row_offsets, int* col_ptrs, double* vals);
     Sparse(int num_rows, int num_cols, int num_vals);
 };
 
-class Dense : public array2d<float, device_memory>{
+class Dense : public array2d<double, device_memory>{
 public:
-    Dense(int num_rows, int num_cols, int num_vals, float* vals);
-    Dense(int num_rows, int num_cols, float value);
+    Dense(int num_rows, int num_cols, int num_vals, double* vals);
+    Dense(int num_rows, int num_cols, double value);
 };
 
 class SparseView {
 public:
-    SparseView(int pi_num_rows, int pi_num_cols, int pi_vals_size, int* pi_row_offsets, int* pi_col_indices, float* pi_vals, int pi_row_offsets_size, int pi_col_indices_size);
+    SparseView(int pi_num_rows, int pi_num_cols, int pi_vals_size, int* pi_row_offsets, int* pi_col_indices, double* pi_vals, int pi_row_offsets_size, int pi_col_indices_size);
     csr_matrix_view<IndexArrayView, IndexArrayView, ValueArrayView>* get_view();
     ~SparseView();
 private:
@@ -44,7 +44,7 @@ private:
 
 class DenseView {
 public:
-    DenseView(int num_rows, int num_cols, int num_vals, float* vals);
+    DenseView(int num_rows, int num_cols, int num_vals, double* vals);
     array2d_view<ValueArrayView, row_major>* get_view();
     ~DenseView();
 private:
