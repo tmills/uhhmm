@@ -3,15 +3,33 @@
 
 import sys
 import re
+from nltk.tree import Tree
 fn = sys.argv[1]
 
 with open(fn) as i, open(fn+'.proper', 'w') as o:
     for line in i:
-        all_words = re.findall('[ \(]{1}[^\(\)\s]+[\) ]{1}', line)
-        for word in all_words:
-            if word.startswith('(') and word.endswith(')'):
-                continue
-            else:
-                line = line.replace(word, ' (' + word.strip() + ') ')
-        line = re.sub('\(\s*', '(X ', line)
-        o.write(line)
+
+        line = line.replace('(', '(X ')
+        line = line.replace(')', ' )')
+
+        line = re.sub('(?<=\s)([^()\s]+)', '(X \g<1>)', line)
+        print(line)
+
+        # words = re.findall('[^()\s]+', line)
+        # # words = set(words)
+        # line = line.replace('(', '(X ')
+        # replaced = []
+        # for word in words:
+        #     print(line, word)
+        #     if '\\/' in word and word not in replaced:
+        #         line = line.replace(word, '(X '+word+')')
+        #         replaced.append(word)
+        #         continue
+        #
+        #     line = re.sub('(?<!(X )|[\w\s]{2})'+str(word), '(X '+word+')', line, count=1)
+
+        this_tree = Tree.fromstring(line)
+        this_tree.collapse_unary(collapsePOS=True)
+        string = this_tree.pformat(margin=100000)
+        print(string, file=o)
+

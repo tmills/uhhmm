@@ -31,7 +31,12 @@ for i in range(len(gold_trees)):
         if gold_tokens[j] != predicted_tokens[j]:
             this_predicted_tree[this_predicted_tree.leaf_treeposition(j)] = gold_tokens[j]
 
-with open(args.predicted + '.fixterms', 'w') as ft:
+fn = args.predicted.split('.')
+
+fn = fn[:-1]
+fn.append('fixterms.linetrees')
+fn = '.'.join(fn)
+with open(fn, 'w') as ft:
     for tree in predicted_trees:
         string = tree.pformat(margin=100000)
         print(string, file=ft)
