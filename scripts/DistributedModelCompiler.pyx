@@ -38,8 +38,8 @@ class DistributedModelCompiler(FullDepthCompiler):
             data_type = np.float64
             data_type_bytes = 8
         else:
-            data_type = np.float64
-            data_type_bytes = 8
+            data_type = np.float32
+            data_type_bytes = 4
         indptr = np.zeros(totalK+1)
         indices =  np.zeros((total_connection,),dtype=data_type)
         data = np.zeros((total_connection,), dtype=data_type)

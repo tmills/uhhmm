@@ -36,7 +36,7 @@ private:
     DenseView* embeddings = NULL;
     // DenseView* normalMatrix = NULL;
     int embed_dims;
-    // thrust::device_vector<double> *temp = NULL;
+    // thrust::device_vector<float> *temp = NULL;
     //DenseView*** distributions = NULL;
 public:
     ~GaussianObservationModel(){

@@ -31,42 +31,112 @@
 using namespace cusp;
 using namespace std;
 typedef std::chrono::high_resolution_clock Clock;
-double nano_to_sec = 1.0e-9f;
+float nano_to_sec = 1.0e-9f;
 __device__ int G_SIZE;
-__device__ double PI=3.14159265;
+__device__ float PI=3.14159265;
 // 1 / sqrt(2*pi)
-__device__ double RECIP_SQRT_2_PI = 0.39894;
-__device__ double max_prob;
+__device__ float RECIP_SQRT_2_PI = 0.39894;
+__device__ float max_prob;
 
 // typedef std::numeric_limits<float> float_limit;
-typedef cusp::array1d<double,cusp::device_memory> cusparray;
+typedef cusp::array1d<float,cusp::device_memory> cusparray;
 typedef cusparray::view ArrayView;
 
-void debug_print_vector(thrust::device_vector<double> vec){
-  thrust::copy(vec.begin(), vec.end(), std::ostream_iterator<double>(cout, " "));
+void debug_print_vector(thrust::device_vector<float> vec){
+  thrust::copy(vec.begin(), vec.end(), std::ostream_iterator<float>(cout, " "));
   cout << endl;
 }
 
-Model::Model(int pi_num_rows, int pi_num_cols, double* pi_vals, int pi_vals_size, int* pi_row_offsets,
-int pi_row_offsets_size, int* pi_col_indices, int pi_col_indices_size, double* lex_vals, int lex_vals_size,
-int lex_num_rows, int lex_num_cols, int a_max, int b_max, int g_max, int depth, double* pos_vals, int pos_vals_size,
-int embed_num_words, int embed_num_dims, int embed_vals_size, double* embed_vals, int EOS_index):
+class cuda_exp : public thrust::unary_function<float, float>{
+public:
+    __device__
+   float operator()(float x){
+       return exp(x);
+   }
+};
+class cuda_10exp : public thrust::unary_function<float, float>{
+public:
+    __device__
+   float operator()(float x){
+       return pow(10,x);
+   }
+};
+class calc_sparse_column : public thrust::unary_function<int, int>{
+public:
+   __device__
+   int operator()(int x){
+       return x % G_SIZE;
+   }
+};
+
+class g_integer_division : public thrust::unary_function<int, int>{
+public:
+    __device__
+   int operator()(int x){
+       return x / G_SIZE;
+   }
+};
+
+class normal_logpdf_firstfactor : public thrust::unary_function<float, float> {
+public:
+    __device__
+    float operator()(const float & stdev) const {
+        return RECIP_SQRT_2_PI / stdev;
+    }
+};
+
+class normal_logpdf_squarederror : public thrust::binary_function<float,float,float> {
+public:
+    __device__
+    float operator()(const float & x, const float & mu) const {
+        return pow(x-mu, 2.0);
+    }
+};
+
+class normal_logpdf_twostdevsquared : public thrust::unary_function<float,float> {
+public:
+    __device__
+    float operator()(const float &stdev) const {
+        return 2 * pow(stdev, 2.0);
+    }
+};
+
+class normal_logpdf_secondfactor : public thrust::binary_function<float,float,float> {
+public:
+    __device__
+    float operator()(const float& numerator, const float& denominator){
+        return exp(-numerator / denominator);
+    }
+};
+
+class normal_logpdf_log : public thrust::unary_function<float,float> {
+public:
+    __device__
+    float operator()(const float& x){
+        return log(x);
+    }
+};
+
+Model::Model(int pi_num_rows, int pi_num_cols, float* pi_vals, int pi_vals_size, int* pi_row_offsets,
+int pi_row_offsets_size, int* pi_col_indices, int pi_col_indices_size, float* lex_vals, int lex_vals_size,
+int lex_num_rows, int lex_num_cols, int a_max, int b_max, int g_max, int depth, float* pos_vals, int pos_vals_size,
+int embed_num_words, int embed_num_dims, int embed_vals_size, float* embed_vals, int EOS_index):
 pi_num_rows(pi_num_rows), pi_num_cols(pi_num_cols), pi_vals(pi_vals),
 pi_vals_size(pi_vals_size), pi_row_offsets(pi_row_offsets), pi_row_offsets_size(pi_row_offsets_size),
 pi_col_indices(pi_col_indices), pi_col_indices_size(pi_col_indices_size), lex_vals(lex_vals),
 lex_vals_size(lex_vals_size), lex_num_rows(lex_num_rows), lex_num_cols(lex_num_cols), a_max(a_max),
 b_max(b_max), g_max(g_max), depth(depth), pos_vals(pos_vals), pos_vals_size(pos_vals_size),
 embed_vals(embed_vals), embed_num_words(embed_num_words), embed_num_dims(embed_num_dims), embed_vals_size(embed_vals_size), EOS_index(EOS_index){
-    // cout << "Entering model constructor" << endl;
+    cout << "Entering model constructor" << endl;
     pi = new SparseView(pi_num_rows, pi_num_cols, pi_vals_size, pi_row_offsets, pi_col_indices, pi_vals, pi_row_offsets_size, pi_col_indices_size);
     lex = new DenseView(lex_num_rows, lex_num_cols, lex_vals_size, lex_vals);
     embed = new DenseView(embed_num_words, embed_num_dims, embed_vals_size, embed_vals);
     pos = new Array(pos_vals, pos_vals_size);
-    // cout << "Done with model constructor" << endl;
+    cout << "Done with model constructor" << endl;
 }
 
 Model::~Model(){
-    // cout << "Entering model destructor" << endl;
+    cout << "Entering model destructor" << endl;
     if(lex != NULL){ delete lex;} else{ cout << "lex was already null" << endl;}
     if(pi != NULL) { delete pi;} else{ cout << "pi was already null" << endl;}
     if(pos != NULL) { delete pos;} else{ cout << "pos was already null" << endl;}
@@ -74,7 +144,7 @@ Model::~Model(){
     pi = NULL;
     pos = NULL;
     //if(embed != NULL) delete embed;
-    // cout << "Done with model destructor" << endl;
+    cout << "Done with model destructor" << endl;
 }
 
 int Model::get_depth(){
@@ -125,7 +195,7 @@ void CategoricalObservationModel::set_models(Model * models){
 void CategoricalObservationModel::get_pos_probability_vector(int token, Array* output){
     //cout << "CatObsModel::get_pos_prob called" << endl;
     array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
-    array2d<double, device_memory>::column_view lex_column = lex_view -> column(token);
+    array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
     //thrust::fill(output->begin(), output->end(), 0);
     thrust::copy(thrust::device, lex_column.begin(), lex_column.end(), output->begin());
     //cout << "CatObsModel::get_pos_prob returning" << endl;
@@ -134,30 +204,38 @@ void CategoricalObservationModel::get_pos_probability_vector(int token, Array* o
 void GaussianObservationModel::set_models(Model * models){
     cout << "GaussianObsModel::set_models called... pre-computing lex matrix" << endl;
     PosDependentObservationModel::set_models(models);
-    int numWords = models->lex_num_rows;
-
+    int numWords = models->embed_num_words;
+    
     DenseView* tempLex = models -> lex;
     // lexMatrix = models -> lex;
     embeddings = models -> embed;
     embed_dims = models -> embed_num_dims;
-    lexMatrix = new Dense(g_size, numWords, 0);
-    thrust::device_vector<double> normalizer(embed_dims);
-    thrust::device_vector<double> errors(embed_dims);
-    thrust::device_vector<double> stdev_squared(embed_dims);
-    thrust::device_vector<double> second_factor(embed_dims);
-    thrust::device_vector<double> final_prob(embed_dims);
-    thrust::device_vector<double> log_prob(embed_dims);
-    thrust::device_vector<double> temp(numWords);
+    array2d_view<ValueArrayView, row_major>* embed_view = embeddings -> get_view();
+
+    cout << "There are " << numWords << " words in the vocab with embedding dimension=" << embed_dims << " and " << g_size << " pos tags." << endl;
+    int lexMatrixSize = g_size*numWords;
+    float *lexMatrixVals = new float[lexMatrixSize];
+    lexMatrix = new DenseView(g_size, numWords, g_size*numWords, &lexMatrixVals[0]);
+
+    thrust::device_vector<float> normalizer(embed_dims);
+    thrust::device_vector<float> errors(embed_dims);
+    thrust::device_vector<float> stdev_squared(embed_dims);
+    thrust::device_vector<float> second_factor(embed_dims);
+    thrust::device_vector<float> final_prob(embed_dims);
+    thrust::device_vector<float> log_prob(embed_dims);
+    thrust::device_vector<float> temp(numWords);
 
     for(int g = 1; g < g_size; g++){
-        array2d<double, device_memory>::row_view pos_row = tempLex->get_view()->row(g);
-        thrust::device_vector<double> means(pos_row.begin(), pow_row.begin() + embed_dims );
-        thrust::device_vector<double> stdevs(pos_row.begin() + embed_dims, pos_row.end());
+        cout << "Precomputing distribution for pos tag index " << g << endl;
+        array2d<float, device_memory>::row_view pos_row = tempLex->get_view()->row(g);
+        thrust::device_vector<float> means(pos_row.begin(), pos_row.begin() + embed_dims );
+        thrust::device_vector<float> stdevs(pos_row.begin() + embed_dims, pos_row.end());
         // cout << "Means for pos" << g << ":";
         // debug_print_vector(means);
         // cout << endl;
 
-        for(int word_ind = 0; word_ind < models->numWords; word_ind++){
+        for(int word_ind = 0; word_ind < numWords; word_ind++){
+            array2d<float, device_memory>::row_view embed_vec = embed_view -> row(word_ind);
             // calculate the normalization term (unary function)
             thrust::transform(stdevs.begin(), stdevs.end(), normalizer.begin(), normal_logpdf_firstfactor());
             // calculate the numerator of the exponentiated factor (binary function):
@@ -171,98 +249,74 @@ void GaussianObservationModel::set_models(Model * models){
             thrust::transform(errors.begin(), errors.end(), stdev_squared.begin(), second_factor.begin(), normal_logpdf_secondfactor());
             // finalize output with simple multiplication:
             // cout << "  Calculating final probability vector" << endl;
-            thrust::transform(normalizer.begin(), normalizer.end(), second_factor.begin(), final_prob.begin(), thrust::multiplies<double>());
+            thrust::transform(normalizer.begin(), normalizer.end(), second_factor.begin(), final_prob.begin(), thrust::multiplies<float>());
             // take the log probabiility:
             thrust::transform(final_prob.begin(), final_prob.end(), log_prob.begin(), normal_logpdf_log());
-            lexMatrix[g][word_ind] = thrust::reduce(log_prob.begin(), log_prob.end());
+            lexMatrix->get_view()->operator()(g,word_ind) = thrust::reduce(log_prob.begin(), log_prob.end());
         }
 
         // now normalize for this row -- in log space, substract the maximum (least negative) value, then
         // exponentiate, then normalize
         pos_row = lexMatrix->get_view()->row(g);
-        double max_prob = *(thrust::max_element(lexMatrix->row(g).begin(), lexMatrix->row(g).end()));
+        float max_prob = *(thrust::max_element(pos_row.begin(), pos_row.end()));
+        float min_prob = *(thrust::min_element(pos_row.begin(), pos_row.end()));
+        cout << "Max log prob in row " << g << " is " << max_prob << " and min is " << min_prob << endl;
         // subtract max:
-        thrust::transform(pos_row.begin(), pos_row.end(), temp.begin(), pos_row.begin(), thrust::minus<double>());
+        thrust::fill(temp.begin(), temp.end(), max_prob);
+        thrust::transform(pos_row.begin(), pos_row.end(), temp.begin(), pos_row.begin(), thrust::minus<float>());
+        max_prob = *(thrust::max_element(pos_row.begin(), pos_row.end()));
+        min_prob = *(thrust::min_element(pos_row.begin(), pos_row.end()));
+        cout << "After max subtract, max log prob in row " << g << " is " << max_prob << " and min is " << min_prob << endl;
         // exponentiate:
-        thrust::transform(pow_row.begin(), pos_row.end(), pos_row.begin(), cuda_exp());
+        thrust::transform(pos_row.begin(), pos_row.end(), pos_row.begin(), cuda_exp());
+        max_prob = *(thrust::max_element(pos_row.begin(), pos_row.end()));
+        min_prob = *(thrust::min_element(pos_row.begin(), pos_row.end()));
+        cout << "After exponentiation, max log prob in row " << g << " is " << max_prob << " and min is " << min_prob << endl;
         // get normalizer:
-        double normalizer = thrust::reduce(pos_row.begin(), pos_row.end());
+        float normalizer = thrust::reduce(pos_row.begin(), pos_row.end());
         thrust::fill(temp.begin(), temp.end(), normalizer);
         // divide:
-        thrust::transform(pos_row.begin(), pos_row.end(), temp.begin(), pos_row.begin(), thrust::divides<double>());
+        thrust::transform(pos_row.begin(), pos_row.end(), temp.begin(), pos_row.begin(), thrust::divides<float>());
 
     }
+    // cout << "After pre-computing, lex matrix contains:" << endl;
+    // cusp::print(*lexMatrix->get_view());
     // cout << "GaussianObsModel::set_models done: embedding matrix has dimensionality " << embed_dims << endl;
 }
 
-class normal_logpdf_firstfactor : public thrust::unary_function<double, double> {
-public:
-    __device__
-    double operator()(const double & stdev) const {
-        return RECIP_SQRT_2_PI / stdev;
-    }
-};
-
-class normal_logpdf_squarederror : public thrust::binary_function<double,double,double> {
-public:
-    __device__
-    double operator()(const double & x, const double & mu) const {
-        return pow(x-mu, 2.0);
-    }
-};
-
-class normal_logpdf_twostdevsquared : public thrust::unary_function<double,double> {
-public:
-    __device__
-    double operator()(const double &stdev) const {
-        return 2 * pow(stdev, 2.0);
-    }
-};
-
-class normal_logpdf_secondfactor : public thrust::binary_function<double,double,double> {
-public:
-    __device__
-    double operator()(const double& numerator, const double& denominator){
-        return exp(-numerator / denominator);
-    }
-};
-
-class normal_logpdf_log : public thrust::unary_function<double,double> {
-public:
-    __device__
-    double operator()(const double& x){
-        return log(x);
-    }
-};
-
-// void GaussianObservationModel::get_pos_probability_vector(int token, Array * output){
+void GaussianObservationModel::get_pos_probability_vector(int token, Array * output){
+    array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
+    array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
+    //thrust::fill(output->begin(), output->end(), 0);
+    thrust::copy(thrust::device, lex_column.begin(), lex_column.end(), output->begin());
+}
 //     // cout << "GaussianObservationModel::get_pos_probability_vector called" << endl;
 //     array2d_view<ValueArrayView, row_major>* embed_view = embeddings -> get_view();
-//     array2d<double, device_memory>::row_view embed_vec = embed_view -> row(token);
+//     array2d<float, device_memory>::row_view embed_vec = embed_view -> row(token);
 //     int a_max, b_max, g_max;
 //     std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();
 //     thrust::fill(output->begin(), output->end(), 0.0);
 //
-//     (*output)[0] = -std::numeric_limits<double>::max();
+//     (*output)[0] = -std::numeric_limits<float>::max();
 //
 //     // cout << "  Initializing intermediate vectors" << endl;
-//     thrust::device_vector<double> normalizer(embed_dims);
-//     thrust::device_vector<double> errors(embed_dims);
-//     thrust::device_vector<double> stdev_squared(embed_dims);
-//     thrust::device_vector<double> second_factor(embed_dims);
-//     thrust::device_vector<double> final_prob(embed_dims);
-//     thrust::device_vector<double> log_prob(embed_dims);
+//     thrust::device_vector<float> normalizer(embed_dims);
+//     thrust::device_vector<float> errors(embed_dims);
+//     thrust::device_vector<float> stdev_squared(embed_dims);
+//     thrust::device_vector<float> second_factor(embed_dims);
+//     thrust::device_vector<float> final_prob(embed_dims);
+//     thrust::device_vector<float> log_prob(embed_dims);
 //
 //     for(int g = 1; g < g_max; g++){
 //         // cout << "  Getting prob estimate p(token_" << token << "|POS_" << g << ")" << endl;
 //         // cout << "  Loading means" << endl;
-//         thrust::device_vector<double> means(lexMatrix->get_view() -> row(g).begin(), lexMatrix->get_view() -> row(g).begin() + embed_dims );
+//         thrust::device_vector<float> means(lexMatrix->get_view() -> row(g).begin(), lexMatrix->get_view() -> row(g).begin() + embed_dims );
 //         // cout << "Means for pos" << g << ":";
 //         // debug_print_vector(means);
 //         // cout << endl;
 //
 //         // cout << "  Loading standard deviations" << endl;
-//         thrust::device_vector<double> stdevs(lexMatrix->get_view() -> row(g).begin() + embed_dims, lexMatrix->get_view() -> row(g).end());
+//         thrust::device_vector<float> stdevs(lexMatrix->get_view() -> row(g).begin() + embed_dims, lexMatrix->get_view() -> row(g).end());
 //         // cout << "Stdevs for pos" << g << ":";
 //         // debug_print_vector(stdevs);
 //         // cout << endl;
@@ -281,7 +335,7 @@ public:
 //         thrust::transform(errors.begin(), errors.end(), stdev_squared.begin(), second_factor.begin(), normal_logpdf_secondfactor());
 //         // finalize output with simple multiplication:
 //         // cout << "  Calculating final probability vector" << endl;
-//         thrust::transform(normalizer.begin(), normalizer.end(), second_factor.begin(), final_prob.begin(), thrust::multiplies<double>());
+//         thrust::transform(normalizer.begin(), normalizer.end(), second_factor.begin(), final_prob.begin(), thrust::multiplies<float>());
 //         // take the log probabiility:
 //         thrust::transform(final_prob.begin(), final_prob.end(), log_prob.begin(), normal_logpdf_log());
 //
@@ -290,7 +344,7 @@ public:
 //
 //         // cout << "  Reducing probability vectors across dimensions to POS tag probability." << endl;
 //         (*output)[g] = thrust::reduce(log_prob.begin(), log_prob.end());
-//         // (*output)[g] = thrust::reduce(final_prob.begin(), final_prob.end(), thrust::multiplies<double>());
+//         // (*output)[g] = thrust::reduce(final_prob.begin(), final_prob.end(), thrust::multiplies<float>());
 //         // cout << "Reduced output for tag: " << (*output)[g] << endl;
 //         // (*output)[g] = exp((*output)[g]);
 //         // cout << "Exponentiated output: " << exp((*output)[g]) << endl;
@@ -302,17 +356,17 @@ public:
 // taken away the new tensor
 template <class AView>
 int HmmSampler::get_sample(AView &v){
-    double dart;
+    float dart;
 //    cusp::print(v);
 //     cout << "get_sample()" << endl;
-    // array1d<double, device_memory> sum_dict(v.size()); // building a new array, maybe not needed
+    // array1d<float, device_memory> sum_dict(v.size()); // building a new array, maybe not needed
     // this is the equivalent of np.cumsum() or partial_sum in the stl:
     thrust::inclusive_scan(thrust::device, v.begin(), v.end(), sum_dict->begin());
     // cout << "v[0] = " << v[0] << "v[-1] = " << v[v.size()-1] << " with length " << v.size() << endl;
 //     cout << "sum_dict[0] = " << (*sum_dict)[0] << "sum_dict[-1] = " << (*sum_dict)[sum_dict->size()-1] << " with length: " << sum_dict->size() <<  endl;
     //cusp::print(*sum_dict);
 //     cout << "sum done" << endl;
-    // dart =  static_cast <double> (rand()) / static_cast <double> (RAND_MAX);// / RAND_MAX;
+    // dart =  static_cast <float> (rand()) / static_cast <float> (RAND_MAX);// / RAND_MAX;
     int dart_target;
     int condition = 1;
     while (condition) {
@@ -326,13 +380,13 @@ int HmmSampler::get_sample(AView &v){
 //           cout << "dart target (summed): " << dart_target << " " << scientific << (*sum_dict)[dart_target - 1] << endl; //<< " " << scientific << (*sum_dict)[dart_target] << " " << scientific  << (*sum_dict)[dart_target+ 1] << endl;
 //           cout << "dart target (summed): " << dart_target << " " << scientific << v[dart_target - 1] << " " << scientific << v[dart_target] << " " << scientific  << v[dart_target+ 1] << endl;
 //            cout << "dart target (summed): " << dart_target << " with v size=" << v.size() << endl;
-//            double minus_one = (*sum_dict)[dart_target - 1];
+//            float minus_one = (*sum_dict)[dart_target - 1];
 //            printf( "%A" , minus_one);
 //            cout  << " ";
-//            double on_target = (*sum_dict)[dart_target];
+//            float on_target = (*sum_dict)[dart_target];
 //            printf("%A", on_target);
 //            cout << " ";
-//            double plus_one = (*sum_dict)[dart_target+ 1];
+//            float plus_one = (*sum_dict)[dart_target+ 1];
 //            printf("%A\n", plus_one);
            if (dart_target != v.size() && v[dart_target] != 0.0f ){
                 condition = 0;
@@ -345,35 +399,7 @@ int HmmSampler::get_sample(AView &v){
      return dart_target;
 }
 
-class cuda_exp : public thrust::unary_function<double, double>{
-public:
-    __device__
-   double operator()(double x){
-       return exp(x);
-   }
-};
-class cuda_10exp : public thrust::unary_function<double, double>{
-public:
-    __device__
-   double operator()(double x){
-       return pow(10,x);
-   }
-};
-class calc_sparse_column : public thrust::unary_function<int, int>{
-public:
-   __device__
-   int operator()(int x){
-       return x % G_SIZE;
-   }
-};
 
-class g_integer_division : public thrust::unary_function<int, int>{
-public:
-    __device__
-   int operator()(int x){
-       return x / G_SIZE;
-   }
-};
 
 // template <class AView>
 // void exp_array(AView & v){
@@ -519,7 +545,7 @@ void HmmSampler::set_models(Model * models){
     pos_full_array = make_pos_full_array(pos_matrix, g_len, b_len, depth, state_size);
     //cout << "set_models 9" << endl;
 //    print(*pos_full_array);
-    // cout.precision(double_limit::max_digits10);
+    // cout.precision(float_limit::max_digits10);
     obs_model->set_models(models);
 }
 
@@ -582,7 +608,7 @@ void HmmSampler::g_factored_multiply(Dense* prev_dyn_prog_slice, Dense* this_dyn
 //    print(*this_dyn_prog_slice);
     for(int i = 0; i < sampler_batch_size; i++ ){ // this is not efficient. maybe there is a better way
 //        cout << "insde g_multipy i " << i << endl;
-        array2d<double, device_memory>::column_view this_dyn_prog_slice_column = this_dyn_prog_slice->column(i);
+        array2d<float, device_memory>::column_view this_dyn_prog_slice_column = this_dyn_prog_slice->column(i);
 //        blas::xmy(this_dyn_prog_slice_column, *pos_matrix, this_dyn_prog_slice_column);
 //        print(this_dyn_prog_slice_column);
 //        print(*pos_full_array);
@@ -594,14 +620,14 @@ void HmmSampler::g_factored_multiply(Dense* prev_dyn_prog_slice, Dense* this_dyn
 //    cout << "factor multiply 4" << endl;
 }
 
-std::vector<double> HmmSampler::forward_pass(std::vector<std::vector<int> > sents, int sent_index){
+std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents, int sent_index){
     // auto t1 = Clock::now();
     cout << "Starting forward batch from sentence index: " << sent_index << endl;
-    double normalizer;
+    float normalizer;
     int a_max, b_max, g_max; // index, token, g_len;
     std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();
     std::vector<int> sent = sents[0];
-    std::vector<double> log_probs;
+    std::vector<float> log_probs;
     int batch_size = sents.size();
     int batch_max_len = get_max_len(sents);
     // np_sents is |batches| x max_len
@@ -652,10 +678,10 @@ std::vector<double> HmmSampler::forward_pass(std::vector<std::vector<int> > sent
 
             // dyn_prog_row is 1 x state_size
             // dyn_prog_column is state_size x 1
-            array2d<double, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
+            array2d<float, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
             // cout << "Getting observation probability" << endl;
             obs_model->get_probability_vector(token, &expanded_lex);
-            double max_prob = *(thrust::max_element(expanded_lex.begin(), expanded_lex.end()));
+            float max_prob = *(thrust::max_element(expanded_lex.begin(), expanded_lex.end()));
             // cout << "Max value of observation model is " << max_prob << endl;
 
             if(max_prob < 0){
@@ -680,11 +706,11 @@ std::vector<double> HmmSampler::forward_pass(std::vector<std::vector<int> > sent
             if (sents[sent_ind].size() - 1 == ind){
                 int EOS = p_indexer -> get_EOS_full();
                 // cout << EOS << endl;
-                array2d<double, device_memory>::column_view final_dyn_col = cur_mat->column(sent_ind);
+                array2d<float, device_memory>::column_view final_dyn_col = cur_mat->column(sent_ind);
 //                cout << cusp::blas::asum(final_dyn_col) << endl;
                 get_row(pi->get_view(), EOS, *trans_slice, pos_full_array, g_max, b_max);
 //                cout << cusp::blas::asum(*trans_slice) << endl;
-                double final_normalizer = cusp::blas::dot(*trans_slice, final_dyn_col);
+                float final_normalizer = cusp::blas::dot(*trans_slice, final_dyn_col);
                 log_probs[sent_ind] += log10f(final_normalizer);
                 // cout << " ind "<< ind << " sent_ind " << sent_ind << " end log prob " << log10f(final_normalizer) << endl;
             }
@@ -710,9 +736,9 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
     int batch_size = sents.size();
     int batch_max_len = get_max_len(sents);
     // int prev_depth, next_f_depth, next_awa_depth;
-    //double sample_log_prob;//trans_prob,
-    // double t0, t1;
-//    array1d<double, device_memory> trans_slice;
+    //float sample_log_prob;//trans_prob,
+    // float t0, t1;
+//    array1d<float, device_memory> trans_slice;
     State sample_state;
     //sample_log_prob = 0.0f;
 //    std::vector<int> fake_ts = {25,218,21,213,25,230,42,22,38,229,233,41,25,154,2};
@@ -746,7 +772,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
             sample_seq.push_back(sample_state);
             sample_t_seq.push_back(sample_t);
             // auto t12 = Clock::now();
-//             cout << "backpass2inside: " << (double)std::chrono::duration_cast<std::chrono::nanoseconds>(t12 - t11).count() * nano_to_sec << " s" << endl;
+//             cout << "backpass2inside: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t12 - t11).count() * nano_to_sec << " s" << endl;
 
         }
         // auto t4 = Clock::now();
@@ -754,9 +780,9 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
 //        cout << "finished backward sampling of a sentence" << endl;
         //cout << sample_seq->size() << endl;
         // auto t5 = Clock::now();
-        // cout << "backpass1: " << (double)std::chrono::duration_cast<std::chrono::nanoseconds>(t3 - t2).count() * nano_to_sec << " s" << endl;
-        // cout << "backpass2: " << (double)std::chrono::duration_cast<std::chrono::nanoseconds>(t4 - t3).count() * nano_to_sec << " s" << endl;
-        // cout << "backpass: " << (double)std::chrono::duration_cast<std::chrono::nanoseconds>(t5 - t2).count() * nano_to_sec << " s" << endl;
+        // cout << "backpass1: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t3 - t2).count() * nano_to_sec << " s" << endl;
+        // cout << "backpass2: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t4 - t3).count() * nano_to_sec << " s" << endl;
+        // cout << "backpass: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t5 - t2).count() * nano_to_sec << " s" << endl;
         //for (int k : sample_t_seq){
         //    cout << sent_index << " : " << k  << endl;
         //}
@@ -776,7 +802,7 @@ std::vector<std::vector<State> > HmmSampler::reverse_sample(std::vector<std::vec
 
 std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, int sent_ind){
     //int ind;
-    double normalizer;
+    float normalizer;
     // auto t11 = Clock::now();
 //    cout << "before get row" << endl;
 //    int prev_sample_t = sample_t;
@@ -785,21 +811,21 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
     get_row(pi->get_view(), sample_t, *trans_slice, pos_full_array, g_max, b_max);
     // print(*trans_slice);
     // auto t12 = Clock::now();
-    array2d<double, device_memory>::column_view dyn_prog_col = dyn_prog[t]->column(sent_ind);
-    double dyn_prog_col_sum = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
+    array2d<float, device_memory>::column_view dyn_prog_col = dyn_prog[t]->column(sent_ind);
+    float dyn_prog_col_sum = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
 //     cout << "Dyn_prog_row " << dyn_prog_col_sum << endl;
     // print(dyn_prog_row);
-    double trans_slice_sum = thrust::reduce(thrust::device, (*trans_slice).begin(), (*trans_slice).end());
+    float trans_slice_sum = thrust::reduce(thrust::device, (*trans_slice).begin(), (*trans_slice).end());
 //    cout << "trans_slice " << trans_slice_sum << endl;
     //if (trans_slice_sum != 0.0f){
         cusp::blas::xmy(*trans_slice, dyn_prog_col, dyn_prog_col);
     //}
     // auto t13 = Clock::now();
-//    cusp::array1d<double, host_memory> un_normalized_sums(dyn_prog_col);
+//    cusp::array1d<float, host_memory> un_normalized_sums(dyn_prog_col);
     normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
 //     cout << "normalizer " << normalizer <<endl;
     blas::scal(dyn_prog_col, 1.0f/normalizer);
-    // thrust::transform(dyn_prog_row.begin(), dyn_prog_row.end(), dyn_prog_row.begin(), multiplies_value<double>(1 / normalizer));
+    // thrust::transform(dyn_prog_row.begin(), dyn_prog_row.end(), dyn_prog_row.begin(), multiplies_value<float>(1 / normalizer));
     // auto t14 = Clock::now();
     sample_t = get_sample(dyn_prog_col);
 //    cout << "sample_t "<< sample_t << endl;
@@ -817,27 +843,27 @@ std::tuple<State, int> HmmSampler::_reverse_sample_inner(int& sample_t, int& t, 
         // cout << "Trans Slice (Pi Row): " <<" " << scientific << (*trans_slice)[sample_t-1]<< " "<< scientific << (*trans_slice)[sample_t] <<" " << scientific << (*trans_slice)[sample_t+1]<< endl;
         // cout << "Prefix Sum(unnormalized, before sum): " << scientific << un_normalized_sums[sample_t-1] << " " << scientific << un_normalized_sums[sample_t] << " " << scientific << un_normalized_sums[sample_t + 1] << endl;
         // cout << "Prefix Sum(unnormalozed, before sum): ";
-        // double temp_1 = un_normalized_sums[sample_t-1];
+        // float temp_1 = un_normalized_sums[sample_t-1];
         // printf( "%A", temp_1);
         // cout << " ";
-        // double temp_2 = un_normalized_sums[sample_t];
+        // float temp_2 = un_normalized_sums[sample_t];
         // printf("%A", temp_2);
         // cout << " ";
-        // double temp_3 = un_normalized_sums[sample_t+1];
+        // float temp_3 = un_normalized_sums[sample_t+1];
         // printf("%A\n", temp_3);
         // cout << "sample_t: " << sample_t << endl;
 
     // }
-    // cout << "backpass1reverseinner: " << (double)std::chrono::duration_cast<std::chrono::nanoseconds>(t12 - t11).count() * nano_to_sec << " s" << endl;
-    // cout << "backpass1reverseinner: " << (double)std::chrono::duration_cast<std::chrono::nanoseconds>(t13 - t12).count() * nano_to_sec << " s" << endl;
-    // cout << "backpass1reverseinner: " << (double)std::chrono::duration_cast<std::chrono::nanoseconds>(t14 - t13).count() * nano_to_sec << " s" << endl;
-    // cout << "backpass1reverseinner: " << (double)std::chrono::duration_cast<std::chrono::nanoseconds>(t15 - t14).count() * nano_to_sec << " s" << endl;
+    // cout << "backpass1reverseinner: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t12 - t11).count() * nano_to_sec << " s" << endl;
+    // cout << "backpass1reverseinner: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t13 - t12).count() * nano_to_sec << " s" << endl;
+    // cout << "backpass1reverseinner: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t14 - t13).count() * nano_to_sec << " s" << endl;
+    // cout << "backpass1reverseinner: " << (float)std::chrono::duration_cast<std::chrono::nanoseconds>(t15 - t14).count() * nano_to_sec << " s" << endl;
 
     return std::make_tuple(sample_state, sample_t);
 }
 
-std::tuple<std::vector<std::vector<State> >, std::vector<double>> HmmSampler::sample(std::vector<std::vector<int>> sents, int sent_index) {
-    std::vector<double> log_probs;
+std::tuple<std::vector<std::vector<State> >, std::vector<float>> HmmSampler::sample(std::vector<std::vector<int>> sents, int sent_index) {
+    std::vector<float> log_probs;
     std::vector<std::vector<State> > states;
 
     try{

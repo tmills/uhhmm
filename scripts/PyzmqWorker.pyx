@@ -82,7 +82,7 @@ cdef class PyzmqWorker:
         results_socket.connect("tcp://%s:%d" % (self.host, self.results_port))
 
         logging.debug("Worker %d connected to all three endpoints" % self.tid)
-
+        
         while True:
             if self.quit:
                 break
