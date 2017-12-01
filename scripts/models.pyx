@@ -48,7 +48,7 @@ cdef class GaussianModel(Model):
             init_means = mean_dist.rvs(shape[1])
             stds = np.zeros(len(init_means)) + stdev_mean
             self.dist.append( scipy.stats.norm(init_means, stds) )
-            #print("Mean vector for pos %d after initial sampling: " % (pos_ind), self.dist[-1].mean())
+            # logging.info("Mean vector for pos %d after initial sampling: %s" % (pos_ind, self.dist[-1].mean()))
 
     def count(self, pos_ind, token_ind, val):
         ## we've seen a count of pos tag cond pos_ind and word index token_ind
