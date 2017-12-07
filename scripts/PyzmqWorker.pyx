@@ -62,7 +62,9 @@ cdef class PyzmqWorker:
     def __reduce__(self):
         return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.gpu, self.batch_size, self.seed, self.debug_level), None)
 
-    def run(self):
+    def run(self, env=None):
+        if not env is None:
+            os.environ = env
         logging.basicConfig(level=self.debug_level)
         context = zmq.Context()
         models_socket = context.socket(zmq.REQ)

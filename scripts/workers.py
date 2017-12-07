@@ -42,7 +42,12 @@ def start_local_workers(host, jobs_port, results_port, models_port, maxLen, cpu_
         signal.signal(signal.SIGTERM, fs.handle_sigterm)
         signal.signal(signal.SIGINT, fs.handle_sigint)
         signal.signal(signal.SIGALRM, fs.handle_sigalarm)
-        p = Process(target=fs.run)
+        my_env = os.environ.copy()
+        if gpu:
+            ## Workers 0-(gpu_workers-1) are the gpu workers -- assign them to
+            ## cuda devices 0-(gpu_workers-1)
+            my_env["CUDA_VISIBLE_DEVICES"] = i
+        p = Process(target=fs.run, kwargs={'env':my_env})
         processes.append(p)
         p.start()
 
