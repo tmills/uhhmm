@@ -230,18 +230,19 @@ class PCFG_model:
             self.unannealed_dists = {x: np.random.dirichlet(self.counts[x]) for x in self.counts}
         dists = self.unannealed_dists
         for dist in dists.values():
-            assert np.all(dist != 0), "there are 0s in distributions from Dirichlet!"
+            assert np.all(dist != 0), "there are 0s in distributions from Dirichlet! It is " \
+                                      "usually because alpha is too small."
         # print(dists)
         # print(np.sum(dists[nltk.grammar.Nonterminal('1')], axis=0))
         self._log_dists(dists)
-        print(dists)
-        print(list(map(len, dists.values())))
+        # print(dists)
+        # print(list(map(len, dists.values())))
         return dists
 
     def _translate_model_to_pcfg(self, dists):
         pcfg = {x: {} for x in dists}
         for parent in pcfg:
-            print(parent)
+            # print(parent)
             for index, value in enumerate(dists[parent]):
                 rhs = self[(parent, index)]
                 pcfg[parent][rhs] = value

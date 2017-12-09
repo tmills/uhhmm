@@ -191,7 +191,7 @@ class Sink(Thread):
     def getModelRow(self, row):
         ## Block while we wait for the worker to return this
         while not row in self.model_rows:
-            time.sleep(0)
+            time.sleep(0.005)
 
         ## Return and remove from the dictionary so we don't fill up memory
         return self.model_rows.pop(row)
