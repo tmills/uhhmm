@@ -315,7 +315,7 @@ class WorkDistributerServer():
 
         self.startProcessing(model_sig)
         while self.sink.getProcessing():
-            time.sleep(2)
+            time.sleep(0.05)
 
     def submitBuildModelJobs(self, num_rows, full_pi=False):
         self.model_server.reset_models('raw_models.bin')
