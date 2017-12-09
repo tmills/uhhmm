@@ -202,7 +202,10 @@ class DistributedModelCompiler(FullDepthCompiler):
             # logging.info("EOS index is "+str(indexer.get_EOS_full()))
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
             # logging.info("Saving GPU models for use")
+            t1 = time.time()
             pickle.dump(model_gpu, gpu_out_file)
+            t2 = time.time()
+            logging.info('dumping out GPU model takes {} secs'.format(t2 - t1))
             gpu_out_file.close()
         relog_models(models, self.depth)
         if full_pi:
@@ -219,7 +222,10 @@ class DistributedModelCompiler(FullDepthCompiler):
 #         print(pi[:,EOS].sum())
 #        print(pi[EOS_1wrd_full,:].sum())
 #        print(pi[:,EOS_1wrd].sum())
+        t1 = time.time()
         pickle.dump(model, out_file)
+        t2 = time.time()
+        logging.info('dumping out the model takes {} secs'.format(t2 - t1))
         out_file.close()
         nnz = pi.nnz
         pi = None
