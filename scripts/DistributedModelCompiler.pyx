@@ -53,7 +53,7 @@ class DistributedModelCompiler(FullDepthCompiler):
         ## Write out raw models for workers to use to build from:
         ## First unlog them so they are in form workers expect:
         t1 = time.time()
-        logging.info('initialization of model compiler {}s'.format(t1 - t0))
+        logging.debug('initialization of model compiler {}s'.format(t1 - t0))
         unlog_models(models, self.depth)
         fn = os.path.join(working_dir,'raw_models.bin')
         model_wrapper = ModelWrapper(ModelWrapper.COMPILE, models, self.depth)
@@ -61,11 +61,11 @@ class DistributedModelCompiler(FullDepthCompiler):
         pickle.dump(model_wrapper, out_file)
         out_file.close()
         t2 = time.time()
-        logging.info('dumpping out the first model {}s'.format(t2 - t1))
+        logging.debug('dumpping out the first model {}s'.format(t2 - t1))
          ## does not seem necessary
         self.work_server.submitBuildModelJobs(totalK, full_pi)
         t3 = time.time()
-        logging.info('processing the models {}s'.format(t3 - t2))
+        logging.debug('processing the models {}s'.format(t3 - t2))
         index_data_indices = -1
         index_data_indices_full = -1
         times = [0, 0, 0]
@@ -98,7 +98,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                 data_full = data_full[:index_data_indices_full+1]
             # assert data[-1] != 0. and indices[-1] != 0., '0 prob at the end of sparse Pi.'
         t4 = time.time()
-        logging.info('making sparse matrix {}s'.format(t4 - t3))
+        logging.debug('making sparse matrix {}s'.format(t4 - t3))
         logging.info("Per state connection is %d" % (index_data_indices/totalK))
         logging.info("Size of PI/g will roughly be %.2f M" % ((index_data_indices * 2 + (totalK+1))*data_type_bytes / 1e6))
         # logging.info("Flattening sublists into main list")
@@ -122,7 +122,7 @@ class DistributedModelCompiler(FullDepthCompiler):
         # if gpu then dumping out two models, the one used by worker should be *.bin.gpu
         pi = pi.tocsc()
         t5 = time.time()
-        logging.info('converting into scipy {}s'.format(t5 - t4))
+        logging.debug('converting into scipy {}s'.format(t5 - t4))
         row_indices = list(itertools.product(range(b_max), repeat=self.depth))
         if self.gpu == True:
             lex_dist = 10**(models.lex.dist.astype(np.float32))
@@ -205,10 +205,10 @@ class DistributedModelCompiler(FullDepthCompiler):
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')
             # logging.info("Saving GPU models for use")
             t6 = time.time()
-            logging.info('prepare GPU model takes {} secs'.format(t6 - t5))
+            logging.debug('prepare GPU model takes {} secs'.format(t6 - t5))
             pickle.dump(model_gpu, gpu_out_file)
             t7 = time.time()
-            logging.info('dumping out GPU model takes {} secs'.format(t7 - t6))
+            logging.debug('dumping out GPU model takes {} secs'.format(t7 - t6))
             gpu_out_file.close()
         relog_models(models, self.depth)
         if full_pi:
@@ -226,10 +226,10 @@ class DistributedModelCompiler(FullDepthCompiler):
 #        print(pi[EOS_1wrd_full,:].sum())
 #        print(pi[:,EOS_1wrd].sum())
         t8 = time.time()
-        logging.info('before dumping out file {} secs'.format(t8 - t7))
+        logging.debug('before dumping out file {} secs'.format(t8 - t7))
         pickle.dump(model, out_file)
         t9 = time.time()
-        logging.info('dumping out the model takes {} secs'.format(t9 - t8))
+        logging.debug('dumping out the model takes {} secs'.format(t9 - t8))
         out_file.close()
         nnz = pi.nnz
         pi = None

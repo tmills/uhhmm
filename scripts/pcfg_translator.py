@@ -99,7 +99,9 @@ def extract_counts(trees, abp_domain_size):
         total = sum(pcfg[lhs].values())
         for rhs in pcfg[lhs]:
             pcfg[lhs][rhs] /= total
-    if r_branches / (l_branches + r_branches) > 0.95:
+    branching_tendency = r_branches / (l_branches + r_branches)
+    logging.info('Right branching tendency score is {:.4f}'.format(branching_tendency))
+    if branching_tendency > 0.95:
         logging.warning('VERY RIGHT BRANCHING GRAMMAR DETECTED!!')
     return pcfg, pcfg_counts
 

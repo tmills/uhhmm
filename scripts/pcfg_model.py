@@ -48,6 +48,7 @@ class PCFG_model:
         self.size = len(self.indices_keys)
         self.alpha_range = []
         self.alpha = 0
+        self.alpha_scale = 0
         self.nonterm_alpha, self.term_alpha = 0, 0
         self.counts = {}
         # self.init_counts()
@@ -139,6 +140,7 @@ class PCFG_model:
             logging.warning("Do NOT set init_alpha and alpha_scale at the same time."
                             "init_alpha will be ignored.")
         if alpha_scale != 0:
+            self.alpha_scale = alpha_scale
             self.alpha, self.nonterm_alpha, self.term_alpha = \
                 calculate_alpha(self.num_words, self.num_sents, self.non_root_nonterm_mask,
                                 self.len_vocab, self.abp_domain_size, alpha_scale)
@@ -181,6 +183,8 @@ class PCFG_model:
     def _sample_alpha(self, step_size=0.01):  # sampling the hyperparamter for the dirichlets
         if not self.unannealed_dists:
             pass
+        elif self.alpha_scale != 0.:
+            logging.warning('Sampling different alphas for nonterms and terms are not supported!')
         else:
             old_f_val = 0.0
             new_f_val = 0.0
@@ -189,7 +193,8 @@ class PCFG_model:
                 alpha_vec.fill(self.alpha)
                 old_f_val += dirichlet.logpdf(dist, alpha_vec)
             new_alpha = 0
-            while new_alpha < self.alpha_range[0] or new_alpha > self.alpha_range[1]:
+            while new_alpha <= self.alpha_range[0] or new_alpha > self.alpha_range[1] or \
+                    new_alpha == 0:
                 new_alpha = self.alpha + np.random.normal(0.0, step_size)
             for dist in self.unannealed_dists.values():
                 alpha_vec = np.zeros_like(dist)
@@ -199,6 +204,8 @@ class PCFG_model:
             mh_ratio = new_f_val - old_f_val
             if mh_ratio > acceptance_thres:
                 self.alpha = new_alpha
+                self.term_alpha = new_alpha
+                self.nonterm_alpha = new_alpha
                 logging.info(
                     'pcfg alpha samples a new value {} with log ratio {}/{}'.format(new_alpha,
                                                                                     mh_ratio,
