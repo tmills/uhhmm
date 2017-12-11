@@ -144,6 +144,13 @@ class PCFG_model:
             self.alpha, self.nonterm_alpha, self.term_alpha = \
                 calculate_alpha(self.num_words, self.num_sents, self.non_root_nonterm_mask,
                                 self.len_vocab, self.abp_domain_size, alpha_scale)
+            alpha_vec = np.zeros_like(self.non_root_nonterm_mask, dtype=np.float)
+            for ele_id, ele in enumerate(self.non_root_nonterm_mask):
+                if ele == 1:
+                    alpha_vec[ele_id] = self.nonterm_alpha
+                elif ele == 0:
+                    alpha_vec[ele_id] = self.term_alpha
+            self.alpha = alpha_vec
         elif alpha != 0.0:
             assert alpha >= alpha_range[0] and alpha <= alpha_range[1]
             self.alpha, self.nonterm_alpha, self.term_alpha = alpha, alpha, alpha
@@ -212,9 +219,8 @@ class PCFG_model:
                                                                                     acceptance_thres))
 
     def _sample_model(self, annealing_coeff=1.0, normalize=False):
-        logging.info(
-            "resample the pcfg model with alpha {} and annealing coeff {}.".format(self.alpha,
-                                                                                   annealing_coeff))
+        logging.info("resample the pcfg model with nonterm alpha {}, term alpha {} and annealing "
+                     "coeff {}.".format(self.nonterm_alpha, self.term_alpha, annealing_coeff))
         if self.log_probs != 0:
             self.hypparam_log.write('\t'.join([str(x) for x in [self.iter, self.log_probs,
                                                                 (self.nonterm_alpha,
@@ -289,6 +295,7 @@ class PCFG_model:
                     if parent == 1:
                         self.non_root_nonterm_mask.append(0)
         self.non_root_nonterm_mask = np.array(self.non_root_nonterm_mask)
+        print(self.non_root_nonterm_mask)
         return indices_keys, keys_indices
 
     def _read_word_dict_file(self, word_dict_file):

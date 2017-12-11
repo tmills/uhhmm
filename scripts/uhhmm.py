@@ -124,7 +124,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     normalize_flag = int(params.get("normalize_flag", 1))
     alpha_pcfg_range = params.get('alpha_pcfg_range',
                                   [0., 1.0])  # a comma separated list of lower and upper bounds of alpha-pcfg
-    init_alpha = float(params.get("init_alpha", 0.2))
+    init_alpha = float(params.get("init_alpha", 1))
     alpha_scale = float(params.get("alpha_scale", 0.0))
     sample_alpha_flag = int(params.get("sample_alpha_flag", 0))
 
@@ -648,30 +648,37 @@ def initialize_models(models, max_output, params, corpus_shape, depth, inflated_
 
     for d in range(0, depth):
         ## One fork model:
-        models.F[d] = CategoricalModel((inflated_num_abp, 2), alpha=float(params.get('init_alpha')), name="Fork" + str(d))
+        models.F[d] = CategoricalModel((inflated_num_abp, 2), alpha=float(params.get(
+            'init_alpha', 1)), name="Fork" + str(d))
 
         ## One join models:
-        models.J[d] = CategoricalModel((inflated_num_abp, inflated_num_abp, 2), alpha=float(params.get('init_alpha')),
+        models.J[d] = CategoricalModel((inflated_num_abp, inflated_num_abp, 2), alpha=float(
+            params.get('init_alpha', 1)),
                             name="Join" + str(d))
 
         ## One active model:
         models.A[d] = CategoricalModel((inflated_num_abp, inflated_num_abp, inflated_num_abp),
-                            alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="Act" + str(d))
+                            alpha=float(params.get('init_alpha', 1)), corpus_shape=corpus_shape,
+                                       name="Act" + str(d))
 
         ## Two awaited models:
         models.B_J1[d] = CategoricalModel((inflated_num_abp, inflated_num_abp, inflated_num_abp),
-                               alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="B|J1_" + str(d))
+                               alpha=float(params.get('init_alpha', 1)), corpus_shape=corpus_shape,
+                                          name="B|J1_" + str(d))
         models.B_J0[d] = CategoricalModel((inflated_num_abp, inflated_num_abp, inflated_num_abp),
-                               alpha=float(params.get('init_alpha')), corpus_shape=corpus_shape, name="B|J0_" + str(d))
+                               alpha=float(params.get('init_alpha', 1)), corpus_shape=corpus_shape,
+                                          name="B|J0_" + str(d))
 
     ## one pos model:
-    models.pos = CategoricalModel((inflated_num_abp, inflated_num_abp), alpha=float(params.get('init_alpha')),
+    models.pos = CategoricalModel((inflated_num_abp, inflated_num_abp), alpha=float(params.get(
+        'init_alpha', 1)),
                        corpus_shape=corpus_shape, name="POS")
 
     ## one lex model:
     if lex is None:
         logging.info("Initializing default lexical model as Categorical")
-        models.lex = CategoricalModel((inflated_num_abp, max_output + 1), alpha=float(params.get('init_alpha')), name="Lex")
+        models.lex = CategoricalModel((inflated_num_abp, max_output + 1), alpha=float(params.get(
+            'init_alpha', 1)), name="Lex")
     else:
         models.lex = lex
 
