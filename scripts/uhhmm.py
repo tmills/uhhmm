@@ -127,6 +127,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     init_alpha = float(params.get("init_alpha", 1))
     alpha_scale = float(params.get("alpha_scale", 0.0))
     sample_alpha_flag = int(params.get("sample_alpha_flag", 0))
+    alpha_array_flag = int(params.get("alpha_array_flag", 0))
+    if alpha_array_flag and alpha_scale:
+        logging.warning("alpha array and alpha scale are not compatible! ignoring alpha scale.")
+        alpha_scale = 0
 
     # super cooling
     super_cooling = int(params.get("super_cooling", 0))
@@ -165,7 +169,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     end_ind = min(num_sents, batch_size)
 
     pcfg_model = PCFG_model(start_abp, max_output, num_sents, num_tokens, log_dir=working_dir, word_dict_file = word_dict_file)
-    pcfg_model.set_alpha(alpha_pcfg_range, alpha=init_alpha, alpha_scale=alpha_scale)
+    pcfg_model.set_alpha(alpha_pcfg_range, alpha=init_alpha, alpha_scale=alpha_scale,
+                         alpha_array_flag=alpha_array_flag)
 
     logging.info("Initializing state")
 

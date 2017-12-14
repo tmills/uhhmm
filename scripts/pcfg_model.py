@@ -50,6 +50,7 @@ class PCFG_model:
         self.alpha = 0
         self.alpha_scale = 0
         self.nonterm_alpha, self.term_alpha = 0, 0
+        self.alpha_array_flag = False
         self.counts = {}
         # self.init_counts()
         self.unannealed_dists = {}
@@ -119,19 +120,28 @@ class PCFG_model:
 
     def init_counts(self):
         if isinstance(self.alpha, np.ndarray):
-            print(list(self.indices_keys.keys()))
-            print(list(map(len, self.indices_keys.values())))
+            # print(list(self.indices_keys.keys()))
+            # print(list(map(len, self.indices_keys.values())))
+
             for x in self.indices_keys:
                 if x.symbol() == '0':
                     self.counts[x] = np.ones(len(self.indices_keys[x]))
                 else:
                     self.counts[x] = np.zeros(len(self.indices_keys[x])) + self.alpha
-
+        elif isinstance(self.alpha, dict):
+            print(self.alpha)
+            for x in self.indices_keys:
+                if x.symbol() == '0':
+                    self.counts[x] = np.ones(len(self.indices_keys[x]))
+                else:
+                    self.counts[x] = np.zeros(len(self.indices_keys[x])) + self.alpha[x]
         else:
             self.counts = {x: np.zeros(len(self.indices_keys[x])) + self.alpha
                            for x in self.indices_keys}
 
-    def set_alpha(self, alpha_range, alpha=0.0, alpha_scale=0.0):
+    def set_alpha(self, alpha_range, alpha=0.0, alpha_scale=0.0, alpha_array_flag=False):
+        self.alpha_array_flag = alpha_array_flag
+        # print(alpha, alpha_scale, alpha_array_flag, self.counts)
         if isinstance(alpha_range, list):
             self.alpha_range = alpha_range
         else:
@@ -151,16 +161,18 @@ class PCFG_model:
                 elif ele == 0:
                     alpha_vec[ele_id] = self.term_alpha
             self.alpha = alpha_vec
-        elif alpha != 0.0:
+        elif alpha != 0.0 and not self.alpha_array_flag:
             assert alpha >= alpha_range[0] and alpha <= alpha_range[1]
             self.alpha, self.nonterm_alpha, self.term_alpha = alpha, alpha, alpha
+        elif alpha != 0.0 and self.alpha_array_flag:
+            self.alpha = self.nonterm_alpha = self.term_alpha = {x:alpha for x in self.indices_keys}
         else:
             self.alpha = sum(alpha_range) / len(alpha_range)
         self.init_counts()
 
     def sample(self, pcfg_counts, annealing_coeff=1.0, normalize=False,
                sample_alpha_flag=False):  # used as the normal sampling procedure
-        if sample_alpha_flag:
+        if sample_alpha_flag or self.alpha_array_flag:
             self._sample_alpha()
         self._reset_counts()
         self._update_counts(pcfg_counts)
@@ -178,6 +190,8 @@ class PCFG_model:
                     self.counts[parent].fill(1)
                 else:
                     self.counts[parent] = np.copy(self.alpha)
+            elif isinstance(self.alpha, dict):
+                self.counts[parent].fill(self.alpha[parent])
             else:
                 self.counts[parent].fill(self.alpha)
 
@@ -193,30 +207,64 @@ class PCFG_model:
         elif self.alpha_scale != 0.:
             logging.warning('Sampling different alphas for nonterms and terms are not supported!')
         else:
-            old_f_val = 0.0
-            new_f_val = 0.0
-            for dist in self.unannealed_dists.values():
-                alpha_vec = np.zeros_like(dist)
-                alpha_vec.fill(self.alpha)
-                old_f_val += dirichlet.logpdf(dist, alpha_vec)
-            new_alpha = 0
-            while new_alpha <= self.alpha_range[0] or new_alpha > self.alpha_range[1] or \
-                    new_alpha == 0:
-                new_alpha = self.alpha + np.random.normal(0.0, step_size)
-            for dist in self.unannealed_dists.values():
-                alpha_vec = np.zeros_like(dist)
-                alpha_vec.fill(new_alpha)
-                new_f_val += dirichlet.logpdf(dist, alpha_vec)
-            acceptance_thres = np.log(np.random.uniform(0.0, 1.0))
-            mh_ratio = new_f_val - old_f_val
-            if mh_ratio > acceptance_thres:
-                self.alpha = new_alpha
-                self.term_alpha = new_alpha
-                self.nonterm_alpha = new_alpha
-                logging.info(
-                    'pcfg alpha samples a new value {} with log ratio {}/{}'.format(new_alpha,
-                                                                                    mh_ratio,
-                                                                                    acceptance_thres))
+            if not self.alpha_array_flag:
+                old_f_val = 0.0
+                new_f_val = 0.0
+                for parent in self.unannealed_dists.keys():
+                    if parent.symbol() == '0':
+                        continue
+                    dist = self.unannealed_dists[parent]
+                    alpha_vec = np.zeros_like(dist)
+                    alpha_vec.fill(self.alpha)
+                    old_f_val += dirichlet.logpdf(dist, alpha_vec)
+                new_alpha = 0
+                while new_alpha <= self.alpha_range[0] or new_alpha > self.alpha_range[1] or \
+                        new_alpha == 0:
+                    new_alpha = self.alpha + np.random.normal(0.0, step_size)
+                for parent in self.unannealed_dists.keys():
+                    if parent.symbol() == '0':
+                        continue
+                    alpha_vec = np.zeros_like(dist)
+                    alpha_vec.fill(new_alpha)
+                    new_f_val += dirichlet.logpdf(dist, alpha_vec)
+                acceptance_thres = np.log(np.random.uniform(0.0, 1.0))
+                mh_ratio = new_f_val - old_f_val
+                if mh_ratio > acceptance_thres:
+                    self.alpha = new_alpha
+                    self.term_alpha = new_alpha
+                    self.nonterm_alpha = new_alpha
+                    logging.info(
+                        'pcfg alpha samples a new value {} with log ratio {}/{}'.format(new_alpha,
+                                                                                        mh_ratio,
+                                                                                        acceptance_thres))
+            else:
+                old_f_val = 0.0
+                new_f_val = 0.0
+                for parent in self.unannealed_dists.keys():
+                    if parent.symbol() == '0':
+                        continue
+                    dist = self.unannealed_dists[parent]
+                    old_alpha_vec = np.zeros_like(dist)
+                    old_alpha_vec.fill(self.alpha[parent])
+                    old_f_val = dirichlet.logpdf(dist, old_alpha_vec)
+                    new_temp_alpha = 0
+                    while new_temp_alpha <= self.alpha_range[0] or new_temp_alpha > self.alpha_range[1] or \
+                                    new_temp_alpha == 0:
+                        new_temp_alpha = self.alpha[parent] + np.random.normal(0.0, step_size)
+
+                    new_alpha_vec = np.zeros_like(dist)
+                    new_alpha_vec.fill(new_temp_alpha)
+                    new_f_val = dirichlet.logpdf(dist, new_alpha_vec)
+                    acceptance_thres = np.log(np.random.uniform(0.0, 1.0))
+                    mh_ratio = new_f_val - old_f_val
+                    if mh_ratio > acceptance_thres:
+                        self.alpha[parent] = new_temp_alpha
+
+                        logging.info(
+                            'pcfg alpha samples a new value {} for {} with log ratio {}/{}'.format(
+                                new_temp_alpha, parent, mh_ratio, acceptance_thres))
+                self.term_alpha = self.alpha
+                self.nonterm_alpha = self.alpha
 
     def _sample_model(self, annealing_coeff=1.0, normalize=False):
         logging.info("resample the pcfg model with nonterm alpha {}, term alpha {} and annealing "
@@ -228,14 +276,27 @@ class PCFG_model:
                                                                 annealing_coeff]]) + '\n')
         dists = {}
         if annealing_coeff != 1.0:
-            self.anneal_counts = {x: (self.counts[x] - self.alpha) * annealing_coeff if x.symbol()
-                                                                                        != '0' else
-                                                            (self.counts[x] - 1) * annealing_coeff
-                                                            for x in self.counts}
-            self.unannealed_dists = {x: np.random.dirichlet(self.anneal_counts[x] + self.alpha)
-            if x.symbol() != "0" else
-            np.random.dirichlet(self.anneal_counts[x] + 1)
-                                     for x in self.anneal_counts}
+            if not self.alpha_array_flag:
+                self.anneal_counts = {
+                    x: (self.counts[x] - self.alpha) * annealing_coeff if x.symbol()
+                                                                      != '0' else
+                    (self.counts[x] - 1) * annealing_coeff
+                    for x in self.counts}
+                self.unannealed_dists = {x: np.random.dirichlet(self.anneal_counts[x] + self.alpha)
+                    if x.symbol() != "0" else
+                    np.random.dirichlet(self.anneal_counts[x] + 1)
+                                         for x in self.anneal_counts}
+            else:
+                self.anneal_counts = {
+                    x: (self.counts[x] - self.alpha[x]) * annealing_coeff if x.symbol()
+                                                                             != '0' else
+                    (self.counts[x] - 1) * annealing_coeff
+                    for x in self.counts}
+                self.unannealed_dists = {x: np.random.dirichlet(self.anneal_counts[x] +
+                                                                self.alpha[x])
+                    if x.symbol() != "0" else
+                    np.random.dirichlet(self.anneal_counts[x] + 1)
+                                             for x in self.anneal_counts}
             # if normalize:
             #     dists = {x: normalize_a_tensor(dists[x]) for x in dists}
         else:
