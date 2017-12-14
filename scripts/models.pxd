@@ -21,5 +21,5 @@ cdef class CategoricalModel(Model):
 cdef class GaussianModel(Model):
     cdef public tuple shape
     cdef public np.ndarray globalPairCounts, embeddings
-    cdef public dist, pairCounts
+    cdef public dist, pairCounts, centroids
     cdef public int embed_dims

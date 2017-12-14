@@ -31,6 +31,7 @@ from pcfg_translator import *
 import copy
 from init_pcfg_strategies import *
 from pcfg_model import PCFG_model
+from scipy.cluster.vq import kmeans
 
 
 # Has a state for every word in the corpus
@@ -176,7 +177,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         lex = None
         if not word_vecs is None:
             logging.info("Using word vectors as observations: Embedding matrix has %d entries, %d dimensions, max=%f and min=%f" % (word_vecs.shape[0], word_vecs.shape[1], word_vecs.max(), word_vecs.min()))
-            lex = GaussianModel((inflated_num_abp, word_vecs.shape[1]), word_vecs, name="Lex")
+            centroids, distortion = kmeans(word_vecs, start_abp, iter=5)
+            lex = GaussianModel((inflated_num_abp, word_vecs.shape[1]), word_vecs, name="Lex", centroids=centroids)
 
         ## TODO: Look at how initialize_models works
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, inflated_num_abp, lex=lex)
