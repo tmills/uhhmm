@@ -10,8 +10,6 @@ SCRIPTS  := $(THISDIR)/scripts
 CUDA_PATH:=/usr/local/cuda
 PYTHON_VERSION:=$(shell python3 --version | sed 's,Python \([0-9]\.[0-9]\)\.[0-9],python\1,')
 NUMPY_INC=$(shell python3 -c 'import numpy; print(numpy.get_include())')
-#NUMPY_INC=env/lib/${PYTHON_VERSION}/site-packages/numpy/core/include
-#/usr/local/lib/python3.4/dist-packages/numpy/core/include
 PY3_LOC=env/bin/${PYTHON_VERSION}
 VPATH := genmodel data
 
@@ -244,43 +242,43 @@ gendata/wsj_all.tagwords.txt: gendata/wsj_all.txt
 	cat $< | perl -pe 's/\(([^()]+) ([^()]+)\)/\1\/\2/g;s/\(\S*//g;s/\)//g;s/-NONE-\/\S*//g;s/  +/ /g;s/^ *//g' > $@
 
 gendata/simplewiki_d1.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
-	cat $< | $(SCRIPTS)/extract_d1_trees.sh | $(SCRIPTS)/trees2words.sh > $@
+	cat $< | $(SCRIPTS)/analysis/extract_d1_trees.sh | $(SCRIPTS)/preprocess/trees2words.sh > $@
 
 gendata/simplewiki_d1.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
-	cat $< | grep -v "#" | $(SCRIPTS)/extract_d1_trees.sh | grep "^(S" | $(SCRIPTS)/trees2poswords.sh > $@
+	cat $< | grep -v "#" | $(SCRIPTS)/analysis/extract_d1_trees.sh | grep "^(S" | $(SCRIPTS)/preprocess/trees2poswords.sh > $@
 
 gendata/simplewiki_d2_5k.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
-	cat $< $(SCRIPTS)/extract_d2_trees.sh | grep "^(S" | $(SCRIPTS)/trees2poswords.sh | sort -R --random-source /dev/zero | head -5000 > $@
+	cat $< $(SCRIPTS)/analysis/extract_d2_trees.sh | grep "^(S" | $(SCRIPTS)/preprocess/trees2poswords.sh | sort -R --random-source /dev/zero | head -5000 > $@
 
 gendata/simplewiki_d2_all.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
-	cat $< $(SCRIPTS)/extract_d2_trees.sh | $(SCRIPTS)/remove_wiki_junk.sh | $(SCRIPTS)/trees2poswords.sh > $@
+	cat $< $(SCRIPTS)/analysis/extract_d2_trees.sh | $(SCRIPTS)/preprocess/remove_wiki_junk.sh | $(SCRIPTS)/preprocess/trees2poswords.sh > $@
 
 gendata/simplewiki_all.tagwords.txt: data/simplewiki-20140903-pages-articles.wsj02to21-comparativized-gcg15-1671-4sm.fullberk.parsed.100000onward.100000first.bd.linetrees
-	cat $< | $(SCRIPTS)/remove_wiki_junk.sh | $(SCRIPTS)/trees2poswords.sh > $@
+	cat $< | $(SCRIPTS)/preprocess/remove_wiki_junk.sh | $(SCRIPTS)/preprocess/trees2poswords.sh > $@
 
 %.ints.txt: %.txt
-	cat $< | $(SCRIPTS)/lowercase.sh | perl $(SCRIPTS)/wordFile2IntFile.pl $*.dict > $@
+	cat $< | $(SCRIPTS)/preprocess/lowercase.sh | perl $(SCRIPTS)/preprocess/wordFile2IntFile.pl $*.dict > $@
 
 %.small.txt: %.txt
 	head -100 $< > $@
 
 %.1kvocabfilter.txt: %.1kvocab %.txt
-	python $(SCRIPTS)/filter_sentence_with_vocab.py $^ > $@
+	python $(SCRIPTS)/preprocess/filter_sentence_with_vocab.py $^ > $@
 
 gendata/hungltf_tagwords.txt: user-lorelei-location.txt
-	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Hungarian_LDC2015E82_V1.1/data/annotation/pos_tagged/ltf > $@
+	python3 $(SCRIPTS)/preprocess/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Hungarian_LDC2015E82_V1.1/data/annotation/pos_tagged/ltf > $@
 
 gendata/urdu_tagwords.txt: user-lorelei-location.txt
-	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Urdu_LDC2015E14_V1.1/data/annotation/pos_tagged > $@
+	python3 $(SCRIPTS)/preprocess/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Urdu_LDC2015E14_V1.1/data/annotation/pos_tagged > $@
 
 gendata/thailtf_tagwords.txt: user-lorelei-location.txt
-	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Thai_LDC2015E84_V1.1/data/annotation/pos_tagged/ltf > $@
+	python3 $(SCRIPTS)/preprocess/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Thai_LDC2015E84_V1.1/data/annotation/pos_tagged/ltf > $@
 
 gendata/tamiltf_tagwords.txt: user-lorelei-location.txt
-	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Tamil_LDC2015E83_V1.1/data/annotation/pos_tagged/ltf > $@
+	python3 $(SCRIPTS)/preprocess/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/REFLEX_Tamil_LDC2015E83_V1.1/data/annotation/pos_tagged/ltf > $@
 
 gendata/darpa_y1eval_set%.tagwords.txt: user-lorelei-location.txt
-	python3 $(SCRIPTS)/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/LDC2016E57_LORELEI_IL3_Incident_Language_Pack_for_Year_1_Eval/set$*/data/monolingual_text/ltf/ > $@
+	python3 $(SCRIPTS)/preprocess/ltf2tagwords.py $(shell cat user-lorelei-location.txt)/LDC2016E57_LORELEI_IL3_Incident_Language_Pack_for_Year_1_Eval/set$*/data/monolingual_text/ltf/ > $@
 
 gendata/darpa_y1eval_set0,E.tagwords.txt: data/darpa_y1eval_set0.tagwords.txt data/darpa_y1eval_setE.tagwords.txt
 	cat $^ > $@
@@ -298,16 +296,16 @@ gendata/ktb.linetrees.txt: gendata/ktb.trees.txt
 	cat $^ | perl -pe 's/\n/<NEWLINE>/g' | perl -pe 's/;;.*?<NEWLINE>/\n/g;s/<NEWLINE>/ /g;s/  */ /g'  | perl -pe 's/^ *//g' | grep -v "^$$" > $@
 
 %.words.txt: %.tagwords.txt
-	cat $^ | $(SCRIPTS)/tagwords2words.sh > $@
+	cat $^ | $(SCRIPTS)/preprocess/tagwords2words.sh > $@
 
 %-l10.words.txt: %.words.txt
-	cat $^ | $(SCRIPTS)/words2len_words.sh 10 > $@
+	cat $^ | $(SCRIPTS)/preprocess/words2len_words.sh 10 > $@
 
 %-l20.words.txt: %.words.txt
-	cat $^ | $(SCRIPTS)/words2len_words.sh 20 > $@
+	cat $^ | $(SCRIPTS)/preprocess/words2len_words.sh 20 > $@
 
 %-l20.tagwords.txt: %.tagwords.txt
-	cat $^ | $(SCRIPTS)/words2len_words.sh 20 > $@
+	cat $^ | $(SCRIPTS)/preprocess/words2len_words.sh 20 > $@
 
 %-l3-10.words.txt: %-l10.words.txt
 	cat $^ | perl -lane 'if($$#F >= 2){ print $$_; }' > $@
@@ -316,22 +314,22 @@ gendata/ktb.linetrees.txt: gendata/ktb.trees.txt
 	cat $^ | perl -lane 'if($$#F >= 2){ print $$_; }' > $@
 
 %.m2.words.txt: %.words.txt
-	cat $^ | perl $(SCRIPTS)/removeInfrequent.pl 2 > $@
+	cat $^ | perl $(SCRIPTS)/preprocess/removeInfrequent.pl 2 > $@
 
 %.tagwords.txt: %.txt
-	cat $^ | $(SCRIPTS)/trees2tagwords.sh > $@
+	cat $^ | $(SCRIPTS)/preprocess/trees2tagwords.sh > $@
 
 %.lc.txt: %.txt
-	cat $^ | $(SCRIPTS)/lowercase.sh > $@
+	cat $^ | $(SCRIPTS)/preprocess/lowercase.sh > $@
 
 %.len_gt3.txt: %.txt
 	cat $^ | perl -lane 'if($$#F > 2){ print $$_; }' > $@
 
 %.1kvocab: %.txt
-	cat $^ | $(SCRIPTS)/get_top_k_words.sh 1000 > $@
+	cat $^ | $(SCRIPTS)/preprocess/get_top_k_words.sh 1000 > $@
 
 %.rb.brackets: %.words.txt
-	cat $^ | perl $(SCRIPTS)/words2rb.pl > $@
+	cat $^ | perl $(SCRIPTS)/eval/words2rb.pl > $@
 
 
 
@@ -366,7 +364,7 @@ genmodel/%.morf.model: %.txt genmodel
 %.brackets: %.txt user-modelblocks-location.txt
 	cat $< | python $(SCRIPTS)/uhhmm2efabp.py | python $(LCPARSE-SCRIPTS)/efabpout2linetrees.py  | \
   sed 's/\^.,.//g;s/\^g//g;s/\_[0-9]*//g;s/\([^+ ]\)+\([^+ ]\)/\1-\2/g;' | sed 's/\([^+ ]\)+\([^+ ]\)/\1-\2/g;'  | \
-  perl $(LCPARSE-SCRIPTS)/remove-at-cats.pl | python scripts/brackets_cleanup.py >  $@
+  perl $(LCPARSE-SCRIPTS)/remove-at-cats.pl | python scripts/preprocess/brackets_cleanup.py >  $@
 
 # Generates linetrees from UHHMM sample output and renames the file
 # appropriately for use with syneval
@@ -400,7 +398,7 @@ p_lex_given_pos$$(subst .,,$$(suffix %)).txt p_pos_$$(subst .,,$$(suffix %)).txt
 
 # Generates a space-delimited table of recall measures by iteration
 # for each sample file in the user-supplied project directory
-/%.uhhmm-iter.constitevallist: $(SCRIPTS)/iters2constitevallist.py $$(foreach file, $$(wildcard $$(dir /%)last_sample*linetrees), /$$(basename $$(basename $$*)).$$(notdir $$(basename $$(basename $$*)))-$$(subst last_sample,,$$(basename $$(notdir $$(file))))-$$(subst .,,$$(suffix $$(basename $$*)))$$(suffix $$*).constiteval.txt)
+/%.uhhmm-iter.constitevallist: $(SCRIPTS)/eval/iters2constitevallist.py $$(foreach file, $$(wildcard $$(dir /%)last_sample*linetrees), /$$(basename $$(basename $$*)).$$(notdir $$(basename $$(basename $$*)))-$$(subst last_sample,,$$(basename $$(notdir $$(file))))-$$(subst .,,$$(suffix $$(basename $$*)))$$(suffix $$*).constiteval.txt)
 	python $^ > $@
 
 # Because of oddities in how Make handles wildcard expansion in prereqs,
@@ -409,7 +407,7 @@ p_lex_given_pos$$(subst .,,$$(suffix %)).txt p_pos_$$(subst .,,$$(suffix %)).txt
 
 # Generates a plot from %logprobs.txt
 .PRECIOUS: %.logprob_curve.jpg
-%.logprob_curve.jpg: $(SCRIPTS)/plot_curve.r $$(dir %)logprobs.txt
+%.logprob_curve.jpg: $(SCRIPTS)/eval/plot_curve.r $$(dir %)logprobs.txt
 	$^ -x Iteration -y 'Log Probability' -o $@
 
 # Generates several learning curve plots for UHHMM output
