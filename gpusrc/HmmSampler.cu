@@ -28,108 +28,15 @@
 #include <limits>
 #include <iostream>
 #include <iomanip>
+#include "cuda_helpers.h"
 using namespace cusp;
 using namespace std;
 typedef std::chrono::high_resolution_clock Clock;
 float nano_to_sec = 1.0e-9f;
-__device__ int G_SIZE;
-__device__ float PI=3.14159265;
-// 1 / sqrt(2*pi)
-__device__ float RECIP_SQRT_2_PI = 0.39894;
-__device__ float max_prob;
 
 // typedef std::numeric_limits<float> float_limit;
 typedef cusp::array1d<float,cusp::device_memory> cusparray;
 typedef cusparray::view ArrayView;
-
-void debug_print_float_vector(thrust::device_vector<float> vec){
-    thrust::copy(vec.begin(), vec.end(), std::ostream_iterator<float>(cout, " "));
-    cout << endl;
-}
-
-void debug_print_double_vector(thrust::device_vector<double> vec){
-    thrust::copy(vec.begin(), vec.end(), std::ostream_iterator<double>(cout, " "));
-    cout << endl;
-}
-  
-/* works correctly if argument is in +/-[2**-15, 2**17), or zero, infinity, NaN */
-// From: https://devtalk.nvidia.com/default/topic/865401/fast-float-to-double-conversion/
-__device__ __forceinline__ 
-double my_fast_float2double (float a)
-{
-    unsigned int ia = __float_as_int (a);
-    return __hiloint2double ((((ia >> 3) ^ ia) & 0x07ffffff) ^ ia, ia << 29);
-}
-
-class cuda_exp : public thrust::unary_function<float, float>{
-public:
-    __device__
-   float operator()(float x){
-       return exp(x);
-   }
-};
-class cuda_10exp : public thrust::unary_function<float, float>{
-public:
-    __device__
-   float operator()(float x){
-       return pow(10,x);
-   }
-};
-class calc_sparse_column : public thrust::unary_function<int, int>{
-public:
-   __device__
-   int operator()(int x){
-       return x % G_SIZE;
-   }
-};
-
-class g_integer_division : public thrust::unary_function<int, int>{
-public:
-    __device__
-   int operator()(int x){
-       return x / G_SIZE;
-   }
-};
-
-class normal_logpdf_firstfactor : public thrust::unary_function<float, double> {
-public:
-    __device__
-    double operator()(const float & stdev) const {
-        return my_fast_float2double(RECIP_SQRT_2_PI / stdev);
-    }
-};
-
-class normal_logpdf_squarederror : public thrust::binary_function<float,float,float> {
-public:
-    __device__
-    float operator()(const float & x, const float & mu) const {
-        return pow(x-mu, 2.0);
-    }
-};
-
-class normal_logpdf_twostdevsquared : public thrust::unary_function<float,float> {
-public:
-    __device__
-    float operator()(const float &stdev) const {
-        return 2 * pow(stdev, 2.0);
-    }
-};
-
-class normal_logpdf_secondfactor : public thrust::binary_function<float,float,double> {
-public:
-    __device__
-    double operator()(const float& numerator, const float& denominator){
-        return exp(my_fast_float2double(-numerator) / my_fast_float2double(denominator));
-    }
-};
-
-class normal_logpdf_log : public thrust::unary_function<double,float> {
-public:
-    __device__
-    float operator()(const double& x){
-        return __double2float_rd(log(x));
-    }
-};
 
 Model::Model(int pi_num_rows, int pi_num_cols, float* pi_vals, int pi_vals_size, int* pi_row_offsets,
 int pi_row_offsets_size, int* pi_col_indices, int pi_col_indices_size, float* lex_vals, int lex_vals_size,
@@ -251,6 +158,7 @@ void GaussianObservationModel::set_models(Model * models){
         // debug_print_float_vector(stdevs);
         // cout << endl;
 
+        // cout << "lex_mat: ";
         for(int word_ind = 0; word_ind < numWords; word_ind++){
             array2d<float, device_memory>::row_view embed_vec = embed_view -> row(word_ind);
             // calculate the normalization term (unary function)
@@ -271,6 +179,9 @@ void GaussianObservationModel::set_models(Model * models){
             thrust::transform(final_prob.begin(), final_prob.end(), log_prob.begin(), normal_logpdf_log());
             // take the sum of log probabilities:
             lexMatrix->get_view()->operator()(g,word_ind) = thrust::reduce(log_prob.begin(), log_prob.end());
+
+            // cout << lexMatrix->get_view()->operator()(g,word_ind) << " ";
+
             if(std::isinf(lexMatrix->get_view()->operator()(g,word_ind))){
                 cout << "Word index " << word_ind << " has log prob of -inf" << endl;
                 cout << "embeddings: " << endl;
@@ -297,41 +208,47 @@ void GaussianObservationModel::set_models(Model * models){
                 cout << endl;
             }
         }
+        // cout << endl;
 
         // now normalize for this row -- in log space, substract the maximum (least negative) value, then
         // exponentiate, then normalize
         pos_row = lexMatrix->get_view()->row(g);
-        // float max_prob = *(thrust::max_element(pos_row.begin(), pos_row.end()));
-        // float min_prob = *(thrust::min_element(pos_row.begin(), pos_row.end()));
-        // int min_index = thrust::min_element(pos_row.begin(), pos_row.end()) - pos_row.begin();
+        float max_prob = *(thrust::max_element(pos_row.begin(), pos_row.end()));
+        float min_prob = *(thrust::min_element(pos_row.begin(), pos_row.end()));
+        int min_index = thrust::min_element(pos_row.begin(), pos_row.end()) - pos_row.begin();
         // cout << "Max log prob in row " << g << " is " << max_prob << " and min is " << min_prob << " at index " << min_index << endl;
+        // cout << "Prob of 'the' is " << pos_row[1] << endl;
         // subtract max:
         thrust::fill(temp.begin(), temp.end(), max_prob);
         thrust::transform(pos_row.begin(), pos_row.end(), temp.begin(), pos_row.begin(), thrust::minus<float>());
-        // max_prob = *(thrust::max_element(pos_row.begin(), pos_row.end()));
-        // min_prob = *(thrust::min_element(pos_row.begin(), pos_row.end()));
+        max_prob = *(thrust::max_element(pos_row.begin(), pos_row.end()));
+        min_prob = *(thrust::min_element(pos_row.begin(), pos_row.end()));
         // cout << "After max subtract, max log prob in row " << g << " is " << max_prob << " and min is " << min_prob << endl;
+        // cout << "Prob of 'the' is " << pos_row[1] << endl;
         // exponentiate:
         thrust::transform(pos_row.begin(), pos_row.end(), pos_row.begin(), cuda_exp());
         // add a small constant so nothing is zero:
-        thrust::fill(temp.begin(), temp.end(), 0.0000001);
-        thrust::transform(pos_row.begin(), pos_row.end(), temp.begin(), pos_row.begin(), thrust::plus<float>());
-        // max_prob = *(thrust::max_element(pos_row.begin(), pos_row.end()));
-        // min_prob = *(thrust::min_element(pos_row.begin(), pos_row.end()));
+        // thrust::fill(temp.begin(), temp.end(), 0.00000000001);
+        // thrust::transform(pos_row.begin(), pos_row.end(), temp.begin(), pos_row.begin(), thrust::plus<float>());
+        max_prob = *(thrust::max_element(pos_row.begin(), pos_row.end()));
+        min_prob = *(thrust::min_element(pos_row.begin(), pos_row.end()));
         // cout << "After exponentiation, max log prob in row " << g << " is " << max_prob << " and min is " << min_prob << endl;
+        // cout << "Prob of 'the' is " << pos_row[1] << endl;
         // get normalizer:
         float normalizer = thrust::reduce(pos_row.begin(), pos_row.end());
         thrust::fill(temp.begin(), temp.end(), normalizer);
         // divide:
         thrust::transform(pos_row.begin(), pos_row.end(), temp.begin(), pos_row.begin(), thrust::divides<float>());
-        // max_prob = *(thrust::max_element(pos_row.begin(), pos_row.end()));
-        // min_prob = *(thrust::min_element(pos_row.begin(), pos_row.end()));
+        max_prob = *(thrust::max_element(pos_row.begin(), pos_row.end()));
+        min_prob = *(thrust::min_element(pos_row.begin(), pos_row.end()));
         // cout << "After normalization, max prob in row " << g << " is " << max_prob << " and min is " << min_prob << endl;
+        // cout << "Prob of 'the' is " << pos_row[1] << endl;
         // if(max_prob > 1.0){
         //     cout << "ERROR: Max probability is too high!" << endl;
         // }
         // cout << "Returning probability distribution: " << endl;
         // cusp::print(pos_row);
+        // cout << "Setting value " << lexMatrix->get_view()->operator()(g,1) << " when g=" << g << " and word_ind=1" << endl;
 
     }
     // cout << "After pre-computing, lex matrix contains:" << endl;
@@ -344,6 +261,8 @@ void GaussianObservationModel::get_pos_probability_vector(int token, Array * out
     array2d<float, device_memory>::column_view lex_column = lex_view -> column(token);
     //thrust::fill(output->begin(), output->end(), 0);
     thrust::copy(thrust::device, lex_column.begin(), lex_column.end(), output->begin());
+    // cout << "Filled outupt vector with:" << endl;
+    // cusp::print(*output);
 }
 //     // cout << "GaussianObservationModel::get_pos_probability_vector called" << endl;
 //     array2d_view<ValueArrayView, row_major>* embed_view = embeddings -> get_view();
@@ -688,6 +607,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
     // np_sents is |batches| x max_len
     Dense* np_sents = get_sentence_array(sents, batch_max_len);
     Array expanded_lex(p_indexer->get_state_size(), 0);
+    Array temp_vec(p_indexer->get_state_size(), 0);
 
     //array2d_view<ValueArrayView, row_major>* lex_view = lexMatrix -> get_view();
 //    cout << "Forward in 2 " << endl;
@@ -734,7 +654,7 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             // dyn_prog_row is 1 x state_size
             // dyn_prog_column is state_size x 1
             array2d<float, device_memory>::column_view dyn_prog_col = cur_mat->column(sent_ind);
-            // cout << "Getting observation probability" << endl;
+            // cout << "Getting observation probability for token " << token << endl;
             obs_model->get_probability_vector(token, &expanded_lex);
             float max_prob = *(thrust::max_element(expanded_lex.begin(), expanded_lex.end()));
             // cout << "Max value of observation model is " << max_prob << endl;
@@ -746,17 +666,20 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             // cout << "observation probabilities after expansion and (possible) exponentiation" << endl;
             // cusp::print(expanded_lex);
 
+            thrust::copy(dyn_prog_col.begin(), dyn_prog_col.end(), temp_vec.begin());
             blas::xmy(expanded_lex, dyn_prog_col, dyn_prog_col);
 
 //            cout << "Computing normalizer" << endl;
             normalizer = thrust::reduce(thrust::device, dyn_prog_col.begin(), dyn_prog_col.end());
-//             cout << "Normalizing over col with result: " << normalizer << endl;
+            // cout << "Normalizing over col with result: " << normalizer << endl;
             if(std::isnan(normalizer)){
               cout << "Found a normalizer that is nan!" << endl;
-              cout << "Dynamic programming matrix column:" << endl;
-              cusp::print(dyn_prog_col);
+              cout << "Dyn prog col before multiply: " << endl;
+              cusp::print(temp_vec);
               cout << "expanded lex probability vector: " << endl;
               cusp::print(expanded_lex);
+              cout << "Dynamic programming matrix column:" << endl;
+              cusp::print(dyn_prog_col);
             }
 //            cout << "Scaling by normalizer" << endl;
             blas::scal(dyn_prog_col, 1.0f/normalizer);

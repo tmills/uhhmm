@@ -210,9 +210,15 @@ gpusrc/libhmm.a: gpusrc/hmmsampler.o gpusrc/temp.o
 gpusrc/hmmsampler.o: gpusrc/temp.o
 	${CUDA_PATH}/bin/nvcc -dlink -o $@ $^ -lcudart --shared -Xcompiler -fPIC -m64 -L${CUDA_PATH}/lib64 -Xlinker -rpath -Xlinker ${CUDA_PATH}/lib64
 
-gpusrc/temp.o: gpusrc/HmmSampler.cu gpusrc/State.cu gpusrc/HmmSampler.h gpusrc/obs_models.h gpusrc/myarrays.cu gpusrc/myarrays.h
+gpusrc/temp.o: gpusrc/HmmSampler.cu gpusrc/State.cu gpusrc/HmmSampler.h gpusrc/obs_models.h gpusrc/myarrays.cu gpusrc/myarrays.h gpusrc/obs_models.cu
 	${CUDA_PATH}/bin/nvcc -rdc=true -c -o $@ $< -Icusplibrary/ -std=c++11 --shared -Xcompiler -fPIC -m64
 
+multiply_test: gpusrc/multiply_test.cu
+	${CUDA_PATH}/bin/nvcc -o $@ $< -Icusplibrary/ -std=c++11
+
+gaussian_test: gpusrc/gaussian_test.cu
+	${CUDA_PATH}/bin/nvcc -o $@ $< -Icusplibrary/ -std=c++11
+	
 config/myconfig.ini: config/d1train.ini
 	cp $< $@
 
