@@ -7,7 +7,7 @@ from init_pcfg_strategies import *
 import logging
 import math
 from pcfg_model import PCFG_model, normalize_a_tensor
-from models import CategoricalModel
+from models import CategoricalModel,GaussianModel
 
 """
 this file is for translating sequences of states to pcfg counts and back to uhhmm counts
@@ -298,6 +298,8 @@ def _calc_p_model(gamma_stars, d, abp_domain_size, normalize=True):
     return p_model
 
 def _calc_w_model(sampled_pcfg, abp_domain_size, lex_size, normalize=True):
+    ## Return a |K| x |V| sized matrix p(w | p) with a probability distribution
+    ## over words in each row
     w_model = np.zeros((abp_domain_size+2, lex_size))
     for lhs in sampled_pcfg:
         lhs_index = int(lhs.symbol())
@@ -309,7 +311,6 @@ def _calc_w_model(sampled_pcfg, abp_domain_size, lex_size, normalize=True):
     if normalize:
         return normalize_a_tensor(w_model)
     return w_model
-
 
 def _replace_model(model, ref_model, inc,add_noise=False, sigma=1):
     # mu = 0
@@ -334,16 +335,16 @@ def _replace_model(model, ref_model, inc,add_noise=False, sigma=1):
         #     model.pairCounts += noise
         #     model.pairCounts = np.absolute(model.pairCounts)
 
-def pcfg_replace_model(hid_seq, ev_seq, models, pcfg_model, inc=1, J=25, normalize=True, gold_pcfg_file=None,
+def pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, inc=1, J=25, normalize=True, gold_pcfg_file=None,
                        add_noise=False, noise_sigma = 0, strategy=None, ints_seqs=None, gold_pos_dict = None,
                        ac_coeff = 1.0, annealing_normalize=False, sample_alpha_flag=False):
     d = len(models.A)
     d = d + 1  # calculate d+1 depth models for all pseudo count models, but not using them in _inc_counts
     abp_domain_size = models.A[0].dist.shape[0] - 2
-    if not hid_seq and not ev_seq: # initialization without any parses
+    if not hid_seqs and not ev_seqs: # initialization without any parses
         pcfg_counts = {}
     elif not gold_pcfg_file and not strategy: # normal sampling
-        mixed_seqs = zip(hid_seq, ev_seq)
+        mixed_seqs = zip(hid_seqs, ev_seqs)
         _, pcfg_counts = translate_through_pcfg(mixed_seqs, d, abp_domain_size)
     elif gold_pcfg_file:  # with a gold pcfg file
         _, pcfg_counts = load_gold_trees(gold_pcfg_file,abp_domain_size)
@@ -384,7 +385,12 @@ def pcfg_replace_model(hid_seq, ev_seq, models, pcfg_model, inc=1, J=25, normali
         lex_size =  models.lex.dist.shape[-1]
         pseudo_W = _calc_w_model(sampled_pcfg, abp_domain_size, lex_size, normalize)
         _replace_model(models.lex, pseudo_W, inc, add_noise, noise_sigma)
+    elif isinstance(models.lex, GaussianModel) and not hid_seqs is None:
+        for sent_ind,hid_seq in enumerate(hid_seqs):
+            for token_ind,state in enumerate(hid_seq):
+                models.lex.count(state.g, ev_seqs[sent_ind][token_ind], 1)
 
+        models.lex.sampleGaussian()
     # print(_calc_w_model(pcfg_counts, abp_domain_size, lex_size, normalize))
     logging.info("TOTAL COUNTS FOR ALL MODELS IN PCFG REACCOUNTS F {}, J {}, A {}, B[J0] {}, B[J1] {}, P {}" #", W {}"
           .format(np.sum(pseudo_F[:-1]), np.sum(pseudo_J[:-1]),

@@ -6,6 +6,7 @@ import numpy as np
 import os.path
 import sys
 from PyzmqMessage import ModelWrapper
+from models import CategoricalModel
 import scipy.sparse
 from FullDepthCompiler import FullDepthCompiler, unlog_models, relog_models
 import pickle
@@ -107,15 +108,15 @@ class DistributedModelCompiler(FullDepthCompiler):
         # logging.info('Last ptr %d; length of data: %d' % (indptr[-1], flat_data.shape[0]))
         logging.info("Creating csr transition matrix from sparse indices")
         if self.gpu == False:
-            pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK / g_max), dtype=np.float64)
+            pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK / g_max), dtype=data_type)
             if full_pi:
                 pi_full = scipy.sparse.csr_matrix((data_full, indices_full, indptr_full), (totalK, totalK),
-                                              dtype=np.float64)
+                                              dtype=data_type)
         else:
             # logging.info("Dumping out the GPU version of PI.")
-            pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK / g_max), dtype=np.float32)
+            pi = scipy.sparse.csr_matrix((flat_data,flat_indices,indptr), (totalK, totalK / g_max), dtype=data_type)
             if full_pi:
-                pi_full = scipy.sparse.csr_matrix((data_full,indices_full,indptr_full), (totalK, totalK ), dtype=np.float32)
+                pi_full = scipy.sparse.csr_matrix((data_full,indices_full,indptr_full), (totalK, totalK ), dtype=data_type)
         fn = working_dir+'/models.bin'
         out_file = open(fn, 'wb')
         # logging.info("Transforming and writing csc model")
@@ -124,8 +125,23 @@ class DistributedModelCompiler(FullDepthCompiler):
         t5 = time.time()
         logging.debug('converting into scipy {}s'.format(t5 - t4))
         row_indices = list(itertools.product(range(b_max), repeat=self.depth))
+        embeddings = None
         if self.gpu == True:
-            lex_dist = 10**(models.lex.dist.astype(np.float32))
+            if isinstance(models.lex, CategoricalModel):
+                lex_dist = 10**(models.lex.dist.astype(data_type))
+            else:
+                embeddings = models.lex.embeddings.astype(data_type)
+                embed_dim = embeddings.shape[1]
+                lex_dist = np.zeros( (len(models.lex.dist), 2 * embed_dim ) ).astype(data_type)
+                for pos_ind,dist in enumerate(models.lex.dist):
+                    ## This gets us the K-dimensional distribution for pos tag indexed by pos_ind
+                    lex_dist[pos_ind,:embed_dim] += dist.mean()
+                    lex_dist[pos_ind,embed_dim:] += dist.std()
+
+
+            if embeddings is None:
+                embeddings = np.zeros((2,2)).astype(data_type)
+
             pos_dist = models.pos.dist
             pos_dist[:, -1].fill(0)
             pos_dist[-1, :].fill(0)
@@ -178,7 +194,7 @@ class DistributedModelCompiler(FullDepthCompiler):
                                 corrected_pos_dist[bf_index, g_index] = 1
                             else:
                                 corrected_pos_dist[bf_index, g_index] = 0
-            corrected_pos_dist = np.ravel(corrected_pos_dist.astype(np.float32))
+            corrected_pos_dist = np.ravel(corrected_pos_dist.astype(data_type))
 
             assert corrected_pos_dist.shape[0]== g_max*(b_max**self.depth)*2, "Size of POS array {} should be analytically equal to {}".format
             (pos_dist.shape[0], g_max*(b_max**self.depth)*2)
@@ -199,7 +215,7 @@ class DistributedModelCompiler(FullDepthCompiler):
             #             logging.info(' '.join(map(str, [state_t_1.str(), '->', state_t.str(), pi[index_t_1, index_t],
             #                                             'pos line:', pos_dist[]])))
 
-            model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, corrected_pos_dist,
+            model_gpu = ModelWrapper(ModelWrapper.HMM, (pi.T, lex_dist,(a_max, b_max, g_max), self.depth, corrected_pos_dist, embeddings,
                                                         indexer.get_EOS_full()), self.depth)
             # logging.info("EOS index is "+str(indexer.get_EOS_full()))
             gpu_out_file = open(working_dir+'/models.bin.gpu', 'wb')

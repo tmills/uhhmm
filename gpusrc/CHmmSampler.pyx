@@ -8,19 +8,26 @@ import State as PyState
 ## model class
 cdef extern from "HmmSampler.h":
     cdef cppclass Model: # no nullary constructor
-        Model(int, int, float*, int, int*, int, int*, int, float*, int, int, int, int, int, int, int, float*, int, int) except +
+        Model(int, int, float*, int, int*, int, int*, int, float*, int, int, int, int, int, int, int, float*, int, int, int, int, float*, int) except +
         int get_depth()
+
+cdef extern from "HmmSampler.h":
+    cpdef enum ModelType:
+        CATEGORICAL_MODEL,
+        GAUSSIAN_MODEL
 
 cdef class GPUModel:
     cdef Model* c_model
     def __cinit__(self, models):
-        (pi, lex_dist, maxes, depth, pos_dist, EOS_index) = models
+        (pi, lex_dist, maxes, depth, pos_dist, embed_matrix, EOS_index) = models
         # int a_max, b_max, g_max
         (a_max, b_max, g_max) = maxes
         lex_num_rows = lex_dist.shape[0]
         lex_num_cols = lex_dist.shape[1]
         pi_num_rows = pi.shape[0]
         pi_num_cols = pi.shape[1]
+        embed_num_rows = embed_matrix.shape[0]
+        embed_num_cols = embed_matrix.shape[1]
         cdef np.ndarray[float, ndim=1, mode="c"] pi_data = pi.data
         cdef int pi_data_size = pi_data.size
         cdef np.ndarray[int, ndim=1, mode="c"] pi_indices = pi.indices
@@ -31,10 +38,12 @@ cdef class GPUModel:
         cdef int lex_dist_size = lex_dist.size
         cdef np.ndarray[float, ndim=1, mode="c"] pos = pos_dist
         cdef int pos_dist_size = pos_dist.size
+        cdef np.ndarray[float, ndim=2, mode="c"] embed = embed_matrix
+        cdef int embed_dist_size = embed_matrix.size
         #print("First 10 elements of data array are: %s" % (pi_data[0:10]) )
         self.c_model = new Model(pi_num_rows, pi_num_cols, &pi_data[0], pi_data_size, &pi_indptr[0], pi_indptr_size,
             &pi_indices[0], pi_indices_size, &lex[0,0], lex_dist_size, lex_num_rows, lex_num_cols, a_max, b_max, g_max,
-            depth, &pos[0], pos_dist_size, EOS_index)
+            depth, &pos[0], pos_dist_size, embed_num_rows, embed_num_cols, embed_dist_size, &embed[0,0], EOS_index)
     def __dealloc__(self):
         del self.c_model
     def get_depth(self):
@@ -60,18 +69,13 @@ cdef wrap_state(State& c_state):
     state.g = c_state.g
     return state
 
-# cdef class PyState:
-#     cdef State* c_state
-#     def __cinit__(self, State state):
-#         self.c_state = &state
-#     def get_states(self):
-#         return {'f' = self.c_state.f, 'j' = self.c_state.j, 'a' = self.c_state.a, 'b' = self.c_state.b, 'g' = self.c_state.g,\
-#         'depth' = self.c_state.depth}
+
 ## sampler class
 cdef extern from "HmmSampler.h":
     cdef cppclass HmmSampler:
         HmmSampler() except +
         HmmSampler(int seed) except +
+        HmmSampler(int seed, ModelType model_type) except +
         void set_models(Model*)
         void initialize_dynprog(int, int)
         vector[float] forward_pass(vector[vector[int]], int)
@@ -79,12 +83,14 @@ cdef extern from "HmmSampler.h":
 
 
 cdef class GPUHmmSampler:
-    cdef HmmSampler hmmsampler
-    def __cinit__(self, int seed = 0):
-        if seed != 0:
-            self.hmmsampler = HmmSampler(seed)
-        else:
-            self.hmmsampler = HmmSampler()
+    cdef HmmSampler* hmmsampler
+    def __cinit__(self, int seed = 0, ModelType model_type=CATEGORICAL_MODEL):
+        print("Calling hmmsampler with seed = %d" % (seed))
+        print("Calling hmmsampler with model_type=%s" % (model_type))
+        self.hmmsampler = new HmmSampler(seed, model_type)
+    def __dealloc__(self):
+        print("Calling GPUHmmSampler deallocate method to free sampler memory")
+        del self.hmmsampler
     def set_models(self, GPUModel model):
         self.hmmsampler.set_models(model.c_model)
     def initialize_dynprog(self, int batch_size, int k):
@@ -110,13 +116,13 @@ cdef class GPUHmmSampler:
         except Exception as e:
             print("Exception in forward pass: %s" % (str(e)))
             raise Exception
-            
+
         try:
             states = self.reverse_sample(sents, sent_index)
         except Exception as e:
             print("Exception in reverse sample: %s" % (str(e)))
             raise Exception
-            
+
         return (states, log_probs)
 
 # def test():
@@ -128,4 +134,3 @@ cdef class GPUHmmSampler:
 #     maxes = (3,2,3)
 #     a = PyModel(pi, lex, maxes)
 #     print a.get_depth()
-

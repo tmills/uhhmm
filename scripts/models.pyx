@@ -14,7 +14,7 @@ import scipy.stats
 ## simple wiki stats:
 mean_mean = 0.03
 mean_stdev = 0.16
-stdev_mean = 0.65
+stdev_mean = 2.0
 stdev_stdev = 0.07
 
 # A mapping from input space to output space. The Model class can be
@@ -31,7 +31,7 @@ cdef class Model:
 ## parameters we need to store for the model.
 ## embeddings: the word embeddings for all the word types in this corpus
 cdef class GaussianModel(Model):
-    def __init__(self, shape, embeddings, corpus_shape=(1,1), name="Gaussian"):
+    def __init__(self, shape, embeddings, corpus_shape=(1,1), name="Gaussian", centroids=None):
         Model.__init__(self, corpus_shape, name)
         self.shape = shape
         self.embeddings = embeddings
@@ -41,14 +41,22 @@ cdef class GaussianModel(Model):
         #self.condCounts = [] #np.zeros(shape[0], dtype=np.int)
         ## Initialize distributions:
         self.dist = []
+        self.centroids = centroids
 
         mean_dist = scipy.stats.norm(mean_mean, mean_stdev)
+        # logging.info("Initializing pos distributions with count %d,%d" % (shape[0], shape[1]))
         for pos_ind in range(shape[0]):
             self.pairCounts.append([])
-            init_means = mean_dist.rvs(shape[1])
-            stds = np.zeros(len(init_means)) + stdev_mean
-            self.dist.append( scipy.stats.norm(init_means, stds) )
-            #print("Mean vector for pos %d after initial sampling: " % (pos_ind), self.dist[-1].mean())
+            if pos_ind == 0 or pos_ind == (shape[0] - 1) or self.centroids is None:
+                logging.info("Initializing pos ind=%d randomly." % (pos_ind))
+                init_means = mean_dist.rvs(shape[1])
+                stds = np.zeros(len(init_means)) + stdev_mean
+                self.dist.append( scipy.stats.norm(init_means, stds) )
+            else:
+                logging.info("Initializing pos ind=%d from centroid index %d" % (pos_ind, pos_ind-1))
+                self.dist.append( scipy.stats.norm( self.centroids[pos_ind-1], stdev_mean))
+
+            logging.info("Mean vector for pos %d after initial sampling: %s" % (pos_ind+1, self.dist[-1].mean()))
 
     def count(self, pos_ind, token_ind, val):
         ## we've seen a count of pos tag cond pos_ind and word index token_ind
@@ -63,10 +71,6 @@ cdef class GaussianModel(Model):
 
 
     def sampleGaussian(self):
-#        if self.condCounts.sum() == 0:
-#            ## This is called before we've done any sampling, and we already randomly
-#            ## initialized in the constructor
-#            return
         if len(self.pairCounts[0]) == 0:
             ## we haven't done any sampling yet
             return
@@ -76,8 +80,8 @@ cdef class GaussianModel(Model):
         sample_means = []
         sample_stdevs = []
         for pos_ind in range(len(self.pairCounts)-1):
-            logging.info("Pair counts for POS%d with %d tokens assigned:" % (pos_ind, len(self.pairCounts[pos_ind])))
-            #logging.info(self.pairCounts[pos_ind])
+            # logging.info("Pair counts for POS%d with %d tokens assigned:" % (pos_ind, len(self.pairCounts[pos_ind])))
+            # logging.info(self.pairCounts[pos_ind])
             stds = np.zeros(self.embed_dims) + stdev_mean
             if len(self.pairCounts[pos_ind]) > 0:
                 #sample_means = self.pairCounts[pos_ind][:] / self.condCounts[pos_ind]
@@ -87,24 +91,15 @@ cdef class GaussianModel(Model):
                 sample_stdevs.append(sample_stdev)
                 self.dist[pos_ind] = scipy.stats.norm(sample_mean, stds)
                 if pos_ind > 0:
-                    logging.info("POS index=%d has distribution with mean %s and stdev %s" % (pos_ind, sample_mean, sample_stdev))
+                    logging.info("POS index=%d has new distribution with mean %s and stdev %s" % (pos_ind, sample_mean, sample_stdev))
 
-                ## FIXME: (see above)
-    #            stds = np.zeros(len(sample_means)) + stdev_mean
-    #            mean_sample_dist = scipy.stats.norm(sample_means, stds)
-    #            if self.condCounts[pos_ind] == 0:
-    #                logging.error("Error resampling Gaussian: One of the conditions (pos_ind=%d) had zero counts." % (pos_ind))
-    #                ## don't assign it anything -- it keeps the same means as last sample.
-    #            else:
-    #                stds = np.zeros(self.pairCounts.shape[1]) + 0.4
-    #                self.dist[pos_ind] = scipy.stats.norm(mean_sample_dist.rvs(self.pairCounts.shape[1]), stds)
             else:
                 ## We didn't use this POS, so re-initialize it:
                 mean_dist = scipy.stats.norm(mean_mean, mean_stdev)
                 mean_init = mean_dist.rvs(self.embed_dims)
                 self.dist[pos_ind] = scipy.stats.norm(mean_init, stds)
-                if pos_ind > 0:
-                    logging.info("POS index=%d has distribution with mean %s and stdev %s" % (pos_ind, sample_mean, sample_stdev))
+                # if pos_ind > 0:
+                    # logging.info("POS index=%d has distribution with mean %s and stdev %s" % (pos_ind, sample_mean, sample_stdev))
 
             if np.isnan(self.dist[pos_ind].mean().max()):
                 logging.error("Resampled gaussian and there is a nan in the mean vector")
@@ -140,7 +135,8 @@ cdef class GaussianModel(Model):
         d['dist'] = self.dist
         d['corpus_shape'] = self.corpus_shape
         d['name'] = self.name
-        return (GaussianModel, (self.shape, self.embeddings, self.corpus_shape, self.name), d)
+        d['centroids'] = self.centroids
+        return (GaussianModel, (self.shape, self.embeddings, self.corpus_shape, self.name, self.centroids), d)
 
     def __setstate__(self, d):
         self.shape = d['shape']
@@ -151,7 +147,7 @@ cdef class GaussianModel(Model):
         self.dist = d['dist']
         self.corpus_shape = d['corpus_shape']
         self.name = d['name']
-
+        self.centroids = d['centroids']
 
 cdef class CategoricalModel(Model):
     def __init__(self, shape, float alpha=0.0, np.ndarray beta=None, corpus_shape=(1,1), name="Categorical"):

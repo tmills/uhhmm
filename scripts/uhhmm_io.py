@@ -178,7 +178,7 @@ def write_output(sample, stats, config, gold_pos=None):
     #write_lex_model(models.lex.dist, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
     # write_model(models.pos.globalPairCounts, output_dir + "/p_pos_%d.txt" % sample.iter, condPrefix="B", outcomePrefix="POS")
     # write_model(models.lex.globalPairCounts, output_dir + "/p_lex_given_pos%d.txt" % sample.iter, word_dict)
-    # models.lex.write_model(output_dir + "/p_lex_given_pos%d_self.txt" % sample.iter, word_dict)
+    models.lex.write_model(output_dir + "/p_lex_given_pos%d_self.txt" % sample.iter, word_dict)
 
     write_last_sample(sample, output_dir + "/last_sample%d.txt" % sample.iter, word_dict)
 

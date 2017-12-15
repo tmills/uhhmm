@@ -1,4 +1,3 @@
-
 #ifndef HmmSampler_hpp
 #define HmmSampler_hpp
 
@@ -10,6 +9,7 @@
 #include <vector>
 #include <tuple>
 #include <random>
+//#include "obs_models.h"
 //#include "State.h"
 //using namespace cusp;
 
@@ -22,13 +22,14 @@ class Dense;
 class Array;
 class Sparse;
 class Indexer;
+class ObservationModel;
 //state class
 class State{
 public:
     State();
     State(int d);
     State(int d, State state);
-    
+
     int max_awa_depth();
     int max_act_depth();
     bool depth_check();
@@ -45,7 +46,8 @@ class Model{
 public:
     Model(int pi_num_rows,int pi_num_cols,float* pi_vals, int pi_vals_size, int* pi_row_offsets, int pi_row_offsets_size
     , int* pi_col_indices, int pi_col_indices_size, float* lex_vals, int lex_vals_size, int lex_num_rows,
-    int lex_num_cols, int a_max, int b_max, int g_max, int depth, float* pos_vals, int pos_vals_size, int EOS_index);
+    int lex_num_cols, int a_max, int b_max, int g_max, int depth, float* pos_vals, int pos_vals_size,
+    int embed_num_words, int embed_num_dims, int embed_vals_size, float* embed_vals, int EOS_index);
     ~Model();
     int get_depth();
     int pi_num_rows;
@@ -67,15 +69,22 @@ public:
     int lex_num_cols;
     float* pos_vals;
     int pos_vals_size;
+    int embed_num_words;
+    int embed_num_dims;
+    int embed_vals_size;
+    float* embed_vals;
     const unsigned int depth;
     DenseView * lex;
+    DenseView * embed;
     SparseView * pi;
     Array* pos;
 };
 
+enum ModelType { CATEGORICAL_MODEL, GAUSSIAN_MODEL };
 
 class HmmSampler{
 public:
+    HmmSampler(int seed, ModelType model_type);
     HmmSampler(int seed);
     HmmSampler();
     ~HmmSampler();
@@ -94,20 +103,21 @@ private:
     Array* make_pos_full_array(Array* pos_matrix ,int g_max, int b_max, int depth, int state_size);
     Model * p_model = NULL;
     Indexer * p_indexer = NULL;
-    DenseView* lexMatrix = NULL;
+    //DenseView* lexMatrix = NULL;
     Dense** dyn_prog = NULL;
     //std::vector<Dense*> dyn_prog;
     Dense* start_state = NULL;
-    Sparse* lexMultiplier = NULL;
+    //Sparse* lexMultiplier = NULL;
     SparseView* pi = NULL;
     Array* trans_slice = NULL;
     Array* pos_matrix = NULL;
     Dense* dyn_prog_part = NULL;
     Sparse* expand_mat = NULL;
     int seed;
-    Array* expanded_lex = NULL;
+    //Array* expanded_lex = NULL;
     Array* sum_dict = NULL;
     Array* pos_full_array = NULL;
+    ObservationModel* obs_model = NULL;
     std::mt19937 mt;
     std::uniform_real_distribution<float> dist{0.0f,1.0f};
     int max_sent_len = 0;

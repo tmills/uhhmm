@@ -7,7 +7,7 @@ class PyzmqJob:
     SENTENCE=0
     QUIT=1
     COMPILE=2
-    
+
     def __init__(self, msg_type, resource):
         self.type = msg_type
         self.resource = resource
@@ -15,12 +15,12 @@ class PyzmqJob:
 class JobRequest:
     def __init__(self, request_size=1):
         self.request_size = request_size
-        
+
 class SentenceRequest(JobRequest):
     def __init__(self, resource_sig, request_size=1):
         self.resource_sig = resource_sig
         self.request_size = request_size
-        
+
 class SentenceJob:
     def __init__(self, index, ev_seq):
         self.index = index
@@ -30,7 +30,7 @@ class RowRequest(JobRequest):
     def __init__(self, resource_sig):
         self.resource_sig = resource_sig
         self.request_size = 1
-        
+
 class CompileJob:
     def __init__(self, index, full_pi = False):
         self.index = index
@@ -41,7 +41,7 @@ class CompletedJob:
         self.job_type = job_type
         self.result = result
         self.success = success
-        
+
 class PyzmqParse:
     def __init__(self, index, state_list, log_prob, success=True):
         self.index = index
@@ -61,14 +61,14 @@ class ModelLocation:
     def __init__(self, ip_addr, file_path):
         self.ip_addr = ip_addr
         self.file_path = file_path
-        
+
 
 class ModelWrapper:
-    
+
     INFINITE = 0
     HMM = 1
     COMPILE = 2
-    
+
     ## If the model type is INFINITE we just have a Models object with all
     ## the various CPTs as component models. If we have HMM we have a tuple of
     ## a Models object and a scipy.sparse transition matrix object.
@@ -79,9 +79,7 @@ class ModelWrapper:
 
 def resource_current(ref_sig, comp_sig):
     return (ref_sig[0] == comp_sig[0] and ref_sig[1] == comp_sig[1])
-    
+
 def get_file_signature(filename):
     (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime) = os.stat(filename)
-    return (size, mtime)    
-
-    
+    return (size, mtime)
