@@ -48,16 +48,16 @@ pi_col_indices(pi_col_indices), pi_col_indices_size(pi_col_indices_size), lex_va
 lex_vals_size(lex_vals_size), lex_num_rows(lex_num_rows), lex_num_cols(lex_num_cols), a_max(a_max),
 b_max(b_max), g_max(g_max), depth(depth), pos_vals(pos_vals), pos_vals_size(pos_vals_size),
 embed_vals(embed_vals), embed_num_words(embed_num_words), embed_num_dims(embed_num_dims), embed_vals_size(embed_vals_size), EOS_index(EOS_index){
-    cout << "Entering model constructor" << endl;
+    // cout << "Entering model constructor" << endl;
     pi = new SparseView(pi_num_rows, pi_num_cols, pi_vals_size, pi_row_offsets, pi_col_indices, pi_vals, pi_row_offsets_size, pi_col_indices_size);
     lex = new DenseView(lex_num_rows, lex_num_cols, lex_vals_size, lex_vals);
     embed = new DenseView(embed_num_words, embed_num_dims, embed_vals_size, embed_vals);
     pos = new Array(pos_vals, pos_vals_size);
-    cout << "Done with model constructor" << endl;
+    // cout << "Done with model constructor" << endl;
 }
 
 Model::~Model(){
-    cout << "Entering model destructor" << endl;
+    // cout << "Entering model destructor" << endl;
     if(lex != NULL){ delete lex;} else{ cout << "lex was already null" << endl;}
     if(pi != NULL) { delete pi;} else{ cout << "pi was already null" << endl;}
     if(pos != NULL) { delete pos;} else{ cout << "pos was already null" << endl;}
@@ -65,7 +65,7 @@ Model::~Model(){
     pi = NULL;
     pos = NULL;
     //if(embed != NULL) delete embed;
-    cout << "Done with model destructor" << endl;
+    // cout << "Done with model destructor" << endl;
 }
 
 int Model::get_depth(){
@@ -73,7 +73,7 @@ int Model::get_depth(){
 }
 
 PosDependentObservationModel::~PosDependentObservationModel(){
-    cout << "PosDep destructor called" << endl;
+    // cout << "PosDep destructor called" << endl;
     delete p_indexer;
     delete lexMultiplier;
 }
@@ -102,7 +102,7 @@ void PosDependentObservationModel::get_probability_vector(int token, Array* retV
 }
 
 CategoricalObservationModel::~CategoricalObservationModel(){
-    std::cout << "CatObs destructor called" << std::endl;
+    // std::cout << "CatObs destructor called" << std::endl;
     delete lexMatrix;
 }
 
@@ -123,7 +123,7 @@ void CategoricalObservationModel::get_pos_probability_vector(int token, Array* o
 }
 
 void GaussianObservationModel::set_models(Model * models){
-    cout << "GaussianObsModel::set_models called... pre-computing lex matrix" << endl;
+    // cout << "GaussianObsModel::set_models called... pre-computing lex matrix" << endl;
     PosDependentObservationModel::set_models(models);
     int numWords = models->embed_num_words;
     
@@ -596,7 +596,7 @@ void HmmSampler::g_factored_multiply(Dense* prev_dyn_prog_slice, Dense* this_dyn
 
 std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents, int sent_index){
     // auto t1 = Clock::now();
-    cout << "Starting forward batch from sentence index: " << sent_index << endl;
+    // cout << "Starting forward batch from sentence index: " << sent_index << endl;
     float normalizer;
     int a_max, b_max, g_max; // index, token, g_len;
     std::tie(a_max, b_max, g_max) = p_indexer -> getVariableMaxes();

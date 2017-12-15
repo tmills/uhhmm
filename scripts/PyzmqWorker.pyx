@@ -38,7 +38,7 @@ import threading
 cdef class PyzmqWorker:
     def __init__(self, host, jobs_port, results_port, models_port, maxLen, out_freq=100, tid=0, gpu=False, batch_size=8, seed=0, level=logging.INFO):
         #Process.__init__(self)
-        logging.info("Thread created with id %s" % (threading.get_ident()))
+        # logging.info("Thread created with id %s" % (threading.get_ident()))
         self.host = host
         self.jobs_port = jobs_port
         self.results_port = results_port
@@ -60,7 +60,7 @@ cdef class PyzmqWorker:
 
     def run(self):
         logging.basicConfig(level=self.debug_level)
-        logging.info("Thread starting run() method with id=%s" % (threading.get_ident()))
+        # logging.info("Thread starting run() method with id=%s" % (threading.get_ident()))
         context = zmq.Context()
         models_socket = context.socket(zmq.REQ)
         url = "tcp://%s:%d" % (self.host, self.models_port)
@@ -100,7 +100,7 @@ cdef class PyzmqWorker:
 
             if model_wrapper.model_type == ModelWrapper.HMM and not self.gpu:
                 if self.batch_size > 0:
-                    logging.info("Worker %d doing finite model inference on the CPU" % (self.tid))
+                    logging.debug("Worker %d doing finite model inference on the CPU" % (self.tid))
                     #print("Observation model type is %s" % (type(model_wrapper.model[0].lex)))
                     if isinstance(model_wrapper.model[0].lex, models.CategoricalModel):
                         obs_model = CategoricalObservationModel.CategoricalObservationModel()
@@ -114,18 +114,18 @@ cdef class PyzmqWorker:
                     time.sleep(2)
 
             elif model_wrapper.model_type == ModelWrapper.INFINITE:
-                logging.info("Worker %d doing infinite model inference" % (self.tid))
+                logging.debug("Worker %d doing infinite model inference" % (self.tid))
                 sampler = DepthOneInfiniteSampler.InfiniteSampler(self.seed)
                 sampler.set_models(model_wrapper.model)
                 self.processSentences(sampler, model_wrapper.model, jobs_socket, results_socket)
 
             elif model_wrapper.model_type == ModelWrapper.COMPILE:
-                logging.info("Worker %d in compile stage" % (self.tid))
+                logging.debug("Worker %d in compile stage" % (self.tid))
                 self.indexer = Indexer.Indexer(model_wrapper.model)
                 self.processRows(model_wrapper.model, jobs_socket, results_socket, depth_limit=model_wrapper.depth)
 
             elif model_wrapper.model_type == ModelWrapper.HMM and self.gpu:
-                logging.info("Worker %d doing finite model inference on the GPU" % (self.tid))
+                logging.debug("Worker %d doing finite model inference on the GPU" % (self.tid))
                 import CHmmSampler
                 msg.file_path = msg.file_path + '.gpu'
                 lex = model_wrapper.model[0].lex

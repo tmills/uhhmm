@@ -85,11 +85,11 @@ cdef extern from "HmmSampler.h":
 cdef class GPUHmmSampler:
     cdef HmmSampler* hmmsampler
     def __cinit__(self, int seed = 0, ModelType model_type=CATEGORICAL_MODEL):
-        print("Calling hmmsampler with seed = %d" % (seed))
-        print("Calling hmmsampler with model_type=%s" % (model_type))
+        # print("Calling hmmsampler with seed = %d" % (seed))
+        # print("Calling hmmsampler with model_type=%s" % (model_type))
         self.hmmsampler = new HmmSampler(seed, model_type)
     def __dealloc__(self):
-        print("Calling GPUHmmSampler deallocate method to free sampler memory")
+        # print("Calling GPUHmmSampler deallocate method to free sampler memory")
         del self.hmmsampler
     def set_models(self, GPUModel model):
         self.hmmsampler.set_models(model.c_model)

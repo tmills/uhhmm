@@ -48,15 +48,15 @@ cdef class GaussianModel(Model):
         for pos_ind in range(shape[0]):
             self.pairCounts.append([])
             if pos_ind == 0 or pos_ind == (shape[0] - 1) or self.centroids is None:
-                logging.info("Initializing pos ind=%d randomly." % (pos_ind))
+                # logging.info("Initializing pos ind=%d randomly." % (pos_ind))
                 init_means = mean_dist.rvs(shape[1])
                 stds = np.zeros(len(init_means)) + stdev_mean
                 self.dist.append( scipy.stats.norm(init_means, stds) )
             else:
-                logging.info("Initializing pos ind=%d from centroid index %d" % (pos_ind, pos_ind-1))
+                # logging.info("Initializing pos ind=%d from centroid index %d" % (pos_ind, pos_ind-1))
                 self.dist.append( scipy.stats.norm( self.centroids[pos_ind-1], stdev_mean))
 
-            logging.info("Mean vector for pos %d after initial sampling: %s" % (pos_ind+1, self.dist[-1].mean()))
+            # logging.info("Mean vector for pos %d after initial sampling: %s" % (pos_ind+1, self.dist[-1].mean()))
 
     def count(self, pos_ind, token_ind, val):
         ## we've seen a count of pos tag cond pos_ind and word index token_ind
