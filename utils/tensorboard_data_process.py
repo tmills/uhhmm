@@ -3,7 +3,8 @@ import argparse
 import pandas
 import re
 import os
-
+import sys
+sys.path.append('./scripts/')
 from pcfg_translator import load_gold_trees
 
 parser = argparse.ArgumentParser()

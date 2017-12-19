@@ -75,6 +75,7 @@ def translate_through_pcfg(seqs_of_states, depth, abp_domain_size):
     pcfg_probs_and_counts = extract_counts(trees, abp_domain_size)
     return pcfg_probs_and_counts
 
+right_branching_tendency = 0.0
 # input is a list of trees instead of tuples of state sequences
 def extract_counts(trees, abp_domain_size):
     pcfg = {}
@@ -99,9 +100,10 @@ def extract_counts(trees, abp_domain_size):
         total = sum(pcfg[lhs].values())
         for rhs in pcfg[lhs]:
             pcfg[lhs][rhs] /= total
-    branching_tendency = r_branches / (l_branches + r_branches)
-    logging.info('Right branching tendency score is {:.4f}'.format(branching_tendency))
-    if branching_tendency > 0.95:
+    global right_branching_tendency
+    right_branching_tendency = r_branches / (l_branches + r_branches)
+    logging.info('Right branching tendency score is {:.4f}'.format(right_branching_tendency))
+    if right_branching_tendency > 0.95:
         logging.warning('VERY RIGHT BRANCHING GRAMMAR DETECTED!!')
     return pcfg, pcfg_counts
 
@@ -352,7 +354,9 @@ def pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, inc=1, J=25, norma
         _, pcfg_counts = init_with_strategy(ints_seqs, strategy, abp_domain_size, gold_pos_dict)
     else:
         raise Exception("bad combination of initialization options!")
-    sampled_pcfg = pcfg_model.sample(pcfg_counts, ac_coeff, normalize=annealing_normalize, sample_alpha_flag=sample_alpha_flag)
+    sampled_pcfg = pcfg_model.sample(pcfg_counts, ac_coeff, normalize=annealing_normalize,
+                                     sample_alpha_flag=sample_alpha_flag,
+                                     right_branching_tendency=right_branching_tendency)
     nonterms = _build_nonterminals(abp_domain_size)
     delta_A, delta_B = _calc_delta(sampled_pcfg, J, abp_domain_size, d, nonterms)
     # print(delta_A, delta_B)
