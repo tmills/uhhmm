@@ -1,9 +1,10 @@
 import logging
 import os.path
-
+import gzip
 import nltk
 import numpy as np
 from scipy.stats import dirichlet
+import collections
 
 
 def normalize_a_tensor(tensor):
@@ -37,7 +38,10 @@ def calculate_alpha(num_terms, num_sents, non_root_nonterm_mask, num_term_types,
 
 class PCFG_model:
     def __init__(self, abp_domain_size, len_vocab, num_sents, num_words, log_dir='.', iter=0,
-                 word_dict_file=None):
+                 word_dict_file=None, autocorr_lags=(50,100)):
+        self.autocorr_lags = autocorr_lags
+        self.prev_models = collections.deque([], max(self.autocorr_lags))
+        self.iter_autocorrs = []
         self.abp_domain_size = abp_domain_size
         self.len_vocab = len_vocab
         self.num_sents = num_sents
@@ -52,14 +56,16 @@ class PCFG_model:
         self.nonterm_alpha, self.term_alpha = 0, 0
         self.alpha_array_flag = False
         self.counts = {}
+        self.right_branching_tendency = 0.0
         # self.init_counts()
         self.unannealed_dists = {}
         self.log_dir = log_dir
         self.log_mode = 'w'
         self.iter = iter
-        self.nonterm_log_path = os.path.join(log_dir, 'pcfg_nonterms.txt')
-        self.term_log_path = os.path.join(log_dir, 'pcfg_terms.txt')
+        self.nonterm_log_path = os.path.join(log_dir, 'pcfg_nonterms.gzip')
+        self.term_log_path = os.path.join(log_dir, 'pcfg_terms.gzip')
         self.hypparams_log_path = os.path.join(log_dir, 'pcfg_hypparams.txt')
+        self.counts_log_path = os.path.join(log_dir, 'pcfg_counts_info.txt')
         self.word_dict = self._read_word_dict_file(word_dict_file)
         self.log_probs = 0
         self.annealed_counts = {}
@@ -68,12 +74,16 @@ class PCFG_model:
         self.log_mode = mode  # decides whether append to log or restart log
 
     def start_logging(self):
-        self.nonterm_log = open(self.nonterm_log_path, self.log_mode)
-        self.term_log = open(self.term_log_path, self.log_mode)
+        self.nonterm_log = gzip.open(self.nonterm_log_path, self.log_mode+'t')
+        self.term_log = gzip.open(self.term_log_path, self.log_mode+'t')
+        self.counts_log = open(self.counts_log_path, self.log_mode)
         if self.log_mode == 'w':
             non_term_header = ['iter', ]
             term_header = ['iter', ]
+            counts_header = ['iter', ]
             for lhs in self.nonterms:
+                if lhs.symbol() !=  '0':
+                    counts_header.append(lhs.symbol())
                 for rhs in self.keys_indices[lhs]:
                     if len(rhs) == 1:
                         if rhs[0] == '-ROOT-':
@@ -84,9 +94,13 @@ class PCFG_model:
                         non_term_header.append(str(lhs) + '->' + str(rhs))
             self.nonterm_log.write('\t'.join(non_term_header) + '\n')
             self.term_log.write('\t'.join(term_header) + '\n')
+            self.counts_log.write('\t'.join(counts_header) + '\n')
         self.hypparam_log = open(self.hypparams_log_path, self.log_mode)
+        nonterms_counts_header = [str(x) for x in self.nonterms if x.symbol() != '0']
+        nonterms_non_counts_header = [x+'_non' for x in nonterms_counts_header]
         if self.log_mode == 'w':
-            self.hypparam_log.write('iter\tlogprob\talpha\tac\n')
+            self.hypparam_log.write('iter\tlogprob\talpha\tac\tRB\t{}\t{}\n'.format('\t'.join(
+                nonterms_counts_header), '\t'.join(nonterms_non_counts_header)))
 
     def _log_dists(self, dists):
         non_term_header = [self.iter, ]
@@ -171,16 +185,20 @@ class PCFG_model:
         self.init_counts()
 
     def sample(self, pcfg_counts, annealing_coeff=1.0, normalize=False,
-               sample_alpha_flag=False):  # used as the normal sampling procedure
+               sample_alpha_flag=False, right_branching_tendency=0.0):  # used as the normal
+        # sampling procedure
+        self.right_branching_tendency = right_branching_tendency
         if sample_alpha_flag or self.alpha_array_flag:
             self._sample_alpha()
         self._reset_counts()
         self._update_counts(pcfg_counts)
         sampled_pcfg = self._sample_model(annealing_coeff, normalize=normalize)
+        # self._calc_autocorr()
         sampled_pcfg = self._translate_model_to_pcfg(sampled_pcfg)
         self.nonterm_log.flush()
         self.term_log.flush()
         self.hypparam_log.flush()
+        self.counts_log.flush()
         return sampled_pcfg
 
     def _reset_counts(self):
@@ -196,10 +214,24 @@ class PCFG_model:
                 self.counts[parent].fill(self.alpha)
 
     def _update_counts(self, pcfg_counts):
+        self.nonterm_total_counts = {}
+        self.nonterm_non_total_counts = {}
         for parent in pcfg_counts:
+            if parent.symbol() != '0':
+                self.nonterm_total_counts[parent] = sum(pcfg_counts[parent].values())
+                self.nonterm_non_total_counts[parent] = 0
             for children in pcfg_counts[parent]:
                 index = self[(parent, children)]
                 self.counts[parent][index] += pcfg_counts[parent][children]
+                if len(children) < 2 and parent.symbol() != '0':
+                    self.nonterm_non_total_counts[parent] += pcfg_counts[parent][children]
+
+    # def _calc_autocorr(self):
+    #     for lag in self.autocorr_lags:
+    #         if len(self.prev_models) < lag:
+    #             self.iter_autocorrs.append(np.inf)
+    #         else:
+
 
     def _sample_alpha(self, step_size=0.01):  # sampling the hyperparamter for the dirichlets
         if not self.unannealed_dists:
@@ -270,10 +302,22 @@ class PCFG_model:
         logging.info("resample the pcfg model with nonterm alpha {}, term alpha {} and annealing "
                      "coeff {}.".format(self.nonterm_alpha, self.term_alpha, annealing_coeff))
         if self.log_probs != 0:
+            # self.hypparam_log.write('\t'.join([str(x) for x in [self.iter, self.log_probs,
+            #                                                     (self.nonterm_alpha,
+            #                                                      self.term_alpha),
+            #                                                     annealing_coeff, self.right_branching_tendency]]) + '\n')
+
+            # self.counts_log.write('\t'.join([self.iter,] + [str(nonterm_total_counts[x]) for x in
+            #                       self.nonterms if x.symbol() != '0']) + '\n')
             self.hypparam_log.write('\t'.join([str(x) for x in [self.iter, self.log_probs,
                                                                 (self.nonterm_alpha,
                                                                  self.term_alpha),
-                                                                annealing_coeff]]) + '\n')
+                                                                annealing_coeff,
+                                                                self.right_branching_tendency]]
+                                              + [str(self.nonterm_total_counts[p]) for p in
+                                  self.nonterms if str(p) != '0'] + [str(
+                self.nonterm_non_total_counts[x]) for x in self.nonterms if str(x) != '0']) + '\n')
+
         dists = {}
         if annealing_coeff != 1.0:
             if not self.alpha_array_flag:
