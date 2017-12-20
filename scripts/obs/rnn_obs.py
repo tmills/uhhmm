@@ -74,12 +74,12 @@ class RNNCategoricalDistribution:
         self.total_rule_counts = {}
         self.non_terms = {}
         self.rnn = torch.nn.GRU(input_size=self.input_size, hidden_size=self.hidden_size,
-                                num_layers=self.num_layers, nonlinearity='relu', batch_first=True)
+                                num_layers=self.num_layers, batch_first=True)
         self.h_0 = torch.nn.Parameter(data=torch.nn.init.xavier_uniform(torch.zeros(1,
                                                                                     hidden_size)))
         self.w_logistic = torch.nn.Parameter(data=torch.nn.init.xavier_uniform(torch.zeros(1,
                                                                                     hidden_size)))
-        self.optimizer = torch.optim.Adam(self.rnn.parameters() + self.h_0 + self.w_logistic)
+        self.optimizer = torch.optim.Adam(list(self.rnn.parameters()) + [self.h_0, self.w_logistic])
 
     def _generate_vocab(self):
         chars = {}
