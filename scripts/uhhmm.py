@@ -32,7 +32,7 @@ import copy
 from init_pcfg_strategies import *
 from pcfg_model import PCFG_model
 from scipy.cluster.vq import kmeans
-
+from obs.rnn_obs import RNNCategoricalDistribution
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -173,6 +173,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     pcfg_model.set_alpha(alpha_pcfg_range, alpha=init_alpha, alpha_scale=alpha_scale,
                          alpha_array_flag=alpha_array_flag)
 
+    rnn_model = RNNCategoricalDistribution(start_abp, pcfg_model.word_dict)
     logging.info("Initializing state")
 
     if pickle_file is None:
@@ -449,7 +450,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 "number of iterations {} is larger than annealing length {}! Doing normal sampling!".format(iter,
                                                                                                             anneal_length))
             logging.info("The log prob for this iter is {}".format(acc_logprob))
-            pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, sample_alpha_flag=sample_alpha_flag)
+            pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model,
+                               sample_alpha_flag=sample_alpha_flag, rnn=rnn_model)
         elif super_cooling and super_cooling_start_iter <= iter:
             cur_cooling_iter = iter - super_cooling_start_iter
             ac_coeff = calc_simulated_annealing(cur_cooling_iter, super_cooling_length, 1,
