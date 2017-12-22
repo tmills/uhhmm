@@ -182,7 +182,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         lex = None
         if not word_vecs is None:
             logging.info("Using word vectors as observations: Embedding matrix has %d entries, %d dimensions, max=%f and min=%f" % (word_vecs.shape[0], word_vecs.shape[1], word_vecs.max(), word_vecs.min()))
-            centroids, distortion = kmeans(word_vecs, start_abp, iter=5)
+            # centroids, distortion = kmeans(word_vecs, start_abp, iter=5)
+            centroids = None
             lex = GaussianModel((inflated_num_abp, word_vecs.shape[1]), word_vecs, name="Lex", centroids=centroids)
 
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, inflated_num_abp, lex=lex)
@@ -529,15 +530,16 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     logging.debug("Ending sampling")
     workDistributer.stop()
 
-    for cur_proc in range(0, num_procs):
+    for cur_proc in range(0, num_cpu_workers+num_gpu_workers):
         logging.info("Sending terminate signal to worker {} ...".format(cur_proc))
         inf_procs[cur_proc].terminate()
 
-    for cur_proc in range(0, num_procs):
+    for cur_proc in range(0, num_cpu_workers+num_gpu_workers):
         logging.info("Waiting to join worker {} ...".format(cur_proc))
         inf_procs[cur_proc].join()
         inf_procs[cur_proc] = None
 
+    logging.info("Sampling complete.")
     return (samples, stats)
 
 

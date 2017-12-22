@@ -350,11 +350,13 @@ class WorkDistributerServer():
 
         self.model_server.send_quit()
 
-        logging.debug("Joining server threads.")
+        logging.info("Waiting for sink thread to join...")
         self.sink.join()
+        logging.info("Waiting for ventilator thread to join...")
         self.vent.join()
+        logging.info("Waiting for model server thread to join...")
         self.model_server.join()
-        logging.debug("All threads joined and exiting server.")
+        logging.info("All threads joined and exiting work distributer server.")
 
     def get_parses(self):
         return self.sink.get_parses()
