@@ -16,6 +16,7 @@ from WorkDistributerServer import WorkDistributerServer
 from PyzmqMessage import *
 # from PyzmqWorker import PyzmqWorker
 from State import sentence_string
+import pickle
 import State
 from Indexer import Indexer
 import multiprocessing as mp
@@ -139,6 +140,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     super_cooling_start_iter = int(params.get("super_cooling_start_iter", 2000))
     super_cooling_target_ac = int(params.get("super_cooling_target_ac", 10))
 
+    # different observation models
+    rnn_obs_flag = int(params.get('rnn_obs_flag', '0'))
+
     if gold_pos_dict_file:
         gold_pos_dict = {}
         with open(gold_pos_dict_file) as g:
@@ -173,9 +177,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     pcfg_model.set_alpha(alpha_pcfg_range, alpha=init_alpha, alpha_scale=alpha_scale,
                          alpha_array_flag=alpha_array_flag)
 
-    rnn_model = RNNCategoricalDistribution(start_abp, pcfg_model.word_dict)
     logging.info("Initializing state")
 
+    rnn_model_file = os.path.join(working_dir, 'rnn_model.pkl')
     if pickle_file is None:
         ## Add 1 to every start value for "Null/start" state
         inflated_num_abp = start_abp + 2
@@ -187,6 +191,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             lex = GaussianModel((inflated_num_abp, word_vecs.shape[1]), word_vecs, name="Lex", centroids=centroids)
 
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, inflated_num_abp, lex=lex)
+
+        if rnn_obs_flag:
+            rnn_model = RNNCategoricalDistribution(start_abp, pcfg_model.word_dict)
+        else:
+            rnn_model = None
 
         if input_seqs_file is None:
             hid_seqs = [None] * len(ev_seqs)
@@ -221,6 +230,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
     else:
         sample = uhhmm_io.read_serialized_sample(pickle_file)
+        rnn_model = pickle.load(open(rnn_model_file, 'rb'))
         sample.log_prob = 0
         models = sample.models
         hid_seqs = sample.hid_seqs
@@ -458,7 +468,9 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                                                 super_cooling_target_ac)
             logging.info("inside super cooling phase with current ac coeff {}".format(ac_coeff))
             pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff,
-                               annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
+                               annealing_normalize=normalize_flag,
+                               sample_alpha_flag=sample_alpha_flag,
+                               rnn=rnn_model)
         else:
             ac_coeff = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
                                                 final_anneal_likelihood, anneal_likelihood_phase)
@@ -485,12 +497,14 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                         best_anneal_likelihood = acc_logprob
                         best_anneal_model = copy.deepcopy(models)
                     pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff,
-                                       annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
+                                       annealing_normalize=normalize_flag,
+                                       sample_alpha_flag=sample_alpha_flag, rnn=rnn_model)
                     # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
             else:
                 logging.info("The log prob for this iter is {}".format(acc_logprob))
                 pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff,
-                                   annealing_normalize=normalize_flag, sample_alpha_flag=sample_alpha_flag)
+                                   annealing_normalize=normalize_flag,
+                                   sample_alpha_flag=sample_alpha_flag, rnn=rnn_model)
                 # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
         acc_logprob = 0
 #        models.resample_all(decay, from_global_counts)
@@ -506,7 +520,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                 end_ind = num_sents
 
         sample.models = models
-
+        with open(rnn_model_file, 'wb') as rfn:
+            pickle.dump(rnn_model, rfn)
         # if not finite and return_to_finite:
         #     finite = True
         #     return_to_finite = False

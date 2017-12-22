@@ -25,7 +25,7 @@ class RNNEntry:
         self.prob = prob
 
     def get_nll(self):
-        return - self.count * torch.log(self.prob)
+        return 0 - self.count * torch.log(self.prob)
 
 class RNNEntryList:
     def __init__(self, entries : List[RNNEntry]):
@@ -39,11 +39,12 @@ class RNNEntryList:
     def __len__(self):
         return len(self.entries)
 
-    def set_scores(self, scores, w_logistic):
+    def set_scores(self, scores, w_logistic, b_logistic):
         for entry_index, entry in enumerate(self.entries):
             score = 0
             for target_index, target in enumerate(entry.target):
-                score += scores[entry_index, target_index, target] * w_logistic[target_index]
+                score += scores[entry_index, target_index, target] * w_logistic[target_index] + \
+                         b_logistic[target_index]
             entry.set_exp_score(score)
         category_list = []
         category_scores = []
@@ -52,7 +53,6 @@ class RNNEntryList:
                 category_list.append(entry.category)
                 category_scores.append(0)
             category_scores[category_list.index(entry.category)] += entry.score
-        category_scores = [torch.exp(x) for x in category_scores]
         total_nll = 0
         for entry_index, entry in enumerate(self.entries):
             this_total_score = category_scores[category_list.index(entry.category)]
@@ -61,9 +61,13 @@ class RNNEntryList:
             total_nll += entry.get_nll()
         return total_nll
 
-class RNNCategoricalDistribution:
-    def __init__(self, abp_domain_size,vocab, hidden_size=50, num_layers=1):
+class RNNCategoricalDistribution(torch.nn.Module):
+    def __init__(self, abp_domain_size, vocab, hidden_size=50, num_layers=1, use_cuda=True):
+        super(RNNCategoricalDistribution, self).__init__()
+        self.use_cuda = use_cuda
         self.vocab = vocab
+        # print(vocab)
+        self.vocab_size = 0
         self.char_set = {}
         self.hidden_size = hidden_size
         self.num_layers = num_layers
@@ -75,11 +79,14 @@ class RNNCategoricalDistribution:
         self.non_terms = {}
         self.rnn = torch.nn.GRU(input_size=self.input_size, hidden_size=self.hidden_size,
                                 num_layers=self.num_layers, batch_first=True)
-        self.h_0 = torch.nn.Parameter(data=torch.nn.init.xavier_uniform(torch.zeros(1,
-                                                                                    hidden_size)))
-        self.w_logistic = torch.nn.Parameter(data=torch.nn.init.xavier_uniform(torch.zeros(1,
-                                                                                    hidden_size)))
-        self.optimizer = torch.optim.Adam(list(self.rnn.parameters()) + [self.h_0, self.w_logistic])
+        self.final_layer = torch.nn.Linear(self.hidden_size, self.vocab_size)
+        self.h_0 = torch.nn.Parameter(data=torch.zeros(
+            self.num_layers, 1, hidden_size))
+        self.w_logistic = torch.nn.Parameter(data=torch.ones(self.max_len))
+        self.b_logistic = torch.nn.Parameter(data=torch.zeros(self.max_len))
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
+        # self.optimizer = torch.optim.SGD(self.parameters(), lr=1e-3)
+        print(self)
 
     def _generate_vocab(self):
         chars = {}
@@ -92,14 +99,23 @@ class RNNCategoricalDistribution:
             if len(char_list) > self.max_len:
                 self.max_len = len(char_list)
         self.char_set = chars
+        self.vocab_size = len(self.char_set)
+        # print(self.char_set)
 
     def update_distrbution(self, pcfg_counts):
+        if self.use_cuda:
+            self.cuda()
+        self.total_rule_counts = {}
         self._generate_input(pcfg_counts)
         self._rnn_step()
         self._update_pcfg(pcfg_counts)
+        if self.use_cuda:
+            self.cpu()
+            self.entries = []
 
     def _generate_input(self, pcfg_counts):
         entries = []
+        # print(pcfg_counts)
         for parent in pcfg_counts:
             if parent.symbol() == '0':
                 continue
@@ -120,8 +136,8 @@ class RNNCategoricalDistribution:
                         length = len(list(word))
                         category_vector, input_vector = self.__generate_vector(
                             category, inputs, targets)
-                        this_word = RNNEntry(category, word_int, inputs, targets, count, length,
-                                             category_vector=category_vector,
+                        this_word = RNNEntry(category, word, word_int, inputs, targets, count,
+                                             length, category_vector=category_vector,
                                              input_vector=input_vector)
                         entries.append(this_word)
 
@@ -131,11 +147,11 @@ class RNNCategoricalDistribution:
         c_vector, i_vector = None, None
         if category is not None:
             assert isinstance(category, int), 'category must be an integer'
-            c_vector = torch.zeros(self.abp_domain_size, self.max_len)
-            c_vector[category, :] = 1
+            c_vector = torch.zeros(self.max_len, self.abp_domain_size)
+            c_vector[:, category] = 1
         if inputs is not None:
             assert isinstance(inputs, tuple), 'characters must a tuple'
-            i_vector = torch.zeros(self.max_len, self.max_len)
+            i_vector = torch.zeros(self.max_len, self.vocab_size)
             for index, char_id in enumerate(inputs):
                 i_vector[index, char_id] = 1
         # if outputs is not None:
@@ -147,29 +163,48 @@ class RNNCategoricalDistribution:
 
     def _rnn_step(self):
         self.optimizer.zero_grad()
-        whole_input_tensor = torch.stack([torch.cat(entry.category_vector, entry.input_vector)
+        whole_input_tensor = torch.stack([torch.cat([entry.category_vector, entry.input_vector], 1)
                                           for entry in self.entries])
-        lengths = torch.LongTensor([entry.length for entry in self.entries])
-        assert lengths.size(0) == len(self.entries)
+        # print(whole_input_tensor)
+        whole_input_tensor = torch.autograd.Variable(whole_input_tensor)
+        if self.use_cuda:
+            whole_input_tensor = whole_input_tensor.contiguous().cuda()
+        lengths = [entry.length for entry in self.entries]
+        assert len(lengths) == len(self.entries)
         packed_word_tensors = torch.nn.utils.rnn.pack_padded_sequence(whole_input_tensor,
                                                                       lengths, batch_first=True)
-        h_0 = self.h_0.expand(len(self.entries), self.h_0.size(1))
+        h_0 = self.h_0.expand(self.h_0.size(0), len(self.entries), self.h_0.size(2))
+        if self.use_cuda:
+            h_0 = h_0.contiguous()
         results, h_t = self.rnn.forward(packed_word_tensors, h_0)
         unpacked_results, _ = torch.nn.utils.rnn.pad_packed_sequence(results, batch_first=True)
-        total_nll = self.entries.set_scores(unpacked_results, self.w_logistic)
+        unpacked_results = self.final_layer(unpacked_results)
+        # print(unpacked_results)
+        total_nll = self.entries.set_scores(unpacked_results, self.w_logistic, self.b_logistic)
+        print(total_nll)
         total_nll.backward()
         self.optimizer.step()
 
+        packed_word_tensors.data.detach_()
         packed_word_tensors.data.volatile = True
         results, h_t = self.rnn.forward(packed_word_tensors, h_0)
         unpacked_results, _ = torch.nn.utils.rnn.pad_packed_sequence(results, batch_first=True)
-        total_nll = self.entries.set_scores(unpacked_results, self.w_logistic)
-        logging.info('The RNN has a total loglikelihood of {} for the corpus.'.format(-total_nll))
+        unpacked_results = self.final_layer(unpacked_results)
+        total_nll = self.entries.set_scores(unpacked_results, self.w_logistic, self.b_logistic)
+        logging.info('The RNN has a total - loglikelihood of {} for the corpus.'.format(total_nll[
+                                                                                           0]))
+        print(self.w_logistic)
+        print(self.b_logistic)
 
     def _update_pcfg(self, pcfg_counts):
         for entry in self.entries:
             cat = self.non_terms[entry.category]
-            child = (entry.word,)
+            child = (entry.word_int,)
             original_count = pcfg_counts[cat][child]
-            new_count = self.total_rule_counts[cat] * entry.prob
+            new_count = self.total_rule_counts[cat] * entry.prob.data[0]
             pcfg_counts[cat][child] = new_count
+            logging.debug("total count is {} and this word's prob is {} for cat {}".format(
+                self.total_rule_counts[cat], entry.prob.data[0],
+                entry.category))
+            logging.debug('old count is {}, new count is {} for word {} '.format(original_count,
+                                                                            new_count,entry.word))
