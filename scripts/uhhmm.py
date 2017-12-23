@@ -10,6 +10,7 @@ import signal
 import socket
 import sys
 import tempfile
+import threading
 from multiprocessing import Process, Queue, JoinableQueue
 import zmq
 from WorkDistributerServer import WorkDistributerServer
@@ -256,13 +257,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     logging.info("Start a new worker with python3 scripts/workers.py %s %d %d %d %d %d %d" % (
     workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port,
     maxLen + 1, int(gpu), gpu_batch_size))
+    signal.signal(signal.SIGINT, lambda x, y: handle_sigint(x, y, inf_procs, workDistributer))
 
     ## Initialize all the sub-processes with their input-output queues
     ## and dimensions of matrix they'll need
     if num_cpu_workers + num_gpu_workers > 0:
         inf_procs = start_local_workers_with_distributer(workDistributer, maxLen, num_cpu_workers, num_gpu_workers, gpu,
                                                          gpu_batch_size)
-        signal.signal(signal.SIGINT, lambda x, y: handle_sigint(x, y, inf_procs))
 
     elif cluster_cmd != None:
         start_cluster_workers(workDistributer, cluster_cmd, maxLen, gpu)
@@ -782,14 +783,16 @@ def increment_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
     pcfg_increment_counts(hid_seqs[start_ind:end_ind], sents[start_ind:end_ind], models, 1)
 
 
-def handle_sigint(signum, frame, workers):
+def handle_sigint(signum, frame, workers, work_server):
     logging.info("Master received quit signal... will terminate after cleaning up.")
     for ind, worker in enumerate(workers):
         logging.info("Terminating worker %d" % (ind))
         worker.terminate()
         logging.info("Joining worker %d" % (ind))
         worker.join()
-    sys.exit(0)
+    logging.info("Workers terminated successfully.")
+    work_server.stop()
+    sys.exit(1)
 
 
 # normalize a logged matrix
