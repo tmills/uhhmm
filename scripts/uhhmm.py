@@ -33,7 +33,7 @@ import copy
 from init_pcfg_strategies import *
 from pcfg_model import PCFG_model
 from scipy.cluster.vq import kmeans
-from obs.rnn_obs import RNNCategoricalDistribution
+from obs.rnn_obs import RNNGenerativeEmission
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -193,7 +193,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, inflated_num_abp, lex=lex)
 
         if rnn_obs_flag:
-            rnn_model = RNNCategoricalDistribution(start_abp, pcfg_model.word_dict)
+            rnn_model = RNNGenerativeEmission(start_abp, pcfg_model.word_dict)
         else:
             rnn_model = None
 

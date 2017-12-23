@@ -25,10 +25,14 @@ class RNNEntry:
         self.prob = prob
 
     def get_nll(self):
+        raise NotImplementedError
+
+class RNNGenerativeEntry(RNNEntry):
+    def get_nll(self):
         return 0 - self.count * torch.log(self.prob)
 
 class RNNEntryList:
-    def __init__(self, entries : List[RNNEntry]):
+    def __init__(self, entries : List[RNNGenerativeEntry]):
         self.entries = entries
         self.entries.sort(key=lambda x: x.length, reverse=True)
 
@@ -61,9 +65,9 @@ class RNNEntryList:
             total_nll += entry.get_nll()
         return total_nll
 
-class RNNCategoricalDistribution(torch.nn.Module):
+class RNNGenerativeEmission(torch.nn.Module):
     def __init__(self, abp_domain_size, vocab, hidden_size=50, num_layers=1, use_cuda=True):
-        super(RNNCategoricalDistribution, self).__init__()
+        super(RNNGenerativeEmission, self).__init__()
         self.use_cuda = use_cuda
         self.vocab = vocab
         # print(vocab)
@@ -136,7 +140,7 @@ class RNNCategoricalDistribution(torch.nn.Module):
                         length = len(list(word))
                         category_vector, input_vector = self.__generate_vector(
                             category, inputs, targets)
-                        this_word = RNNEntry(category, word, word_int, inputs, targets, count,
+                        this_word = RNNGenerativeEntry(category, word, word_int, inputs, targets, count,
                                              length, category_vector=category_vector,
                                              input_vector=input_vector)
                         entries.append(this_word)
