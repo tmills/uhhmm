@@ -27,7 +27,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
     cdef np.ndarray range_probs_full
 
     prev_state = indexer.extractState(prev_index)
-    logging.debug(' '.join(map(str, ['index',prev_index,'state',prev_state.unfiltered_str()])))
+    logging.log(0, ' '.join(map(str, ['index',prev_index,'state',prev_state.unfiltered_str()])))
     start_depth = get_cur_awa_depth(prev_state.b)
     nominal_depth = start_depth + prev_state.f
     (a_max, b_max, g_max) = indexer.getVariableMaxes()
@@ -128,7 +128,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                 data_full.append(range_probs_full[g])
         indices.append(state_index)
         data.append(1)
-        logging.debug(' '.join(map(str, [prev_state.unfiltered_str(), '->', indexer.extractState(state_index_full).unfiltered_str(), 1])))
+        logging.log(0, ' '.join(map(str, [prev_state.unfiltered_str(), '->', indexer.extractState(state_index_full).unfiltered_str(), 1])))
         return indices, data, indices_full, data_full
 
     # for f in (0,1):
@@ -176,7 +176,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                 data_full.append(EOS_prob)
             indices.append(EOS)
             data.append(EOS_prob)
-            logging.debug(' '.join(map(str, [prev_state.unfiltered_str(), '->', indexer.extractState(EOS_full).unfiltered_str(), EOS_prob])))
+            logging.log(0, ' '.join(map(str, [prev_state.unfiltered_str(), '->', indexer.extractState(EOS_full).unfiltered_str(), EOS_prob])))
             continue
 
         for a in range(1, a_max-1):
@@ -248,7 +248,7 @@ def compile_one_line(int depth, int prev_index, models, indexer, full_pi = False
                     state_index_full = indexer.getStateIndex(next_state.j, next_state.a, next_state.b, next_state.f, 0)
                     state_index = state_index_full / g_max
 
-                    logging.debug(' '.join(map(str,[prev_state.unfiltered_str(), '->', next_state.unfiltered_str(), cum_probs[2]])))
+                    logging.log(0, ' '.join(map(str,[prev_state.unfiltered_str(), '->', next_state.unfiltered_str(), cum_probs[2]])))
                     # the g is factored out
                     range_probs = cum_probs[2] #* (models.pos.dist[b,:-1])
                     if full_pi:
