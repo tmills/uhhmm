@@ -10,6 +10,7 @@ import signal
 import socket
 import sys
 import tempfile
+import threading
 from multiprocessing import Process, Queue, JoinableQueue
 import zmq
 from WorkDistributerServer import WorkDistributerServer
@@ -187,7 +188,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         lex = None
         if not word_vecs is None:
             logging.info("Using word vectors as observations: Embedding matrix has %d entries, %d dimensions, max=%f and min=%f" % (word_vecs.shape[0], word_vecs.shape[1], word_vecs.max(), word_vecs.min()))
-            centroids, distortion = kmeans(word_vecs, start_abp, iter=5)
+            # centroids, distortion = kmeans(word_vecs, start_abp, iter=5)
+            centroids = None
             lex = GaussianModel((inflated_num_abp, word_vecs.shape[1]), word_vecs, name="Lex", centroids=centroids)
 
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, inflated_num_abp, lex=lex)
@@ -266,13 +268,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     logging.info("Start a new worker with python3 scripts/workers.py %s %d %d %d %d %d %d" % (
     workDistributer.host, workDistributer.jobs_port, workDistributer.results_port, workDistributer.models_port,
     maxLen + 1, int(gpu), gpu_batch_size))
+    signal.signal(signal.SIGINT, lambda x, y: handle_sigint(x, y, inf_procs, workDistributer))
 
     ## Initialize all the sub-processes with their input-output queues
     ## and dimensions of matrix they'll need
     if num_cpu_workers + num_gpu_workers > 0:
         inf_procs = start_local_workers_with_distributer(workDistributer, maxLen, num_cpu_workers, num_gpu_workers, gpu,
                                                          gpu_batch_size)
-        signal.signal(signal.SIGINT, lambda x, y: handle_sigint(x, y, inf_procs))
 
     elif cluster_cmd != None:
         start_cluster_workers(workDistributer, cluster_cmd, maxLen, gpu)
@@ -546,15 +548,16 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     logging.debug("Ending sampling")
     workDistributer.stop()
 
-    for cur_proc in range(0, num_procs):
+    for cur_proc in range(0, num_cpu_workers+num_gpu_workers):
         logging.info("Sending terminate signal to worker {} ...".format(cur_proc))
         inf_procs[cur_proc].terminate()
 
-    for cur_proc in range(0, num_procs):
+    for cur_proc in range(0, num_cpu_workers+num_gpu_workers):
         logging.info("Waiting to join worker {} ...".format(cur_proc))
         inf_procs[cur_proc].join()
         inf_procs[cur_proc] = None
 
+    logging.info("Sampling complete.")
     return (samples, stats)
 
 
@@ -797,14 +800,16 @@ def increment_sentence_counts(hid_seqs, sents, models, start_ind, end_ind):
     pcfg_increment_counts(hid_seqs[start_ind:end_ind], sents[start_ind:end_ind], models, 1)
 
 
-def handle_sigint(signum, frame, workers):
+def handle_sigint(signum, frame, workers, work_server):
     logging.info("Master received quit signal... will terminate after cleaning up.")
     for ind, worker in enumerate(workers):
         logging.info("Terminating worker %d" % (ind))
         worker.terminate()
         logging.info("Joining worker %d" % (ind))
         worker.join()
-    sys.exit(0)
+    logging.info("Workers terminated successfully.")
+    work_server.stop()
+    sys.exit(1)
 
 
 # normalize a logged matrix

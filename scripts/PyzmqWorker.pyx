@@ -348,15 +348,16 @@ cdef class PyzmqWorker:
         return model, file_sig
 
     def handle_sigint(self, signum, frame):
-        logging.info("Worker received quit signal... will terminate after cleaning up.")
+        logging.info("Worker %d received interrupt signal... terminating immediately." % (self.tid))
         self.quit = True
+        sys.exit(0)
 
     def handle_sigterm(self, signum, frame):
-        logging.info("Worker received quit signal... will terminate after cleaning up.")
+        logging.info("Worker %d received terminate signal... will terminate after cleaning up." % (self.tid))
         self.quit = True
 
     def handle_sigalarm(self, signum, frame):
-        logging.warning("Worker received alarm while trying to process sentence... will raise exception")
+        logging.warning("Worker %d received alarm while trying to process sentence... will raise exception" % (self.tid))
         raise ParsingError("Worker hung while parsing sentence")
 
 
