@@ -208,7 +208,7 @@ gpusrc/libhmm.a: gpusrc/hmmsampler.o gpusrc/temp.o
 gpusrc/hmmsampler.o: gpusrc/temp.o
 	${CUDA_PATH}/bin/nvcc -dlink -o $@ $^ -lcudart --shared -Xcompiler -fPIC -m64 -L${CUDA_PATH}/lib64 -Xlinker -rpath -Xlinker ${CUDA_PATH}/lib64
 
-gpusrc/temp.o: gpusrc/HmmSampler.cu gpusrc/State.cu gpusrc/HmmSampler.h gpusrc/obs_models.h gpusrc/myarrays.cu gpusrc/myarrays.h gpusrc/obs_models.cu
+gpusrc/temp.o: gpusrc/HmmSampler.cu gpusrc/State.cu gpusrc/HmmSampler.h gpusrc/obs_models.h gpusrc/myarrays.cu gpusrc/myarrays.h
 	${CUDA_PATH}/bin/nvcc -rdc=true -c -o $@ $< -Icusplibrary/ -std=c++11 --shared -Xcompiler -fPIC -m64
 
 multiply_test: gpusrc/multiply_test.cu

@@ -202,7 +202,7 @@ class DistributedModelCompiler(FullDepthCompiler):
             for b_index, b_cats in enumerate(row_indices):
                 for f_index in (0, 1):
                     for g_index in range(0, g_max):
-                        logging.debug(' '.join(map(str, ['P', g_index, 'B',b_cats,'F', f_index,
+                        logging.log(0, ' '.join(map(str, ['P', g_index, 'B',b_cats,'F', f_index,
                                                          corrected_pos_dist[b_index*2*g_max+f_index*g_max+g_index]])))
             # for index_t_1 in pi.shape[0]:
             #     state_t_1 = indexer.extractState(index_t_1)
