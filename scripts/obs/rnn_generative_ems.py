@@ -32,7 +32,7 @@ class RNNGenerativeEntry(RNNEntry):
         return 0 - self.count * torch.log(self.prob)
 
 class RNNEntryList:
-    def __init__(self, entries : List[RNNGenerativeEntry]):
+    def __init__(self, entries : List[RNNEntry]):
         self.entries = entries
         self.entries.sort(key=lambda x: x.length, reverse=True)
 

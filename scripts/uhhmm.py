@@ -34,7 +34,8 @@ import copy
 from init_pcfg_strategies import *
 from pcfg_model import PCFG_model
 from scipy.cluster.vq import kmeans
-from obs.rnn_obs import RNNGenerativeEmission
+from obs.rnn_generative_ems import RNNGenerativeEmission
+from obs.rnn_discriminative_ems import RNNDiscriminativeEmission
 
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
@@ -143,6 +144,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
     # different observation models
     rnn_obs_flag = int(params.get('rnn_obs_flag', '0'))
+    rnn_obs_model_type = params.get('rnn_obs_model_type', 'disc')
 
     if gold_pos_dict_file:
         gold_pos_dict = {}
@@ -195,7 +197,12 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, inflated_num_abp, lex=lex)
 
         if rnn_obs_flag:
-            rnn_model = RNNGenerativeEmission(start_abp, pcfg_model.word_dict)
+            if rnn_obs_model_type == 'gen':
+                rnn_model = RNNGenerativeEmission(start_abp, pcfg_model.word_dict)
+            elif rnn_obs_model_type == 'disc':
+                rnn_model = RNNDiscriminativeEmission(start_abp, pcfg_model.word_dict)
+            else:
+                raise NotImplementedError('unknown RNN model type')
         else:
             rnn_model = None
 
