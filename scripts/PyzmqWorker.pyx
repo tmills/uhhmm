@@ -58,7 +58,9 @@ cdef class PyzmqWorker:
     def __reduce__(self):
         return (PyzmqWorker, (self.host, self.jobs_port, self.results_port, self.models_port, self.maxLen, self.out_freq, self.tid, self.gpu, self.batch_size, self.seed, self.debug_level), None)
 
-    def run(self):
+    def run(self, gpu_num=None):
+        if not gpu_num is None:
+            os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu_num)
         logging.basicConfig(level=self.debug_level)
         # logging.info("Thread starting run() method with id=%s" % (threading.get_ident()))
         context = zmq.Context()
