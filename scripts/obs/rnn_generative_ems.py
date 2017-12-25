@@ -4,6 +4,8 @@ import torch
 from typing import List
 import torch.optim
 
+NUM_ITERS = 5
+
 class RNNEntry:
     def __init__(self, category, word, word_int, input, target, count,
                  length, category_vector=None, input_vector=None, target_vector=None):
@@ -66,8 +68,10 @@ class RNNEntryList:
         return total_nll
 
 class RNNGenerativeEmission(torch.nn.Module):
-    def __init__(self, abp_domain_size, vocab, hidden_size=50, num_layers=1, use_cuda=True):
+    def __init__(self, abp_domain_size, vocab, hidden_size=50, num_layers=1, use_cuda=True,
+                 training_iters = NUM_ITERS):
         super(RNNGenerativeEmission, self).__init__()
+        self.training_iters = training_iters
         self.use_cuda = use_cuda
         self.vocab = vocab
         # print(vocab)
@@ -166,7 +170,7 @@ class RNNGenerativeEmission(torch.nn.Module):
         return c_vector, i_vector
 
     def _rnn_step(self):
-        self.optimizer.zero_grad()
+
         whole_input_tensor = torch.stack([torch.cat([entry.category_vector, entry.input_vector], 1)
                                           for entry in self.entries])
         # print(whole_input_tensor)
@@ -180,14 +184,16 @@ class RNNGenerativeEmission(torch.nn.Module):
         h_0 = self.h_0.expand(self.h_0.size(0), len(self.entries), self.h_0.size(2))
         if self.use_cuda:
             h_0 = h_0.contiguous()
-        results, h_t = self.rnn.forward(packed_word_tensors, h_0)
-        unpacked_results, _ = torch.nn.utils.rnn.pad_packed_sequence(results, batch_first=True)
-        unpacked_results = self.final_layer(unpacked_results)
-        # print(unpacked_results)
-        total_nll = self.entries.set_scores(unpacked_results, self.w_logistic, self.b_logistic)
-        print(total_nll)
-        total_nll.backward()
-        self.optimizer.step()
+        for iter in range(self.training_iters):
+            self.optimizer.zero_grad()
+            results, h_t = self.rnn.forward(packed_word_tensors, h_0)
+            unpacked_results, _ = torch.nn.utils.rnn.pad_packed_sequence(results, batch_first=True)
+            unpacked_results = self.final_layer(unpacked_results)
+            # print(unpacked_results)
+            total_nll = self.entries.set_scores(unpacked_results, self.w_logistic, self.b_logistic)
+            print(total_nll)
+            total_nll.backward()
+            self.optimizer.step()
 
         packed_word_tensors.data.detach_()
         packed_word_tensors.data.volatile = True
