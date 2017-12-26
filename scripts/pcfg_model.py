@@ -6,10 +6,10 @@ import numpy as np
 from scipy.stats import dirichlet
 import collections
 
+EPSILON = 1e-10
 
 def normalize_a_tensor(tensor):
-    return tensor / (
-    np.sum(tensor, axis=-1, keepdims=True) + 1e-20)  # to supress zero division warning
+    return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-20)  # to supress zero division warning
 
 
 def calculate_alpha(num_terms, num_sents, non_root_nonterm_mask, num_term_types,
@@ -348,6 +348,7 @@ class PCFG_model:
             self.unannealed_dists = {x: np.random.dirichlet(self.counts[x]) for x in self.counts}
         dists = self.unannealed_dists
         for dist in dists.values():
+            dist += EPSILON
             assert np.all(dist != 0), "there are 0s in distributions from Dirichlet! It is " \
                                       "usually because alpha is too small."
         # print(dists)
