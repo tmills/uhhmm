@@ -198,8 +198,10 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         if rnn_obs_flag:
             if rnn_obs_model_type == 'gen':
+                logging.info('RNN emission model is generative.')
                 rnn_model = RNNGenerativeEmission(start_abp, pcfg_model.word_dict)
             elif rnn_obs_model_type == 'disc':
+                logging.info('RNN emission model is discriminative.')
                 rnn_model = RNNDiscriminativeEmission(start_abp, pcfg_model.word_dict)
             else:
                 raise NotImplementedError('unknown RNN model type')
