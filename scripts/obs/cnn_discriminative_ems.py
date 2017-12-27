@@ -42,7 +42,7 @@ class CNNDiscriminativeEmission(torch.nn.Module):
         self.total_word_counts = {}
         self.non_terms = {}
         self.embedding = torch.nn.Embedding(self.vocab_size, embedding_dim=self.embedding_dim,
-                                            padding_idx=0)
+                                            padding_idx=self.char_set['pad'])
         self.conv_list = torch.nn.ModuleList()
         self.pool_list = torch.nn.ModuleList()
         self.max_padded_word = self.max_len + (self.kernels[-1] - 1) * 2
@@ -52,15 +52,15 @@ class CNNDiscriminativeEmission(torch.nn.Module):
             H = self.max_padded_word - kernel + 1
             self.pool_list.append(torch.nn.AvgPool2d((H, 1)))
         self.relu = torch.nn.ReLU()
-        self.final_layer = torch.nn.Linear(self.embedding_dim, self.abp_domain_size)
+        self.final_layer = torch.nn.Linear(self.embedding_dim * len(self.kernels), self.abp_domain_size)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
+        self.l1_lambda = 0.1
         # self.optimizer = torch.optim.SGD(self.parameters(), lr=1e-3)
         print(self)
 
     def _generate_vocab(self):
         chars = {}
-        chars['pad'] = 0
         for word in self.vocab.values():
             char_list = list(word)
             for char in char_list:
@@ -68,11 +68,13 @@ class CNNDiscriminativeEmission(torch.nn.Module):
                     chars[char] = len(chars)
             if len(char_list) > self.max_len:
                 self.max_len = len(char_list)
+        chars['pad'] = len(chars)
         self.char_set = chars
         self.vocab_size = len(self.char_set)
         # print(self.char_set)
 
     def update_distrbution(self, pcfg_counts):
+        # print(pcfg_counts)
         if self.use_cuda:
             self.cuda()
         self.total_word_counts = {}
@@ -82,6 +84,7 @@ class CNNDiscriminativeEmission(torch.nn.Module):
         if self.use_cuda:
             self.cpu()
             self.entries = []
+        # print(pcfg_counts)
 
     def _generate_input(self, pcfg_counts):
         entries = []
@@ -130,6 +133,7 @@ class CNNDiscriminativeEmission(torch.nn.Module):
         if inputs is not None:
             assert isinstance(inputs, tuple), 'characters must a tuple'
             i_vector = torch.zeros(self.max_padded_word).long()
+            i_vector.fill_(self.char_set['pad'])
             diff = (self.max_padded_word - len(inputs)) // 2
 
             for index, char_id in enumerate(inputs):
@@ -143,15 +147,19 @@ class CNNDiscriminativeEmission(torch.nn.Module):
 
     def forward(self, input):
         input = self.embedding(input)
+        input = torch.unsqueeze(input, 1)
         xs = []
+        # print(input.size())
         for index, conv in enumerate(self.conv_list):
             x = conv(input)
             x = self.pool_list[index](x)
             x = torch.squeeze(x)
             xs.append(x)
         x = torch.cat(xs, dim=1)
+        # print(x.size())
         x = self.relu(x)
         x = self.final_layer(x)
+        # x = x ** 3
         x = torch.nn.functional.softmax(x)
         return x
 
@@ -168,20 +176,31 @@ class CNNDiscriminativeEmission(torch.nn.Module):
         for iter in range(self.training_iters):
             self.optimizer.zero_grad()
             p_p_giv_w = self.forward(whole_input_tensor)
+            # print(p_p_giv_w)
             total_nll = self.entries.set_scores(p_p_giv_w)
-            ave_nll = total_nll / p_p_giv_w.size(0)
-            ave_nll.backward()
+            # print(total_nll)
+            if self.l1_lambda > 0:
+                for name, parameter in self.named_parameters():
+                    if name == 'embedding.weight':
+                        total_nll += torch.norm(parameter[:-1], 1) * self.l1_lambda
+                    else:
+                        total_nll += torch.norm(parameter, 1) * self.l1_lambda
+            # ave_nll = total_nll / p_p_giv_w.size(0)
+            # ave_nll.backward()
+            total_nll.backward()
+            # for parameter in self.parameters():
+            #     print(parameter.grad)
             if iter == 0:
                 first_total_nll = total_nll.data.cpu()[0]
             self.optimizer.step()
         final_total_nll = total_nll.data.cpu()[0]
-        logging.info('The RNN final training iter has a total - loglikelihood of {} for the '
-                     'corpus with {} improvement.'.format(
+        logging.info('The CNN final training iter has a total - loglikelihood of {:.4f} for the '
+                     'corpus with {:.4f} improvement.'.format(
             total_nll.data.cpu()[0], first_total_nll - final_total_nll))
 
         self.eval()
-        whole_input_tensor.data.detach_()
-        whole_input_tensor.data.volatile = True
+        whole_input_tensor.detach_()
+        whole_input_tensor.volatile = True
         p_p_giv_w = self.forward(whole_input_tensor)
         total_nll = self.entries.set_scores(p_p_giv_w)
         logging.info('The CNN eval iter has a total - loglikelihood of {} for the corpus.'.format(
