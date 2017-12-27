@@ -11,7 +11,6 @@ EPSILON = 1e-15
 def normalize_a_tensor(tensor):
     return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-20)  # to supress zero division warning
 
-
 def calculate_alpha(num_terms, num_sents, non_root_nonterm_mask, num_term_types,
                     num_nonterminal_types, scale):
     assert scale <= 1, "the scale hyperparameter for beta cannot be larger than 1!"
