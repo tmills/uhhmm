@@ -8,7 +8,7 @@ import logging
 import math
 from pcfg_model import PCFG_model, normalize_a_tensor
 from models import CategoricalModel,GaussianModel
-
+from pcfg_medic import PCFGMedic
 """
 this file is for translating sequences of states to pcfg counts and back to uhhmm counts
 the main function is translate_through_pcfg
@@ -83,6 +83,7 @@ def extract_counts(trees, abp_domain_size):
     zero_lexical = nltk.grammar.Production(top_cat, ('-ROOT-',))
     l_branches = 0
     r_branches = 0
+    PCFGMedic.cpr(trees, abp_domain_size)
     for tree in trees:
         # rules = _extract_counts_single_tree(tree, nonterms)
         l_branch, r_branch = calc_branching_score(tree)
