@@ -5,6 +5,8 @@ import random
 import nltk
 from typing import List
 
+THRESHOLD = 1e-2
+
 class PCFGMedic:
     def __init__(self):
         pass
@@ -35,7 +37,7 @@ class PCFGMedic:
         cpr_source = None
         category_list = list(category_counts.items())
         category_list.sort(key=operator.itemgetter(1))
-        if category_list[0][1] < average_count * 5e-3:
+        if category_list[0][1] < average_count * THRESHOLD:
             cpr_target = category_list[0][0]
             cpr_source = category_list[-1][0]
             count = category_list[0][1]
