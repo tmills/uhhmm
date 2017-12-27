@@ -5,14 +5,13 @@ from typing import List
 import torch.optim
 from .rnn_generative_ems import RNNEntry, RNNEntryList
 
-NUM_LAYERS = 2
-BIDIRECTIONAL = 1
+KERNELS = [2,3,4]
 NUM_ITERS = 5
-class RNNDiscriminativeEntry(RNNEntry):
+class CNNDiscriminativeEntry(RNNEntry):
     def get_nll(self):
         return 0 - self.count @ torch.log(self.prob)
 
-class RNNDiscriminativeEntryList(RNNEntryList):
+class CNNDiscriminativeEntryList(RNNEntryList):
     def set_scores(self, probs, w_logistic=None, b_logistic=None):
         total_nll = 0
         # print(probs)
@@ -21,11 +20,12 @@ class RNNDiscriminativeEntryList(RNNEntryList):
             total_nll += entry.get_nll()
         return total_nll
 
-class RNNDiscriminativeEmission(torch.nn.Module):
-    def __init__(self, abp_domain_size, vocab, hidden_size=50, num_layers=NUM_LAYERS,
-                 training_iters=NUM_ITERS, use_cuda=True, bidirectional=BIDIRECTIONAL):
-        super(RNNDiscriminativeEmission, self).__init__()
-        self.bidirectional = bidirectional
+class CNNDiscriminativeEmission(torch.nn.Module):
+    def __init__(self, abp_domain_size, vocab, embedding_dim=50, hidden_size=50,
+                 kernels=KERNELS,
+                 training_iters=NUM_ITERS, use_cuda=True):
+        super(CNNDiscriminativeEmission, self).__init__()
+        self.embedding_dim = embedding_dim
         self.training_iters = training_iters
         self.use_cuda = use_cuda
         self.vocab = vocab
@@ -33,20 +33,26 @@ class RNNDiscriminativeEmission(torch.nn.Module):
         self.vocab_size = 0
         self.char_set = {}
         self.hidden_size = hidden_size
-        self.num_layers = num_layers
+        self.kernels = kernels
+        self.kernels.sort()
         self.max_len = 0
         self._generate_vocab()
         self.abp_domain_size = abp_domain_size # do not take into account ROOT
         self.input_size = len(self.char_set)
         self.total_word_counts = {}
         self.non_terms = {}
-        self.rnn = torch.nn.GRU(input_size=self.input_size, hidden_size=self.hidden_size,
-                                num_layers=self.num_layers, bidirectional=self.bidirectional,
-                                batch_first=True)
-        self.final_layer = torch.nn.Linear(self.hidden_size * self.num_layers * (1+self.bidirectional),
-                                           self.abp_domain_size)
-        self.h_0 = torch.nn.Parameter(data=torch.zeros(
-            self.num_layers * (1+self.bidirectional), 1, self.hidden_size))
+        self.embedding = torch.nn.Embedding(self.vocab_size, embedding_dim=self.embedding_dim,
+                                            padding_idx=0)
+        self.conv_list = torch.nn.ModuleList()
+        self.pool_list = torch.nn.ModuleList()
+        self.max_padded_word = self.max_len + (self.kernels[-1] - 1) * 2
+        for kernel in self.kernels:
+            self.conv_list.append(torch.nn.Conv2d(1, self.embedding_dim, (kernel,
+                                                                          self.embedding_dim)))
+            H = self.max_padded_word - kernel + 1
+            self.pool_list.append(torch.nn.AvgPool2d((H, 1)))
+        self.relu = torch.nn.ReLU()
+        self.final_layer = torch.nn.Linear(self.embedding_dim, self.abp_domain_size)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
         # self.optimizer = torch.optim.SGD(self.parameters(), lr=1e-3)
@@ -54,6 +60,7 @@ class RNNDiscriminativeEmission(torch.nn.Module):
 
     def _generate_vocab(self):
         chars = {}
+        chars['pad'] = 0
         for word in self.vocab.values():
             char_list = list(word)
             for char in char_list:
@@ -70,7 +77,7 @@ class RNNDiscriminativeEmission(torch.nn.Module):
             self.cuda()
         self.total_word_counts = {}
         self._generate_input(pcfg_counts)
-        self._rnn_step()
+        self._cnn_step()
         self._update_pcfg(pcfg_counts)
         if self.use_cuda:
             self.cpu()
@@ -108,11 +115,11 @@ class RNNDiscriminativeEmission(torch.nn.Module):
                     counts[category] = count
             # print(counts)
             counts = torch.autograd.Variable(counts)
-            this_word = RNNDiscriminativeEntry(None, word, word_int, inputs, targets, counts,
+            this_word = CNNDiscriminativeEntry(None, word, word_int, inputs, targets, counts,
                                          length, category_vector=category_vector,
                                          input_vector=input_vector)
             entries.append(this_word)
-        self.entries = RNNDiscriminativeEntryList(entries)
+        self.entries = CNNDiscriminativeEntryList(entries)
 
     def __generate_vector(self, category=None, inputs=None, outputs=None):
         c_vector, i_vector = None, None
@@ -122,9 +129,11 @@ class RNNDiscriminativeEmission(torch.nn.Module):
             c_vector[0] = category
         if inputs is not None:
             assert isinstance(inputs, tuple), 'characters must a tuple'
-            i_vector = torch.zeros(self.max_len, self.vocab_size)
+            i_vector = torch.zeros(self.max_padded_word).long()
+            diff = (self.max_padded_word - len(inputs)) // 2
+
             for index, char_id in enumerate(inputs):
-                i_vector[index, char_id] = 1
+                i_vector[diff+index] = char_id
         # if outputs is not None:
         #     assert isinstance(outputs, tuple), 'characters must a tuple'
         #     o_vector = torch.zeros(self.max_len, self.max_len)
@@ -132,29 +141,33 @@ class RNNDiscriminativeEmission(torch.nn.Module):
         #         o_vector[index, char_id] = 1
         return c_vector, i_vector
 
-    def _rnn_step(self):
-        self.rnn.train()
+    def forward(self, input):
+        input = self.embedding(input)
+        xs = []
+        for index, conv in enumerate(self.conv_list):
+            x = conv(input)
+            x = self.pool_list[index](x)
+            x = torch.squeeze(x)
+            xs.append(x)
+        x = torch.cat(xs, dim=1)
+        x = self.relu(x)
+        x = self.final_layer(x)
+        x = torch.nn.functional.softmax(x)
+        return x
+
+
+    def _cnn_step(self):
+        self.train()
         whole_input_tensor = torch.stack([entry.input_vector for entry in self.entries])
         # print(whole_input_tensor)
         whole_input_tensor = torch.autograd.Variable(whole_input_tensor)
         if self.use_cuda:
             whole_input_tensor = whole_input_tensor.contiguous().cuda()
-        lengths = [entry.length for entry in self.entries]
-        packed_word_tensors = torch.nn.utils.rnn.pack_padded_sequence(whole_input_tensor,
-                                                                      lengths, batch_first=True)
-        h_0 = self.h_0.expand(self.h_0.size(0), len(self.entries), self.h_0.size(2))
-        if self.use_cuda:
-            h_0 = h_0.contiguous()
         final_total_nll = 0
         first_total_nll = 0
         for iter in range(self.training_iters):
             self.optimizer.zero_grad()
-            results, h_t = self.rnn.forward(packed_word_tensors, h_0)
-            h_t = torch.transpose(h_t, 0, 1)
-            h_t = h_t.contiguous().view(h_t.size(0), -1)
-            unpacked_results = self.final_layer(h_t)
-            p_p_giv_w = torch.nn.functional.softmax(unpacked_results)
-            # print(unpacked_results)
+            p_p_giv_w = self.forward(whole_input_tensor)
             total_nll = self.entries.set_scores(p_p_giv_w)
             ave_nll = total_nll / p_p_giv_w.size(0)
             ave_nll.backward()
@@ -166,16 +179,12 @@ class RNNDiscriminativeEmission(torch.nn.Module):
                      'corpus with {} improvement.'.format(
             total_nll.data.cpu()[0], first_total_nll - final_total_nll))
 
-        self.rnn.eval()
-        packed_word_tensors.data.detach_()
-        packed_word_tensors.data.volatile = True
-        results, h_t = self.rnn.forward(packed_word_tensors, h_0)
-        h_t = torch.transpose(h_t, 0, 1)
-        h_t = h_t.contiguous().view(h_t.size(0), -1)
-        unpacked_results = self.final_layer(h_t)
-        p_p_giv_w = torch.nn.functional.softmax(unpacked_results)
+        self.eval()
+        whole_input_tensor.data.detach_()
+        whole_input_tensor.data.volatile = True
+        p_p_giv_w = self.forward(whole_input_tensor)
         total_nll = self.entries.set_scores(p_p_giv_w)
-        logging.info('The RNN eval iter has a total - loglikelihood of {} for the corpus.'.format(
+        logging.info('The CNN eval iter has a total - loglikelihood of {} for the corpus.'.format(
             total_nll.data.cpu()[0]))
 
     def _update_pcfg(self, pcfg_counts):

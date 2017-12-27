@@ -36,7 +36,7 @@ from pcfg_model import PCFG_model
 from scipy.cluster.vq import kmeans
 from obs.rnn_generative_ems import RNNGenerativeEmission
 from obs.rnn_discriminative_ems import RNNDiscriminativeEmission
-
+from obs.cnn_discriminative_ems import CNNDiscriminativeEmission
 # Has a state for every word in the corpus
 # What's the state of the system at one Gibbs sampling iteration?
 class Sample:
@@ -143,8 +143,8 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     super_cooling_target_ac = int(params.get("super_cooling_target_ac", 10))
 
     # different observation models
-    rnn_obs_flag = int(params.get('rnn_obs_flag', '0'))
-    rnn_obs_model_type = params.get('rnn_obs_model_type', 'disc')
+    dnn_obs_flag = int(params.get('dnn_obs_flag', '0'))
+    dnn_obs_model_type = params.get('dnn_obs_model_type', 'rnn_disc') # rnn_disc, rnn_gen, cnn
 
     if gold_pos_dict_file:
         gold_pos_dict = {}
@@ -196,17 +196,19 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         models = initialize_models(models, max_output, params, (len(ev_seqs), maxLen), depth, inflated_num_abp, lex=lex)
 
-        if rnn_obs_flag:
-            if rnn_obs_model_type == 'gen':
+        if dnn_obs_flag:
+            if dnn_obs_model_type == 'rnn_gen':
                 logging.info('RNN emission model is generative.')
-                rnn_model = RNNGenerativeEmission(start_abp, pcfg_model.word_dict)
-            elif rnn_obs_model_type == 'disc':
+                dnn_obs_model = RNNGenerativeEmission(start_abp, pcfg_model.word_dict)
+            elif dnn_obs_model_type == 'rnn_disc':
                 logging.info('RNN emission model is discriminative.')
-                rnn_model = RNNDiscriminativeEmission(start_abp, pcfg_model.word_dict)
+                dnn_obs_model = RNNDiscriminativeEmission(start_abp, pcfg_model.word_dict)
+            elif dnn_obs_model_type == 'cnn':
+                dnn_obs_model = CNNDiscriminativeEmission(start_abp, pcfg_model.word_dict)
             else:
                 raise NotImplementedError('unknown RNN model type')
         else:
-            rnn_model = None
+            dnn_obs_model = None
 
         if input_seqs_file is None:
             hid_seqs = [None] * len(ev_seqs)
@@ -241,7 +243,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
     else:
         sample = uhhmm_io.read_serialized_sample(pickle_file)
-        rnn_model = pickle.load(open(rnn_model_file, 'rb'))
+        dnn_obs_model = pickle.load(open(rnn_model_file, 'rb'))
         sample.log_prob = 0
         models = sample.models
         hid_seqs = sample.hid_seqs
@@ -472,7 +474,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                                                                                                             anneal_length))
             logging.info("The log prob for this iter is {}".format(acc_logprob))
             pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model,
-                               sample_alpha_flag=sample_alpha_flag, rnn=rnn_model)
+                               sample_alpha_flag=sample_alpha_flag, dnn=dnn_obs_model)
         elif super_cooling and super_cooling_start_iter <= iter:
             cur_cooling_iter = iter - super_cooling_start_iter
             ac_coeff = calc_simulated_annealing(cur_cooling_iter, super_cooling_length, 1,
@@ -481,7 +483,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff,
                                annealing_normalize=normalize_flag,
                                sample_alpha_flag=sample_alpha_flag,
-                               rnn=rnn_model)
+                               dnn=dnn_obs_model)
         else:
             ac_coeff = calc_simulated_annealing(cur_anneal_iter, anneal_length, init_anneal_likelihood,
                                                 final_anneal_likelihood, anneal_likelihood_phase)
@@ -509,13 +511,13 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
                         best_anneal_model = copy.deepcopy(models)
                     pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff,
                                        annealing_normalize=normalize_flag,
-                                       sample_alpha_flag=sample_alpha_flag, rnn=rnn_model)
+                                       sample_alpha_flag=sample_alpha_flag, dnn=dnn_obs_model)
                     # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
             else:
                 logging.info("The log prob for this iter is {}".format(acc_logprob))
                 pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, ac_coeff=ac_coeff,
                                    annealing_normalize=normalize_flag,
-                                   sample_alpha_flag=sample_alpha_flag, rnn=rnn_model)
+                                   sample_alpha_flag=sample_alpha_flag, dnn=dnn_obs_model)
                 # resample_all(models, sample, params, depth, anneal_alphas, ac_coeff, normalize_flag)
         acc_logprob = 0
 #        models.resample_all(decay, from_global_counts)
@@ -532,7 +534,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
         sample.models = models
         with open(rnn_model_file, 'wb') as rfn:
-            pickle.dump(rnn_model, rfn)
+            pickle.dump(dnn_obs_model, rfn)
         # if not finite and return_to_finite:
         #     finite = True
         #     return_to_finite = False
