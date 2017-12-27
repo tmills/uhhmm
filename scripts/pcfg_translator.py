@@ -83,7 +83,7 @@ def extract_counts(trees, abp_domain_size):
     zero_lexical = nltk.grammar.Production(top_cat, ('-ROOT-',))
     l_branches = 0
     r_branches = 0
-    PCFGMedic.cpr(trees, abp_domain_size)
+    # PCFGMedic.cpr(trees, abp_domain_size)
     for tree in trees:
         # rules = _extract_counts_single_tree(tree, nonterms)
         l_branch, r_branch = calc_branching_score(tree)
