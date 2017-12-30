@@ -66,6 +66,7 @@ class RNNDiscriminativeEmission(torch.nn.Module):
         # print(self.char_set)
 
     def update_distrbution(self, pcfg_counts):
+        logging.info('Entering RNN training phase. GPU is {}'.format(self.use_cuda))
         if self.use_cuda:
             self.cuda()
         self.total_word_counts = {}

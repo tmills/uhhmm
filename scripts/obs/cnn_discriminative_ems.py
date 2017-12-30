@@ -75,6 +75,7 @@ class CNNDiscriminativeEmission(torch.nn.Module):
 
     def update_distrbution(self, pcfg_counts):
         # print(pcfg_counts)
+        logging.info('Entering CNN training phase. GPU is {}'.format(self.use_cuda))
         if self.use_cuda:
             self.cuda()
         self.total_word_counts = {}

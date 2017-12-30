@@ -243,7 +243,11 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
 
     else:
         sample = uhhmm_io.read_serialized_sample(pickle_file)
-        dnn_obs_model = pickle.load(open(rnn_model_file, 'rb'))
+        if dnn_obs_flag:
+            dnn_obs_model = pickle.load(open(rnn_model_file, 'rb'))
+            print(dnn_obs_model)
+        else:
+            dnn_obs_model = None
         sample.log_prob = 0
         models = sample.models
         hid_seqs = sample.hid_seqs
