@@ -75,6 +75,7 @@ class RNNDiscriminativeEmission(torch.nn.Module):
         if self.use_cuda:
             self.cpu()
             self.entries = []
+            torch.cuda.synchronize()
 
     def _generate_input(self, pcfg_counts):
         entries = []

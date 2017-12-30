@@ -55,7 +55,7 @@ class CNNDiscriminativeEmission(torch.nn.Module):
         self.final_layer = torch.nn.Linear(self.embedding_dim * len(self.kernels), self.abp_domain_size)
 
         # self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
-        self.l1_lambda = 0.01
+        self.l1_lambda = 1
         self.optimizer = torch.optim.SGD(self.parameters(), lr=1e-3)
         print(self)
 
@@ -85,6 +85,7 @@ class CNNDiscriminativeEmission(torch.nn.Module):
             self.cpu()
             self.entries = []
         # print(pcfg_counts)
+            torch.cuda.synchronize()
 
     def _generate_input(self, pcfg_counts):
         entries = []
