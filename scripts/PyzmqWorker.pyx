@@ -88,14 +88,16 @@ cdef class PyzmqWorker:
             logging.debug("Worker %d received new model location from server." % self.tid)
             # if self.gpu:
             #     msg = msg + '.gpu' # use gpu model for model
-
+            # if self.gpu:
+            #     logging.info('before get model')
             try:
                 model_wrapper, self.model_file_sig = self.get_model(msg)
             except Exception as e:
 
                 printException()
                 raise e
-
+            # if self.gpu:
+            #     logging.info('after get model')
             logging.debug("Worker %d preparing to process new model" % self.tid)
 
             if model_wrapper.model_type == ModelWrapper.HMM and not self.gpu:
@@ -125,7 +127,7 @@ cdef class PyzmqWorker:
                 self.processRows(model_wrapper.model, jobs_socket, results_socket, depth_limit=model_wrapper.depth)
 
             elif model_wrapper.model_type == ModelWrapper.HMM and self.gpu:
-                logging.debug("Worker %d doing finite model inference on the GPU" % (self.tid))
+                logging.info("Worker %d doing finite model inference on the GPU" % (self.tid))
                 import CHmmSampler
                 msg.file_path = msg.file_path + '.gpu'
                 lex = model_wrapper.model[0].lex
@@ -140,7 +142,7 @@ cdef class PyzmqWorker:
                 else:
                     logging.info("Creating gpu sampler with gaussian observation model.")
                     sampler = CHmmSampler.GPUHmmSampler(self.seed, CHmmSampler.ModelType.GAUSSIAN_MODEL)
-
+                # logging.info("setting the GPU model.")
                 gpu_model = CHmmSampler.GPUModel(model_wrapper.model)
 
                 # print('3 loading in models')
@@ -148,6 +150,7 @@ cdef class PyzmqWorker:
                 # print('4 setting in models')
                 # self.model_file_sig = get_file_signature(msg)
                 pi = 0 # placeholder
+                # logging.info("processing sentences.")
                 self.processSentences(sampler, pi, jobs_socket, results_socket)
                 ## Free memory of gpu model
                 model_wrapper = None
