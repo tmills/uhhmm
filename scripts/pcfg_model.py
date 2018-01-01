@@ -6,7 +6,7 @@ import numpy as np
 from scipy.stats import dirichlet
 import collections
 
-EPSILON = 0
+EPSILON = 1e-50
 
 def normalize_a_tensor(tensor):
     return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-20)  # to supress zero division warning
