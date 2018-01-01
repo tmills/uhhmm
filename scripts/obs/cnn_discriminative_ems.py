@@ -7,6 +7,8 @@ from .rnn_generative_ems import RNNEntry, RNNEntryList
 
 KERNELS = [2,3,4]
 NUM_ITERS = 5
+L1_LAMBDA = 1
+# L2_LAMBDA = 1
 class CNNDiscriminativeEntry(RNNEntry):
     def get_nll(self):
         return 0 - self.count @ torch.log(self.prob)
@@ -55,7 +57,7 @@ class CNNDiscriminativeEmission(torch.nn.Module):
         self.final_layer = torch.nn.Linear(self.embedding_dim * len(self.kernels), self.abp_domain_size)
 
         # self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
-        self.l1_lambda = 1
+        self.l1_lambda = L1_LAMBDA
         self.optimizer = torch.optim.SGD(self.parameters(), lr=1e-3)
         print(self)
 

@@ -8,6 +8,7 @@ from .rnn_generative_ems import RNNEntry, RNNEntryList
 NUM_LAYERS = 2
 BIDIRECTIONAL = 1
 NUM_ITERS = 5
+
 class RNNDiscriminativeEntry(RNNEntry):
     def get_nll(self):
         return 0 - self.count @ torch.log(self.prob)
