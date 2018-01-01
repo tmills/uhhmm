@@ -57,15 +57,15 @@ embed_vals(embed_vals), embed_num_words(embed_num_words), embed_num_dims(embed_n
 }
 
 Model::~Model(){
-    // cout << "Entering model destructor" << endl;
+//     cout << "Entering model destructor" << endl;
     if(lex != NULL){ delete lex;} else{ cout << "lex was already null" << endl;}
     if(pi != NULL) { delete pi;} else{ cout << "pi was already null" << endl;}
     if(pos != NULL) { delete pos;} else{ cout << "pos was already null" << endl;}
     lex = NULL;
     pi = NULL;
     pos = NULL;
-    //if(embed != NULL) delete embed;
-    // cout << "Done with model destructor" << endl;
+    if(embed != NULL) delete embed;
+//     cout << "Done with model destructor" << endl;
 }
 
 int Model::get_depth(){
@@ -73,9 +73,10 @@ int Model::get_depth(){
 }
 
 PosDependentObservationModel::~PosDependentObservationModel(){
-    // cout << "PosDep destructor called" << endl;
-    delete p_indexer;
+//     cout << "PosDep destructor called" << endl;
+//    delete p_indexer;
     delete lexMultiplier;
+//    cout << "PosDep destructor called" << endl;
 }
 
 Sparse * tile(int g_len, int state_size);
@@ -83,6 +84,7 @@ void PosDependentObservationModel::set_models(Model * models){
     //cout << "PosDependentObsModel::set_models called" << endl;
     delete p_indexer;
     p_indexer = new Indexer(models);
+    delete lexMultiplier;
     lexMultiplier = tile(models->g_max, p_indexer->get_state_size());
     g_size = models->g_max;
     //cout << "PosDependentObsModel::set_models done" << endl;
@@ -102,8 +104,10 @@ void PosDependentObservationModel::get_probability_vector(int token, Array* retV
 }
 
 CategoricalObservationModel::~CategoricalObservationModel(){
-    // std::cout << "CatObs destructor called" << std::endl;
-    delete lexMatrix;
+//     std::cout << "CatObs destructor called" << std::endl;
+//    PosDependentObservationModel::~PosDependentObservationModel();
+//    delete lexMatrix;
+//    std::cout << "CatObs destructor called" << std::endl;
 }
 
 void CategoricalObservationModel::set_models(Model * models){
@@ -891,7 +895,7 @@ HmmSampler::HmmSampler(int seed, ModelType model_type) : seed(seed){
 }
 
 HmmSampler::~HmmSampler(){
-    //cout << "HmmSampler destructor called for sampler " << samplerNum << endl;
+//    cout << "HmmSampler destructor called for sampler "  << endl;
     if(dyn_prog != NULL){
         for(int i = 0; i < max_sent_len; i++){
             delete dyn_prog[i];
@@ -900,7 +904,7 @@ HmmSampler::~HmmSampler(){
     }
     delete start_state;
     //delete[] dyn_prog;
-    //delete p_model;
+//    delete p_model;
     delete p_indexer;
     //delete lexMatrix;
     //delete dyn_prog;
@@ -912,5 +916,5 @@ HmmSampler::~HmmSampler(){
     delete expand_mat;
     delete dyn_prog_part;
     delete pos_full_array;
-    //if(obs_model != NULL) delete obs_model;
+    if(obs_model != NULL) {delete obs_model;}
 }
