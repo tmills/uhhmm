@@ -310,7 +310,7 @@ class PCFG_model:
                                                                 (self.nonterm_alpha,
                                                                  self.term_alpha),
                                                                 annealing_coeff,
-                                                                self.right_branching_tendency]]))
+                                                                self.right_branching_tendency]])+'\n')
             self.counts_log.write('\t'.join([str(self.iter),] + [str(self.nonterm_total_counts[p])
                                                              for p in
                                   self.nonterms if str(p) != '0'] + [str(

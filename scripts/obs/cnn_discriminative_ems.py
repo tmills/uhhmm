@@ -56,9 +56,9 @@ class CNNDiscriminativeEmission(torch.nn.Module):
         self.relu = torch.nn.ReLU()
         self.final_layer = torch.nn.Linear(self.embedding_dim * len(self.kernels), self.abp_domain_size)
 
-        # self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
         self.l1_lambda = L1_LAMBDA
-        self.optimizer = torch.optim.SGD(self.parameters(), lr=1e-3)
+        # self.optimizer = torch.optim.SGD(self.parameters(), lr=1e-3)
         print(self)
 
     def _generate_vocab(self):

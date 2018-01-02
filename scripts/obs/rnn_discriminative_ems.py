@@ -24,7 +24,7 @@ class RNNDiscriminativeEntryList(RNNEntryList):
 
 class RNNDiscriminativeEmission(torch.nn.Module):
     def __init__(self, abp_domain_size, vocab, hidden_size=50, num_layers=NUM_LAYERS,
-                 training_iters=NUM_ITERS, use_cuda=True, bidirectional=BIDIRECTIONAL):
+                 training_iters=NUM_ITERS, use_cuda=False, bidirectional=BIDIRECTIONAL):
         super(RNNDiscriminativeEmission, self).__init__()
         self.bidirectional = bidirectional
         self.training_iters = training_iters
