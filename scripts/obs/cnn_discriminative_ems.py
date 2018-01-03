@@ -25,7 +25,7 @@ class CNNDiscriminativeEntryList(RNNEntryList):
 class CNNDiscriminativeEmission(torch.nn.Module):
     def __init__(self, abp_domain_size, vocab, embedding_dim=50, hidden_size=50,
                  kernels=KERNELS,
-                 training_iters=NUM_ITERS, use_cuda=True):
+                 training_iters=NUM_ITERS, use_cuda=False):
         super(CNNDiscriminativeEmission, self).__init__()
         self.embedding_dim = embedding_dim
         self.training_iters = training_iters
@@ -164,12 +164,13 @@ class CNNDiscriminativeEmission(torch.nn.Module):
         x = self.relu(x)
         x = self.final_layer(x)
         # x = x ** 3
-        x = torch.nn.functional.softmax(x)
+        x = torch.nn.functional.softmax(x, dim=1)
         return x
 
 
     def _cnn_step(self):
         self.train()
+        # import pdb; pdb.set_trace()
         whole_input_tensor = torch.stack([entry.input_vector for entry in self.entries])
         # print(whole_input_tensor)
         whole_input_tensor = torch.autograd.Variable(whole_input_tensor)
@@ -215,6 +216,8 @@ class CNNDiscriminativeEmission(torch.nn.Module):
             for category in range(self.abp_domain_size):
                 cat = self.non_terms[category]
                 child = (entry.word_int, )
+                if cat not in pcfg_counts:
+                    pcfg_counts[cat] = {}
                 original_count = pcfg_counts[cat].get(child, 0)
                 new_count = self.total_word_counts[child] * entry.prob.data[category]
                 pcfg_counts[cat][child] = new_count

@@ -274,6 +274,7 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
     #     pickle.dump(models, open(fixed_model, 'wb'))
 
     indexer = Indexer(models)
+    # print(indexer.state_size)
 
     stats = Stats()
     inf_procs = list()
