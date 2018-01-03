@@ -7,8 +7,9 @@ from .rnn_generative_ems import RNNEntry, RNNEntryList
 
 KERNELS = [2,3,4]
 NUM_ITERS = 5
-L1_LAMBDA = 1
-# L2_LAMBDA = 1
+L1_LAMBDA = 0
+L2_LAMBDA = 1
+
 class CNNDiscriminativeEntry(RNNEntry):
     def get_nll(self):
         return 0 - self.count @ torch.log(self.prob)
@@ -58,6 +59,7 @@ class CNNDiscriminativeEmission(torch.nn.Module):
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
         self.l1_lambda = L1_LAMBDA
+        self.l2_lambda = L2_LAMBDA
         # self.optimizer = torch.optim.SGD(self.parameters(), lr=1e-3)
         print(self)
 
@@ -184,24 +186,29 @@ class CNNDiscriminativeEmission(torch.nn.Module):
             # print(p_p_giv_w)
             total_nll = self.entries.set_scores(p_p_giv_w)
             # print(total_nll)
-            if self.l1_lambda > 0:
-                for name, parameter in self.named_parameters():
-                    if name == 'embedding.weight':
-                        total_nll += torch.norm(parameter[:-1], 1) * self.l1_lambda
-                    else:
-                        total_nll += torch.norm(parameter, 1) * self.l1_lambda
+            if iter == 0:
+                first_total_nll = total_nll.data.cpu()[0]
+            else:
+                final_total_nll = total_nll.data.cpu()[0]
+            lambdas = [self.l1_lambda, self.l2_lambda]
+            for lambda_index, lx_lambda in enumerate(lambdas):
+                if lx_lambda > 0:
+                    norm_index = lambda_index + 1
+                    for name, parameter in self.named_parameters():
+                        if name == 'embedding.weight':
+                            total_nll += torch.norm(parameter[:-1], norm_index) * lx_lambda
+                        else:
+                            total_nll += torch.norm(parameter, norm_index) * lx_lambda
             # ave_nll = total_nll / p_p_giv_w.size(0)
             # ave_nll.backward()
             total_nll.backward()
             # for parameter in self.parameters():
             #     print(parameter.grad)
-            if iter == 0:
-                first_total_nll = total_nll.data.cpu()[0]
+
             self.optimizer.step()
-        final_total_nll = total_nll.data.cpu()[0]
         logging.info('The CNN final training iter has a total - loglikelihood of {:.4f} for the '
                      'corpus with {:.4f} improvement.'.format(
-            total_nll.data.cpu()[0], first_total_nll - final_total_nll))
+            final_total_nll, first_total_nll - final_total_nll))
 
         self.eval()
         whole_input_tensor.detach_()
