@@ -7,8 +7,8 @@ from .rnn_generative_ems import RNNEntry, RNNEntryList
 
 KERNELS = [2,3,4]
 NUM_ITERS = 5
-L1_LAMBDA = 0
-L2_LAMBDA = 1
+# L1_LAMBDA = 0
+L2_LAMBDA = .1
 
 class CNNDiscriminativeEntry(RNNEntry):
     def get_nll(self):
@@ -56,10 +56,10 @@ class CNNDiscriminativeEmission(torch.nn.Module):
             self.pool_list.append(torch.nn.AvgPool2d((H, 1)))
         self.relu = torch.nn.ReLU()
         self.final_layer = torch.nn.Linear(self.embedding_dim * len(self.kernels), self.abp_domain_size)
-
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
-        self.l1_lambda = L1_LAMBDA
         self.l2_lambda = L2_LAMBDA
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2, weight_decay=L2_LAMBDA)
+        # self.l1_lambda = L1_LAMBDA
+
         # self.optimizer = torch.optim.SGD(self.parameters(), lr=1e-3)
         print(self)
 
@@ -190,15 +190,15 @@ class CNNDiscriminativeEmission(torch.nn.Module):
                 first_total_nll = total_nll.data.cpu()[0]
             else:
                 final_total_nll = total_nll.data.cpu()[0]
-            lambdas = [self.l1_lambda, self.l2_lambda]
-            for lambda_index, lx_lambda in enumerate(lambdas):
-                if lx_lambda > 0:
-                    norm_index = lambda_index + 1
-                    for name, parameter in self.named_parameters():
-                        if name == 'embedding.weight':
-                            total_nll += torch.norm(parameter[:-1], norm_index) * lx_lambda
-                        else:
-                            total_nll += torch.norm(parameter, norm_index) * lx_lambda
+            # lambdas = [self.l1_lambda, self.l2_lambda]
+            # for lambda_index, lx_lambda in enumerate(lambdas):
+            #     if lx_lambda > 0:
+            #         norm_index = lambda_index + 1
+            #         for name, parameter in self.named_parameters():
+            #             if name == 'embedding.weight':
+            #                 total_nll += torch.norm(parameter[:-1], norm_index) * lx_lambda
+            #             else:
+            #                 total_nll += torch.norm(parameter, norm_index) * lx_lambda
             # ave_nll = total_nll / p_p_giv_w.size(0)
             # ave_nll.backward()
             total_nll.backward()

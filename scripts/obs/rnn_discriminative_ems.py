@@ -8,7 +8,7 @@ from .rnn_generative_ems import RNNEntry, RNNEntryList
 NUM_LAYERS = 2
 BIDIRECTIONAL = 1
 NUM_ITERS = 5
-
+L2_LAMBDA = 0
 class RNNDiscriminativeEntry(RNNEntry):
     def get_nll(self):
         return 0 - self.count @ torch.log(self.prob)
@@ -41,6 +41,7 @@ class RNNDiscriminativeEmission(torch.nn.Module):
         self.input_size = len(self.char_set)
         self.total_word_counts = {}
         self.non_terms = {}
+        self.l2_lambda = L2_LAMBDA
         self.rnn = torch.nn.GRU(input_size=self.input_size, hidden_size=self.hidden_size,
                                 num_layers=self.num_layers, bidirectional=self.bidirectional,
                                 batch_first=True)
@@ -49,7 +50,7 @@ class RNNDiscriminativeEmission(torch.nn.Module):
         self.h_0 = torch.nn.Parameter(data=torch.zeros(
             self.num_layers * (1+self.bidirectional), 1, self.hidden_size))
 
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2, weight_decay=self.l2_lambda)
         # self.optimizer = torch.optim.SGD(self.parameters(), lr=1e-3)
         print(self)
 

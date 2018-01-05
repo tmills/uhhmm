@@ -5,6 +5,7 @@ from typing import List
 import torch.optim
 
 NUM_ITERS = 5
+L2_LAMBDA = 0
 
 class RNNEntry:
     def __init__(self, category, word, word_int, input, target, count,
@@ -85,6 +86,7 @@ class RNNGenerativeEmission(torch.nn.Module):
         self.input_size = len(self.char_set) + abp_domain_size +1
         self.total_rule_counts = {}
         self.non_terms = {}
+        self.l2_lambda = L2_LAMBDA
         self.rnn = torch.nn.GRU(input_size=self.input_size, hidden_size=self.hidden_size,
                                 num_layers=self.num_layers, batch_first=True)
         self.final_layer = torch.nn.Linear(self.hidden_size, self.vocab_size)
@@ -92,7 +94,7 @@ class RNNGenerativeEmission(torch.nn.Module):
             self.num_layers, 1, hidden_size))
         self.w_logistic = torch.nn.Parameter(data=torch.ones(self.max_len))
         self.b_logistic = torch.nn.Parameter(data=torch.zeros(self.max_len))
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2, weight_decay=self.l2_lambda)
         # self.optimizer = torch.optim.SGD(self.parameters(), lr=1e-3)
         print(self)
 
