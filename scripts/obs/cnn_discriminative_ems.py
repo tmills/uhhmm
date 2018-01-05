@@ -1,4 +1,5 @@
 import logging
+from time import time
 
 import torch
 from typing import List
@@ -7,12 +8,15 @@ from .rnn_generative_ems import RNNEntry, RNNEntryList
 
 KERNELS = [2,3,4]
 NUM_ITERS = 5
-L1_LAMBDA = 0
-L2_LAMBDA = 1
+L2_LAMBDA = 0
 
 class CNNDiscriminativeEntry(RNNEntry):
     def get_nll(self):
-        return 0 - self.count @ torch.log(self.prob)
+        # print(self.count)
+        # print(self.prob)
+        ll = torch.sum(self.count.half() * torch.log(self.prob))
+        # print(ll)
+        return 0 - ll
 
 class CNNDiscriminativeEntryList(RNNEntryList):
     def set_scores(self, probs, w_logistic=None, b_logistic=None):
@@ -26,7 +30,7 @@ class CNNDiscriminativeEntryList(RNNEntryList):
 class CNNDiscriminativeEmission(torch.nn.Module):
     def __init__(self, abp_domain_size, vocab, embedding_dim=50, hidden_size=50,
                  kernels=KERNELS,
-                 training_iters=NUM_ITERS, use_cuda=False):
+                 training_iters=NUM_ITERS, use_cuda=True):
         super(CNNDiscriminativeEmission, self).__init__()
         self.embedding_dim = embedding_dim
         self.training_iters = training_iters
@@ -57,10 +61,19 @@ class CNNDiscriminativeEmission(torch.nn.Module):
         self.relu = torch.nn.ReLU()
         self.final_layer = torch.nn.Linear(self.embedding_dim * len(self.kernels), self.abp_domain_size)
 
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
-        self.l1_lambda = L1_LAMBDA
+        # self.l1_lambda = L1_LAMBDA
         self.l2_lambda = L2_LAMBDA
         # self.optimizer = torch.optim.SGD(self.parameters(), lr=1e-3)
+        self.cuda().half()
+        self.param_copy = [param.clone().type(torch.cuda.FloatTensor).detach() for param in
+                       self.parameters()]
+        for param in self.param_copy:
+            param.requires_grad = True
+        for param in self.param_copy:
+            print(param.requires_grad)
+            print(param)
+
+        self.optimizer = torch.optim.Adam(self.param_copy, lr=1e-2, weight_decay=self.l2_lambda)
         print(self)
 
     def _generate_vocab(self):
@@ -180,7 +193,9 @@ class CNNDiscriminativeEmission(torch.nn.Module):
             whole_input_tensor = whole_input_tensor.contiguous().cuda()
         final_total_nll = 0
         first_total_nll = 0
-        for iter in range(self.training_iters):
+        total_iters, time_diff = 0, 0
+        for iter in range(self.training_iters * 1000):
+            t0 = time()
             self.optimizer.zero_grad()
             p_p_giv_w = self.forward(whole_input_tensor)
             # print(p_p_giv_w)
@@ -190,22 +205,39 @@ class CNNDiscriminativeEmission(torch.nn.Module):
                 first_total_nll = total_nll.data.cpu()[0]
             else:
                 final_total_nll = total_nll.data.cpu()[0]
-            lambdas = [self.l1_lambda, self.l2_lambda]
-            for lambda_index, lx_lambda in enumerate(lambdas):
-                if lx_lambda > 0:
-                    norm_index = lambda_index + 1
-                    for name, parameter in self.named_parameters():
-                        if name == 'embedding.weight':
-                            total_nll += torch.norm(parameter[:-1], norm_index) * lx_lambda
-                        else:
-                            total_nll += torch.norm(parameter, norm_index) * lx_lambda
+            # lambdas = [self.l1_lambda, self.l2_lambda]
+            # for lambda_index, lx_lambda in enumerate(lambdas):
+            #     if lx_lambda > 0:
+            #         norm_index = lambda_index + 1
+            #         for name, parameter in self.named_parameters():
+            #             if name == 'embedding.weight':
+            #                 total_nll += torch.norm(parameter[:-1], norm_index) * lx_lambda
+            #             else:
+            #                 total_nll += torch.norm(parameter, norm_index) * lx_lambda
             # ave_nll = total_nll / p_p_giv_w.size(0)
             # ave_nll.backward()
             total_nll.backward()
+
+            for param, copied_param in zip(list(self.parameters()), self.param_copy):
+                copied_param.grad = param.grad.float()
+                # print(copied_param.requires_grad)
+
             # for parameter in self.parameters():
             #     print(parameter.grad)
 
             self.optimizer.step()
+            # for name, parameter in self.named_parameters():
+            #     print(name)
+            #     print(parameter.data)
+            params = list(self.parameters())
+            for i in range(len(params)):
+                params[i].data.copy_(self.param_copy[i].data)
+
+            t1 = time()
+            total_iters += 1
+            time_diff += t1 - t0
+        print('sec per iter:', time_diff / total_iters)
+        exit(-1)
         logging.info('The CNN final training iter has a total - loglikelihood of {:.4f} for the '
                      'corpus with {:.4f} improvement.'.format(
             final_total_nll, first_total_nll - final_total_nll))

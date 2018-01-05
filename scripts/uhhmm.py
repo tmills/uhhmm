@@ -396,6 +396,12 @@ def sample_beam(ev_seqs, params, report_function, checkpoint_function, working_d
             hid_seqs[parse.index] = parse.state_list
         acc_logprob += sample.log_prob
         pcfg_model.log_probs = acc_logprob
+
+        # TODO: delete this
+        # for cur_proc in range(0, num_cpu_workers + num_gpu_workers):
+        #     logging.info("Sending terminate signal to worker {} ...".format(cur_proc))
+        #     inf_procs[cur_proc].terminate()
+
         # random restarts control
         if iter < random_restarts - 1:
             logging.info("The {} random restart has a loglikelihood of {}".format(iter, sample.log_prob))
