@@ -39,10 +39,10 @@ private:
     // thrust::device_vector<float> *temp = NULL;
     //DenseView*** distributions = NULL;
 public:
-    ~GaussianObservationModel(){
-        PosDependentObservationModel::~PosDependentObservationModel();
-        delete lexMatrix;
-    }
+    // ~GaussianObservationModel(){
+        // PosDependentObservationModel::~PosDependentObservationModel();
+        // delete lexMatrix;
+    // }
     virtual void set_models(Model * models);
     virtual void get_pos_probability_vector(int token, Array* output);
 };
