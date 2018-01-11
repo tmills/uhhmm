@@ -6,7 +6,7 @@ import numpy as np
 from scipy.stats import dirichlet
 import collections
 
-EPSILON = 0
+EPSILON = 1e-200
 
 def normalize_a_tensor(tensor):
     return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-20)  # to supress zero division warning
@@ -239,6 +239,15 @@ class PCFG_model:
         elif self.alpha_scale != 0.:
             logging.warning('Sampling different alphas for nonterms and terms are not supported!')
         else:
+            for parent in self.unannealed_dists:
+                if parent.symbol() == '0':
+                    continue
+                dist = self.unannealed_dists[parent]
+                dist[dist == 0] = EPSILON
+                if np.sum(dist) != 1.0:
+                    self.unannealed_dists[parent] = dist / dist.sum()
+
+
             if not self.alpha_array_flag:
                 old_f_val = 0.0
                 new_f_val = 0.0
@@ -267,6 +276,11 @@ class PCFG_model:
                     self.nonterm_alpha = new_alpha
                     logging.info(
                         'pcfg alpha samples a new value {} with log ratio {}/{}'.format(new_alpha,
+                                                                                        mh_ratio,
+                                                                                        acceptance_thres))
+                else:
+                    logging.info(
+                        'pcfg alpha refuses a new value {} with log ratio {}/{}'.format(new_alpha,
                                                                                         mh_ratio,
                                                                                         acceptance_thres))
             else:
