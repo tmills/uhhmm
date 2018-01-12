@@ -1,0 +1,14 @@
+(NP-COMP 1/NNU 조/NNU+원/NNX+으로/PAD)
+  
+# Gold
+(NP-COMP (NNU 1) (NNU+NNX+PAD 조원으로))                            # Experiment 1
+(NP-COMP (NNU 1) (NNU+NNX+PAD (NNU 조) (NNX 원) (PAD 으로)))        # Experiment 2
+
+(NP-COMP (NNU NNU) (NNU+NNX+PAD NNU+NNX+PAD))                       # Experiment 3
+(NP-COMP (NNU NNU) (NNU+NNX+PAD (NNU NNU) (NNX NNX) (PAD PAD)))     # Experiment 4
+
+
+# Input
+조원으로        # No gold                                           # Experiment 1
+조 원 으로      # gold segmentation                                 # Experiment 2
+NNU+NNX+PAD     # gold segmentation and reducing sparsity           # Experiment 3
