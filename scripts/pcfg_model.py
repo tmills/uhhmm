@@ -6,7 +6,7 @@ import numpy as np
 from scipy.stats import dirichlet
 import collections
 
-EPSILON = 1e-15
+EPSILON = 1e-200
 
 def normalize_a_tensor(tensor):
     return tensor / (np.sum(tensor, axis=-1, keepdims=True) + 1e-20)  # to supress zero division warning
@@ -239,6 +239,15 @@ class PCFG_model:
         elif self.alpha_scale != 0.:
             logging.warning('Sampling different alphas for nonterms and terms are not supported!')
         else:
+            for parent in self.unannealed_dists:
+                if parent.symbol() == '0':
+                    continue
+                dist = self.unannealed_dists[parent]
+                dist[dist == 0] = EPSILON
+                if np.sum(dist) != 1.0:
+                    self.unannealed_dists[parent] = dist / dist.sum()
+
+
             if not self.alpha_array_flag:
                 old_f_val = 0.0
                 new_f_val = 0.0
@@ -267,6 +276,11 @@ class PCFG_model:
                     self.nonterm_alpha = new_alpha
                     logging.info(
                         'pcfg alpha samples a new value {} with log ratio {}/{}'.format(new_alpha,
+                                                                                        mh_ratio,
+                                                                                        acceptance_thres))
+                else:
+                    logging.info(
+                        'pcfg alpha refuses a new value {} with log ratio {}/{}'.format(new_alpha,
                                                                                         mh_ratio,
                                                                                         acceptance_thres))
             else:
@@ -347,11 +361,11 @@ class PCFG_model:
             self.anneal_counts = self.counts
             self.unannealed_dists = {x: np.random.dirichlet(self.counts[x]) for x in self.counts}
         dists = self.unannealed_dists
-        for dist in dists.values():
-            dist += EPSILON
-            dist /= np.sum(dist)
-            assert np.all(dist != 0), "there are 0s in distributions from Dirichlet! It is " \
-                                      "usually because alpha is too small."
+        # for dist in dists.values():
+        #     dist += EPSILON
+        #     dist /= np.sum(dist)
+        #     assert np.all(dist != 0), "there are 0s in distributions from Dirichlet! It is " \
+        #                               "usually because alpha is too small."
         # print(dists)
         # print(np.sum(dists[nltk.grammar.Nonterminal('1')], axis=0))
         self._log_dists(dists)

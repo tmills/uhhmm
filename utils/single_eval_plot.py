@@ -20,6 +20,8 @@ import argparse
 arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument('-folder', default='.', type=str, help='the path to the output folder')
 arg_parser.add_argument('-gold-trees', default=None, type=str, help='the path to the gold trees')
+arg_parser.add_argument('-gold-trees-with-punc', default=None, type=str, help='the path to fix '
+                                                                              'terminal files')
 arg_parser.add_argument('-first-n-iter', default=None, type=int, help='the first N of iterations considered')
 arg_parser.add_argument('-burn-in', default=50, type=int, help='burn in period')
 arg_parser.add_argument('-max-threads', default=20, type=int)
@@ -71,6 +73,8 @@ preprocess_command = '''cat {} | sed 's/(-DFL- \+E_S) *//g;s/  \+/ /g;s/\\t/ /g;
 eval_command = './utils/EVALB/evalb -p {} {} {} > {}' # param, gold, test
 constlist_command = '''python scripts/iters2constitevallist.py {} > {}'''
 plot_command = '''python {}/resource-linetrees/scripts/constitevals2table.py {} > {} '''
+
+fix_terminals_command = '''python utils/fix_terminals_wsj.py -g {} -p {}'''
 
 output_files = os.listdir(last_sample_folder)
 output_last_samples = [x for x in output_files if re.match('last_sample[0-9]+\.linetrees', x) and
@@ -125,12 +129,26 @@ if args.with_deps:
 
 end_f_names = []
 
-print('preprocessing the trees into nounary lower and nopunc')
+print('fixing terminals')
+gold_fix_terminal_file = args.gold_trees_with_punc
 for f in output_last_samples + deps_f_names:
     if 'fromdeps' not in f:
         f_name = os.path.join(last_sample_folder, f)
     else:
         f_name = f
+    p = bash_command(fix_terminals_command.format(gold_fix_terminal_file, f_name))
+else:
+    check_finished()
+print('preprocessing the trees into nounary lower and nopunc')
+
+fixed_terminal_names = []
+for f in output_last_samples + deps_f_names:
+    if 'fromdeps' not in f:
+        f_name = os.path.join(last_sample_folder, f)
+    else:
+        f_name = f
+    f_name = f_name.replace('.linetrees', '.fixterms.linetrees')
+    fixed_terminal_names.append(f_name)
     end_f_name = '{}.nt.lower.nounary.nopunc.linetrees'.format(f_name.replace('.linetrees', ''))
     end_f_names.append(end_f_name)
     # print(preprocess_command.format(f_name, modelblocks_path, modelblocks_path, modelblocks_path, modelblocks_path, end_f_name))
@@ -507,7 +525,8 @@ with open(os.path.join(last_sample_folder, 'results' + '_' + str(min(x_data)) + 
 # plt.clf()
 
 # delete the temp files
-for f in rule_f_names + model_f_names + head_model_names + deps_f_names + end_f_names + evalb_f_names:
+for f in rule_f_names + model_f_names + head_model_names + deps_f_names + end_f_names + \
+        evalb_f_names + fixed_terminal_names:
     bash_command('rm -f {}'.format(f))
 
 # output_files = os.listdir(last_sample_folder)
