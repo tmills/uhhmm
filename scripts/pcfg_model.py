@@ -99,7 +99,8 @@ class PCFG_model:
         nonterms_counts_header = [str(x) for x in self.nonterms if x.symbol() != '0']
         nonterms_non_counts_header = [x+'_non' for x in nonterms_counts_header]
         if self.log_mode == 'w':
-            self.hypparam_log.write('iter\tlogprob\talpha\tac\tRB\t{}\t{}\n'.format('\t'.join(
+            self.hypparam_log.write('iter\tlogprob\talpha\tac\tRB\n')
+            self.counts_log.write('iter\t{}\t{}\n'.format('\t'.join(
                 nonterms_counts_header), '\t'.join(nonterms_non_counts_header)))
 
     def _log_dists(self, dists):
@@ -327,10 +328,12 @@ class PCFG_model:
                                                                 (self.nonterm_alpha,
                                                                  self.term_alpha),
                                                                 annealing_coeff,
-                                                                self.right_branching_tendency]]
-                                              + [str(self.nonterm_total_counts[p]) for p in
-                                  self.nonterms if str(p) != '0'] + [str(
-                self.nonterm_non_total_counts[x]) for x in self.nonterms if str(x) != '0']) + '\n')
+                                                                self.right_branching_tendency]])+'\n')
+
+            self.counts_log.write('\t'.join([str(self.iter),] + [str(
+                self.nonterm_total_counts.get(p, 0)) for p in self.nonterms if str(p) != '0'] + [
+                str(self.nonterm_non_total_counts.get(x, 0)) for x in self.nonterms if str(x) !=
+                                                                                    '0']) +'\n')
 
         dists = {}
         if annealing_coeff != 1.0:
