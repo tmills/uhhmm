@@ -4,6 +4,8 @@ import logging
 import distribution_sampler as sampler
 from scipy.sparse import lil_matrix
 import scipy.stats
+from scipy.stats import invgamma
+from scipy.stats import gamma
 
 ## fullwiki_vecs_10dim.txt stats
 #mean_mean = 0.18
@@ -12,10 +14,15 @@ import scipy.stats
 #stdev_stdev = 0.04
 
 ## simple wiki stats:
-mean_mean = 0.03
-mean_stdev = 0.16
-stdev_mean = 2.0
-stdev_stdev = 0.07
+mean_mu = 0.0
+mean_sigmasq = 0.16
+
+prec_alpha = 4.0
+prec_beta = 4.0
+
+cdef invgammapdf(x, alpha, beta):
+    scaled_alpha = x / beta
+    return invgamma(x, alpha) / beta
 
 # A mapping from input space to output space. The Model class can be
 # used to store counts during inference, and then know how to resample themselves
@@ -43,18 +50,22 @@ cdef class GaussianModel(Model):
         self.dist = []
         self.centroids = centroids
 
-        mean_dist = scipy.stats.norm(mean_mean, mean_stdev)
+        mean_dist = scipy.stats.norm(mean_mu, mean_sigmasq)
         # logging.info("Initializing pos distributions with count %d,%d" % (shape[0], shape[1]))
         for pos_ind in range(shape[0]):
             self.pairCounts.append([])
             if pos_ind == 0 or pos_ind == (shape[0] - 1) or self.centroids is None:
                 # logging.info("Initializing pos ind=%d randomly." % (pos_ind))
                 init_means = mean_dist.rvs(shape[1])
-                stds = np.zeros(len(init_means)) + stdev_mean
-                self.dist.append( scipy.stats.norm(init_means, stds) )
             else:
                 # logging.info("Initializing pos ind=%d from centroid index %d" % (pos_ind, pos_ind-1))
-                self.dist.append( scipy.stats.norm( self.centroids[pos_ind-1], stdev_mean))
+                init_means = self.centroids[pos_ind-1]
+
+            ## Initialize all equally: (means the first iteration will essentailly randomly sample words
+            ## from each distribution)
+            init_means = np.zeros(shape[1])
+            stds = np.zeros(len(init_means)) + 4.0 # FIXME with sampling?
+            self.dist.append( scipy.stats.norm(init_means, stds) )
 
             # logging.info("Mean vector for pos %d after initial sampling: %s" % (pos_ind+1, self.dist[-1].mean()))
 
@@ -80,24 +91,44 @@ cdef class GaussianModel(Model):
         sample_means = []
         sample_stdevs = []
         for pos_ind in range(len(self.pairCounts)-1):
-            # logging.info("Pair counts for POS%d with %d tokens assigned:" % (pos_ind, len(self.pairCounts[pos_ind])))
+            logging.info("Recalculating distribution for POS%d with %d tokens assigned" % (pos_ind, len(self.pairCounts[pos_ind])))
             # logging.info(self.pairCounts[pos_ind])
-            stds = np.zeros(self.embed_dims) + stdev_mean
-            if len(self.pairCounts[pos_ind]) > 0:
+            # stds = np.zeros(self.embed_dims) + stdev_mean
+            num_samples = len(self.pairCounts[pos_ind])
+            if num_samples > 1:
                 #sample_means = self.pairCounts[pos_ind][:] / self.condCounts[pos_ind]
                 sample_mean = np.mean(self.pairCounts[pos_ind], 0)
                 sample_stdev = np.std(self.pairCounts[pos_ind], 0)
-                sample_means.append(sample_mean)
-                sample_stdevs.append(sample_stdev)
-                self.dist[pos_ind] = scipy.stats.norm(sample_mean, stds)
-                if pos_ind > 0:
-                    logging.info("POS index=%d has new distribution with mean %s and stdev %s" % (pos_ind, sample_mean, sample_stdev))
+                sample_var = sample_stdev**2.
+                if np.any(sample_var == 0):
+                    logging.warn("Sample variance is 0 with %d samples so there may be a divide by zero error!" % (num_samples))
+                    #raise Exception
+                ## precision = 1 / variance
+                sample_precision = 1. / (sample_var)
+                mean_dist_arg1 = (mean_sigmasq / ((sample_var / num_samples) + mean_sigmasq)) * sample_mean # + (sample_var / ((sample_var/num_samples) + mean_sigmasq)) * mean_mean_prior   ## Last part is commented out -- as long as mean_mean_prior is 0 that term will be 0
+                mean_dist_arg2 = 1. / (1./mean_sigmasq + num_samples / sample_var)
+                # logging.info("New means being drawn from distribution with mean %s and stdevs %s with %d samples" % (mean_dist_arg1, mean_dist_arg2, num_samples))
+                mean_dist = scipy.stats.norm(mean_dist_arg1, mean_dist_arg2)
+
+                prec_dist_arg1 = prec_alpha + num_samples / 2
+                internal = np.array(((self.pairCounts[pos_ind] - self.dist[pos_ind].mean())**2).sum(0))
+                prec_dist_arg2 = 1 / (prec_beta + 0.5 * internal)
+                # logging.info("Arguments to gamma distribution are %s and %s" % (str(prec_dist_arg1), str(prec_dist_arg2)))
+                prec_samples = gamma.rvs(prec_dist_arg1, scale=prec_dist_arg2)
+                if np.any(prec_samples == 0):
+                    logging.warn("Precision samples is zero so there may be a divide by zero error!")
+                var_samples = 1 / prec_samples
+                stdev_samples = np.sqrt(var_samples)
+                self.dist[pos_ind] = scipy.stats.norm(mean_dist.rvs(), stdev_samples)
+                # if pos_ind > 0:
+                #     logging.info("POS index=%d has new distribution with mean %s and stdev %s" % (pos_ind, sample_mean, sample_stdev))
 
             else:
                 ## We didn't use this POS, so re-initialize it:
-                mean_dist = scipy.stats.norm(mean_mean, mean_stdev)
+                ## FIXME - sample variance the same way we do in the constructor
+                mean_dist = scipy.stats.norm(mean_mu, mean_sigmasq)
                 mean_init = mean_dist.rvs(self.embed_dims)
-                self.dist[pos_ind] = scipy.stats.norm(mean_init, stds)
+                self.dist[pos_ind] = scipy.stats.norm(mean_init, 2.0)
                 # if pos_ind > 0:
                     # logging.info("POS index=%d has distribution with mean %s and stdev %s" % (pos_ind, sample_mean, sample_stdev))
 
@@ -105,8 +136,12 @@ cdef class GaussianModel(Model):
                 logging.error("Resampled gaussian and there is a nan in the mean vector")
                 logging.error("self.dist[%d] = %s" %(pos_ind, str(self.dist[pos_ind].mean())))
                 logging.error("sample_means: %s" % str(sample_means))
+                
+        self.resetCounts()
+        logging.info("Done resampling gaussian word distributions.")
 
     def resetCounts(self):
+        logging.info("Reset counts called in gaussian model.")
         for pos_ind in range(len(self.pairCounts)):
             self.pairCounts[pos_ind] = []
             #self.condCounts[pos_ind] = 0

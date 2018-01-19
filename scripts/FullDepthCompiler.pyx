@@ -330,17 +330,39 @@ def unlog_models(models, depth):
     models.pos.dist = 10**models.pos.dist
 
 def relog_models(models, depth):
+    logging.warn("Relog models called")
     for d in range(0, depth):
-        models.F[d].dist = np.log10(models.F[d].dist)
+        try:
+            if np.any(models.F[d].dist == 0):
+                logging.warn("The F model at depth %d has a zero!" % (d))
 
-        models.J[d].dist = np.log10(models.J[d].dist)
+            models.F[d].dist = np.log10(models.F[d].dist)
 
-        models.A[d].dist = np.log10(models.A[d].dist)
+            if np.any(models.J[d].dist == 0):
+                logging.warn("The J model at depth %d has a zero!" % (d))
+            models.J[d].dist = np.log10(models.J[d].dist)
 
-        models.B_J0[d].dist = np.log10(models.B_J0[d].dist)
-        models.B_J1[d].dist = np.log10(models.B_J1[d].dist)
+            if np.any(models.A[d].dist == 0):
+                logging.warn("The A model at depth %d has a zero!" % (d))
+            models.A[d].dist = np.log10(models.A[d].dist)
 
-    models.pos.dist = np.log10(models.pos.dist)
+            if np.any(models.B_J0[d].dist == 0):
+                logging.warn("The B_J0 model at depth %d has a zero!" % (d))
+            if np.any(models.B_J1[d].dist == 0):
+                logging.warn("The B_J1 model at depth %d has a zero!" % (d))
+
+            models.B_J0[d].dist = np.log10(models.B_J0[d].dist)
+            models.B_J1[d].dist = np.log10(models.B_J1[d].dist)
+        except:
+            logging.error("Error in log10ing a model!")
+
+    try:
+
+        if np.any(models.pos.dist == 0):
+            logging.warn("The pos model")
+        models.pos.dist = np.log10(models.pos.dist)
+    except:
+        logging.error("Error in log10ing pos model!")
 
 def get_cur_awa_depth(stack):
     ## Essentially empty -- used for first time step
