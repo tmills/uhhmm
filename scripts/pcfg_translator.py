@@ -338,7 +338,8 @@ def _replace_model(model, ref_model, inc,add_noise=False, sigma=1):
         #     model.pairCounts += noise
         #     model.pairCounts = np.absolute(model.pairCounts)
 
-def pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, inc=1, J=25, normalize=True, gold_pcfg_file=None,
+def pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, inc=1, J=50, normalize=True,
+                       gold_pcfg_file=None,
                        add_noise=False, noise_sigma = 0, strategy=None, ints_seqs=None, gold_pos_dict = None,
                        ac_coeff = 1.0, annealing_normalize=False, sample_alpha_flag=False):
     d = len(models.A)
