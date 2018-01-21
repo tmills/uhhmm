@@ -358,10 +358,15 @@ def pcfg_replace_model(hid_seqs, ev_seqs, models, pcfg_model, inc=1, J=25, norma
     sampled_pcfg = pcfg_model.sample(pcfg_counts, ac_coeff, normalize=annealing_normalize,
                                      sample_alpha_flag=sample_alpha_flag,
                                      right_branching_tendency=right_branching_tendency)
+    # import pickle
+    # pickle.dump(pcfg_model, open('pcfg.pkl', 'wb'))
     nonterms = _build_nonterminals(abp_domain_size)
     delta_A, delta_B = _calc_delta(sampled_pcfg, J, abp_domain_size, d, nonterms)
     # print(delta_A, delta_B)
     gamma_A, gamma_B = _calc_gamma((delta_A, delta_B), sampled_pcfg, d)
+
+    # pickle.dump((gamma_A, gamma_B), open('gammas.pkl', 'wb'))
+    # exit()
     # print(_calc_expected_counts((gamma_A, gamma_B), pcfg, J, d, abp_domain_size))
     gamma_star, preterm_marginal_distr = _calc_expected_counts((gamma_A, gamma_B), sampled_pcfg, J, d, abp_domain_size)
     # print("F")

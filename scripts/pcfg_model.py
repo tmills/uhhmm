@@ -133,6 +133,17 @@ class PCFG_model:
     def __len__(self):
         return self.size
 
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state['nonterm_log']
+        del state['term_log']
+        del state['counts_log']
+        del state['hypparam_log']
+        return state
+
     def init_counts(self):
         if isinstance(self.alpha, np.ndarray):
             # print(list(self.indices_keys.keys()))
