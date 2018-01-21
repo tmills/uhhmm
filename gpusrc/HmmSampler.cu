@@ -150,8 +150,9 @@ void GaussianObservationModel::set_models(Model * models){
     thrust::device_vector<float> log_prob(embed_dims);
     thrust::device_vector<float> temp(numWords);
 
+    cout << "Precomputing gaussian POS distributions into a table..." << endl;
     for(int g = 0; g < g_size; g++){
-        cout << "Precomputing distribution for pos tag index " << g << endl;
+        // cout << "Precomputing distribution for pos tag index " << g << endl;
         array2d<float, device_memory>::row_view pos_row = tempLex->get_view()->row(g);
         thrust::device_vector<float> means(pos_row.begin(), pos_row.begin() + embed_dims );
         thrust::device_vector<float> stdevs(pos_row.begin() + embed_dims, pos_row.end());
@@ -186,31 +187,31 @@ void GaussianObservationModel::set_models(Model * models){
 
             // cout << lexMatrix->get_view()->operator()(g,word_ind) << " ";
 
-            if(std::isinf(lexMatrix->get_view()->operator()(g,word_ind))){
-                cout << "Word index " << word_ind << " has log prob of -inf" << endl;
-                cout << "embeddings: " << endl;
-                // debug_print_vector(embed_vec);
-                cusp::print(embed_vec);
-                cout << endl;
-                cout << "normalizer: " << endl;
-                debug_print_double_vector(normalizer);
-                cout << endl;
-                cout << "errors: " << endl;
-                debug_print_float_vector(errors);
-                cout << endl;
-                cout << "stdev squared: " << endl;
-                debug_print_float_vector(stdev_squared);
-                cout << endl;
-                cout << "second factor:" << endl;
-                debug_print_double_vector(second_factor);
-                cout << endl;
-                cout << "final prob: " << endl;
-                debug_print_double_vector(final_prob);
-                cout << endl;
-                cout << "log prob: " << endl;
-                debug_print_float_vector(log_prob);
-                cout << endl;
-            }
+            // if(std::isinf(lexMatrix->get_view()->operator()(g,word_ind))){
+            //     cout << "Word index " << word_ind << " has log prob of -inf" << endl;
+            //     cout << "embeddings: " << endl;
+            //     // debug_print_vector(embed_vec);
+            //     cusp::print(embed_vec);
+            //     cout << endl;
+            //     cout << "normalizer: " << endl;
+            //     debug_print_double_vector(normalizer);
+            //     cout << endl;
+            //     cout << "errors: " << endl;
+            //     debug_print_float_vector(errors);
+            //     cout << endl;
+            //     cout << "stdev squared: " << endl;
+            //     debug_print_float_vector(stdev_squared);
+            //     cout << endl;
+            //     cout << "second factor:" << endl;
+            //     debug_print_double_vector(second_factor);
+            //     cout << endl;
+            //     cout << "final prob: " << endl;
+            //     debug_print_double_vector(final_prob);
+            //     cout << endl;
+            //     cout << "log prob: " << endl;
+            //     debug_print_float_vector(log_prob);
+            //     cout << endl;
+            // }
         }
         // cout << endl;
 
@@ -616,12 +617,12 @@ std::vector<float> HmmSampler::forward_pass(std::vector<std::vector<int> > sents
             // cout << "Normalizing over col with result: " << normalizer << endl;
             if(std::isnan(normalizer)){
               cout << "Found a normalizer that is nan!" << endl;
-              cout << "Dyn prog col before multiply: " << endl;
-              cusp::print(temp_vec);
-              cout << "expanded lex probability vector: " << endl;
-              cusp::print(expanded_lex);
-              cout << "Dynamic programming matrix column:" << endl;
-              cusp::print(dyn_prog_col);
+            //   cout << "Dyn prog col before multiply: " << endl;
+            //   cusp::print(temp_vec);
+            //   cout << "expanded lex probability vector: " << endl;
+            //   cusp::print(expanded_lex);
+            //   cout << "Dynamic programming matrix column:" << endl;
+            //   cusp::print(dyn_prog_col);
             }
 //            cout << "Scaling by normalizer" << endl;
             blas::scal(dyn_prog_col, 1.0f/normalizer);
